@@ -1,61 +1,61 @@
-# GCS MVP Implementation
+# GCS MVP 実装
 
-## Summary
-Build a Python GCS on Windows that directly speaks MAVLink v2 over UDP, supports custom messages, and provides RTK injection and basic command/control.
+## 概要
+UDPを介してMAVLink v2で直接通信し、カスタムメッセージをサポートし、RTKインジェクションと基本的なコマンド/制御を提供するWindows用Python GCSを構築します。
 
-## Scope
-- MAVLink v2 UDP receive/transmit
-- Custom MAVLink message support
-- RTK injection via `GPS_RTCM_DATA`
-- Multi-drone management by system ID
-- Minimal PySide6 UI
+## スコープ
+- MAVLink v2 UDP 受信/送信
+- カスタムMAVLinkメッセージのサポート
+- `GPS_RTCM_DATA`によるRTKインジェクション
+- システムIDによる複数ドローンの管理
+- 最小限のPySide6 UI
 
-## Detailed Requirements
-### Connection
-- Listen on UDP `14550`
-- Configurable outbound endpoints per system ID
-- Display heartbeat status per drone
+## 詳細要件
+### 接続
+- UDP `14550`でリッスン
+- システムIDごとに設定可能な送信先エンドポイント
+- ドローンごとのハートビートステータスの表示
 
-### Telemetry
-- Receive `HEARTBEAT`, `NAMED_VALUE_FLOAT`, `SYS_STATUS`, `GLOBAL_POSITION_INT`
-- Support custom messages from generated `pymavlink`
-- Store latest values in memory
+### テレメトリー
+- `HEARTBEAT`、`NAMED_VALUE_FLOAT`、`SYS_STATUS`、`GLOBAL_POSITION_INT`を受信
+- 生成された`pymavlink`からのカスタムメッセージをサポート
+- 最新の値をメモリに保存
 
-### Command and Control
-- Arm/Disarm, Takeoff, Land
-- Guided control via `SET_POSITION_TARGET_LOCAL_NED`
+### コマンドと制御
+- アーム/ディスアーム、離陸、着陸
+- `SET_POSITION_TARGET_LOCAL_NED`によるガイド制御
 
-### RTK Injection
-- Read RTCM from local TCP `127.0.0.1:5000`
-- Send `GPS_RTCM_DATA` to selected system IDs
+### RTKインジェクション
+- ローカルTCP `127.0.0.1:5000`からRTCMを読み取り
+- 選択されたシステムIDに`GPS_RTCM_DATA`を送信
 
-## Architecture (Planned)
-- `MavlinkConnection`, `MessageRouter`, `TelemetryStore`
-- `RtcmReader`, `RtcmInjector`
-- `CommandDispatcher`, `GuidedControl`
-- `MainWindow`, `DroneState`
+## アーキテクチャ（計画）
+- `MavlinkConnection`、`MessageRouter`、`TelemetryStore`
+- `RtcmReader`、`RtcmInjector`
+- `CommandDispatcher`、`GuidedControl`
+- `MainWindow`、`DroneState`
 
-## Concurrency
-- Threaded UDP receive and TCP RTCM read
-- UI in main thread using Qt signals
-- No multiprocessing in MVP
+## 並行処理
+- スレッド化されたUDP受信とTCP RTCM読み取り
+- Qtシグナルを使用したメインスレッドのUI
+- MVPではマルチプロセスは使用しない
 
-## Acceptance Criteria
-- Heartbeat detected for at least one drone
-- `NAMED_VALUE_FLOAT` shown in UI
-- Command send succeeds to selected system ID
-- RTCM stream forwarded and logged
+## 受け入れ基準
+- 少なくとも1台のドローンのハートビートが検出される
+- `NAMED_VALUE_FLOAT`がUIに表示される
+- 選択されたシステムIDへのコマンド送信が成功する
+- RTCMストリームが転送され、ログに記録される
 
-## Task Breakdown
-- [ ] Repo structure + config file
-- [ ] MAVLink connection + routing
-- [ ] Telemetry store + heartbeat tracking
-- [ ] RTK reader + injector
-- [ ] Command dispatcher + guided control
+## タスク分解
+- [ ] リポジトリ構造 + 設定ファイル
+- [ ] MAVLink接続 + ルーティング
+- [ ] テレメトリーストア + ハートビート追跡
+- [ ] RTKリーダー + インジェクター
+- [ ] コマンドディスパッチャー + ガイド制御
 - [ ] PySide6 UI
-- [ ] Integration testing with 1-2 drones
+- [ ] 1-2台のドローンでの統合テスト
 
-## References
+## 参考資料
 - docs/spec.md
 - docs/design.md
 - docs/dev_guide.md
