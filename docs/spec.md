@@ -1,85 +1,85 @@
-# GCS System Specification (Detailed)
+# GCSシステム仕様（詳細）
 
-## 1. Purpose
-Build a custom Ground Control Station (GCS) for ArduPilot that directly uses MAVLink v2 over UDP, supports custom MAVLink messages, and enables multi-drone control on Windows.
+## 1. 目的
+UDP経由でMAVLink v2を直接使用し、カスタムMAVLinkメッセージをサポートし、Windows上で複数のドローンの制御を可能にするArduPilot用のカスタムGCS（地上管制局）を構築します。
 
-## 2. Scope
-### In scope
-- MAVLink v2 UDP receive/transmit on Windows.
-- RTK injection using `GPS_RTCM_DATA`.
-- Telemetry reception including `NAMED_VALUE_FLOAT` and custom messages.
-- Multi-drone identification by `SYSID_THISMAV`.
-- Minimal operator UI using PySide6.
-- Config-driven endpoint and system ID mapping.
+## 2. スコープ
+### スコープ内
+- Windows上でのMAVLink v2 UDP受信/送信。
+- `GPS_RTCM_DATA`を使用したRTKインジェクション。
+- `NAMED_VALUE_FLOAT`とカスタムメッセージを含むテレメトリー受信。
+- `SYSID_THISMAV`による複数ドローンの識別。
+- PySide6を使用した最小限のオペレーターUI。
+- 設定駆動型のエンドポイントとシステムIDマッピング。
 
-### Out of scope
-- ROS 2 integration.
-- Onboard (Raspberry Pi) processing beyond `mavlink-router`.
-- Mission planning UI equivalent to Mission Planner.
+### スコープ外
+- ROS 2統合。
+- `mavlink-router`を超えたオンボード（Raspberry Pi）処理。
+- Mission Plannerに相当するミッション計画UI。
 
-## 3. Assumptions
-- Drone side: ArduPilot + `mavlink-router` forwarding to UDP.
-- Custom MAVLink XML is available and used to generate `pymavlink`.
-- Windows 10/11 with Python 3.10+.
+## 3. 前提条件
+- ドローン側：ArduPilot + UDPに転送する`mavlink-router`。
+- カスタムMAVLink XMLが利用可能で、`pymavlink`の生成に使用される。
+- Windows 10/11でPython 3.10+。
 
-## 4. Functional Requirements
-### 4.1 Connection and Routing
-- The GCS listens on UDP port `14550` by default.
-- The GCS can send to multiple endpoints configured per system ID.
-- The GCS must show connection status per drone using heartbeats.
+## 4. 機能要件
+### 4.1 接続とルーティング
+- GCSはデフォルトでUDPポート`14550`でリッスンします。
+- GCSはシステムIDごとに設定された複数のエンドポイントに送信できます。
+- GCSはハートビートを使用してドローンごとの接続ステータスを表示する必要があります。
 
-### 4.2 Telemetry
-- Receive and display:
+### 4.2 テレメトリー
+- 受信と表示：
   - `HEARTBEAT`
   - `NAMED_VALUE_FLOAT`
   - `SYS_STATUS`
   - `GLOBAL_POSITION_INT`
-- Support custom MAVLink messages (generated `pymavlink`).
-- Telemetry is stored in memory and available to UI for graphs.
+- カスタムMAVLinkメッセージ（生成された`pymavlink`）をサポート。
+- テレメトリーはメモリに保存され、グラフ用のUIで利用可能。
 
-### 4.3 Command and Control
-- Send basic commands to a selected system ID:
-  - Arm/Disarm (`MAV_CMD_COMPONENT_ARM_DISARM`)
-  - Takeoff (`MAV_CMD_NAV_TAKEOFF`)
-  - Land (`MAV_CMD_NAV_LAND`)
-- Guided control via `SET_POSITION_TARGET_LOCAL_NED`.
+### 4.3 コマンドと制御
+- 選択されたシステムIDに基本コマンドを送信：
+  - アーム/ディスアーム（`MAV_CMD_COMPONENT_ARM_DISARM`）
+  - 離陸（`MAV_CMD_NAV_TAKEOFF`）
+  - 着陸（`MAV_CMD_NAV_LAND`）
+- `SET_POSITION_TARGET_LOCAL_NED`によるガイド制御。
 
-### 4.4 RTK Injection
-- Connect to local TCP port for RTCM stream (default `5000`).
-- Encapsulate RTCM in `GPS_RTCM_DATA` and send to selected system ID(s).
-- Support broadcast to all known system IDs.
+### 4.4 RTKインジェクション
+- RTCMストリーム用のローカルTCPポートに接続（デフォルト`5000`）。
+- RTCMを`GPS_RTCM_DATA`にカプセル化し、選択されたシステムIDに送信。
+- すべての既知のシステムIDへのブロードキャストをサポート。
 
-### 4.5 Logging
-- Log all received messages (filtered by type in config).
-- Log errors, reconnect attempts, and command send results.
+### 4.5 ログ記録
+- 受信したすべてのメッセージをログに記録（設定でタイプ別にフィルタリング）。
+- エラー、再接続の試行、コマンド送信結果をログに記録。
 
-## 5. Non-Functional Requirements
-- Latency from UDP receive to UI update: under 200 ms in normal load.
-- Reconnect on UDP source loss without restarting.
-- Stable operation with 3+ drones at 10 Hz telemetry each.
+## 5. 非機能要件
+- UDP受信からUIアップデートまでの遅延：通常負荷時200ms未満。
+- 再起動なしでUDPソースの損失時に再接続。
+- 各10Hzテレメトリーで3台以上のドローンでの安定動作。
 
-## 6. Interfaces
+## 6. インターフェース
 ### 6.1 UDP MAVLink
-- Listener: `udpin:0.0.0.0:14550` (default)
-- Outbound: `udpout:<ip>:<port>` per drone or broadcast
+- リスナー：`udpin:0.0.0.0:14550`（デフォルト）
+- 発信：ドローンごとまたはブロードキャストの`udpout:<ip>:<port>`
 
 ### 6.2 RTCM TCP
-- Local TCP server: `127.0.0.1:5000` (default)
+- ローカルTCPサーバー：`127.0.0.1:5000`（デフォルト）
 
-## 7. Configuration
-- File: `config/gcs.yml`
-- Includes:
-  - UDP listen port
-  - Known drones: system ID to endpoint
-  - RTCM host/port
-  - Telemetry filters
+## 7. 設定
+- ファイル：`config/gcs.yml`
+- 含まれるもの：
+  - UDPリッスンポート
+  - 既知のドローン：システムIDからエンドポイント
+  - RTCMホスト/ポート
+  - テレメトリーフィルター
 
-## 8. Acceptance Criteria
-- GCS shows heartbeat for at least one drone.
-- `NAMED_VALUE_FLOAT` values are displayed and updated.
-- Arm/Disarm commands reach the selected drone and report result.
-- RTCM stream is forwarded and logged for at least one drone.
+## 8. 受け入れ基準
+- GCSは少なくとも1台のドローンのハートビートを表示します。
+- `NAMED_VALUE_FLOAT`の値が表示され、更新されます。
+- アーム/ディスアームコマンドが選択されたドローンに到達し、結果を報告します。
+- RTCMストリームが転送され、少なくとも1台のドローンについてログに記録されます。
 
-## 9. References
+## 9. 参考資料
 - https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
 - https://docs.github.com/en/issues/tracking-your-work-with-issues/creating-an-issue

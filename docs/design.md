@@ -1,18 +1,18 @@
-# GCS System Design (Detailed)
+# GCSシステム設計（詳細）
 
-## 1. Architecture Overview
-A Windows GCS application in Python (PySide6) communicates with ArduPilot via MAVLink v2 over UDP. The application handles:
-- MAVLink receive/transmit
-- RTK injection
-- Telemetry aggregation
-- UI display
+## 1. アーキテクチャ概要
+Python（PySide6）で作成されたWindows GCSアプリケーションは、UDP経由でMAVLink v2を使用してArduPilotと通信します。アプリケーションは以下を処理します：
+- MAVLink 受信/送信
+- RTKインジェクション
+- テレメトリー集約
+- UI表示
 
-### Data Flow
-1. UDP inbound -> MAVLink decoder -> Telemetry store -> UI
-2. UI command -> Command queue -> MAVLink encoder -> UDP outbound
-3. RTCM TCP -> RTCM chunker -> MAVLink GPS_RTCM_DATA -> UDP outbound
+### データフロー
+1. UDP着信 -> MAVLinkデコーダー -> テレメトリーストア -> UI
+2. UIコマンド -> コマンドキュー -> MAVLinkエンコーダー -> UDP発信
+3. RTCM TCP -> RTCMチャンカー -> MAVLink GPS_RTCM_DATA -> UDP発信
 
-## 2. Module Layout
+## 2. モジュールレイアウト
 ```
 app/
   __init__.py
@@ -44,73 +44,73 @@ config/
   gcs.yml
 ```
 
-## 3. Key Classes and Responsibilities
+## 3. 主要クラスと責任
 ### 3.1 MAVLink
-- `MavlinkConnection` (in `app/mavlink/connection.py`)
-  - Open `udpin` and `udpout` endpoints
-  - Reconnect on failure
-- `MessageRouter` (in `app/mavlink/message_router.py`)
-  - Read messages
-  - Dispatch to telemetry store
-- `TelemetryStore` (in `app/mavlink/telemetry_store.py`)
-  - In-memory state per system ID
-  - Thread-safe access (locks)
+- `MavlinkConnection`（`app/mavlink/connection.py`内）
+  - `udpin`と`udpout`エンドポイントを開く
+  - 失敗時に再接続
+- `MessageRouter`（`app/mavlink/message_router.py`内）
+  - メッセージを読み取る
+  - テレメトリーストアにディスパッチ
+- `TelemetryStore`（`app/mavlink/telemetry_store.py`内）
+  - システムIDごとのメモリ内状態
+  - スレッドセーフなアクセス（ロック）
 
 ### 3.2 RTK
-- `RtcmReader` (in `app/rtk/rtcm_reader.py`)
-  - Connect to TCP source
-  - Read RTCM bytes in chunks
-- `RtcmInjector` (in `app/rtk/rtcm_injector.py`)
-  - Convert to `GPS_RTCM_DATA`
-  - Send to target system IDs
+- `RtcmReader`（`app/rtk/rtcm_reader.py`内）
+  - TCPソースに接続
+  - RTCMバイトをチャンク単位で読み取る
+- `RtcmInjector`（`app/rtk/rtcm_injector.py`内）
+  - `GPS_RTCM_DATA`に変換
+  - ターゲットシステムIDに送信
 
-### 3.3 Control
-- `CommandDispatcher` (in `app/control/command_dispatcher.py`)
-  - Queue-based command sending
-  - Ensure correct target system ID
-- `GuidedControl` (in `app/control/guided_control.py`)
-  - Build `SET_POSITION_TARGET_LOCAL_NED` messages
+### 3.3 制御
+- `CommandDispatcher`（`app/control/command_dispatcher.py`内）
+  - キューベースのコマンド送信
+  - 正しいターゲットシステムIDを確保
+- `GuidedControl`（`app/control/guided_control.py`内）
+  - `SET_POSITION_TARGET_LOCAL_NED`メッセージを構築
 
 ### 3.4 UI
-- `MainWindow` (in `app/ui/main_window.py`)
-  - List drones
-  - Buttons for arm, takeoff, land
-  - Telemetry graphs for named values
+- `MainWindow`（`app/ui/main_window.py`内）
+  - ドローンをリスト表示
+  - アーム、離陸、着陸のボタン
+  - 名前付き値のテレメトリーグラフ
 
-### 3.5 Models
-- `DroneState` (in `app/models/drone_state.py`)
-  - Holds latest heartbeat, position, and debug values
+### 3.5 モデル
+- `DroneState`（`app/models/drone_state.py`内）
+  - 最新のハートビート、位置、デバッグ値を保持
 
-## 4. Concurrency Model
-- Thread A: MAVLink receive loop (`MessageRouter.run`) using `threading.Thread`
-- Thread B: RTCM read loop (`RtcmReader.run`) using `threading.Thread`
-- Main Thread: Qt UI event loop
-- No multiprocessing in MVP. CPU load is low and shared state is needed.
+## 4. 並行処理モデル
+- スレッドA：MAVLink受信ループ（`MessageRouter.run`）`threading.Thread`を使用
+- スレッドB：RTCM読み取りループ（`RtcmReader.run`）`threading.Thread`を使用
+- メインスレッド：Qt UIイベントループ
+- MVPではマルチプロセスは使用しない。CPU負荷は低く、共有状態が必要。
 
-### Sync vs Async
-- Use blocking reads in threads for UDP and TCP.
-- UI updates via Qt signals to avoid cross-thread UI access.
+### 同期 vs 非同期
+- UDPとTCPのスレッドでブロッキング読み取りを使用。
+- スレッド間のUIアクセスを避けるため、Qtシグナル経由でUIを更新。
 
-## 5. Error Handling
-- Reconnect with exponential backoff on socket errors.
-- Drop malformed MAVLink packets; log errors.
-- If RTCM source is unavailable, continue MAVLink operation.
+## 5. エラー処理
+- ソケットエラー時は指数バックオフで再接続。
+- 不正な形式のMAVLinkパケットをドロップし、エラーをログに記録。
+- RTCMソースが利用できない場合は、MAVLink操作を継続。
 
-## 6. Configuration Details
-- `config/gcs.yml` fields:
+## 6. 設定の詳細
+- `config/gcs.yml`フィールド：
   - `udp.listen_port: 14550`
   - `udp.broadcast: true|false`
   - `drones: { system_id: { ip, port, label } }`
   - `rtcm: { host, port, enabled }`
   - `telemetry: { named_value_filters, log_types }`
 
-## 7. Extensibility
-- Custom MAVLink XML: generate and place in `third_party/mavlink`.
-- Add new telemetry widgets by subscribing to `TelemetryStore`.
+## 7. 拡張性
+- カスタムMAVLink XML：生成して`third_party/mavlink`に配置。
+- `TelemetryStore`をサブスクライブして新しいテレメトリーウィジェットを追加。
 
-## 8. Security
-- Operate on closed Wi-Fi network.
-- No external network exposure.
+## 8. セキュリティ
+- クローズドWi-Fiネットワークで動作。
+- 外部ネットワークへの露出なし。
 
-## 9. References
+## 9. 参考資料
 - https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository

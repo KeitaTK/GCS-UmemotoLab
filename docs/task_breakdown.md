@@ -1,37 +1,37 @@
-# Task Breakdown (MVP)
+# タスク分解（MVP）
 
-## Phase 1: Repo Setup
-- Create folder structure (`app/`, `config/`, `docs/`)
-- Add baseline config file
-- Add logging configuration
+## フェーズ1：リポジトリセットアップ
+- フォルダー構造を作成（`app/`、`config/`、`docs/`）
+- ベースライン設定ファイルを追加
+- ログ設定を追加
 
-## Phase 2: MAVLink Core
-- Implement `MavlinkConnection` for UDP in/out
-- Implement `MessageRouter` receive loop
-- Implement `TelemetryStore` with per-system ID state
-- Add heartbeat tracking
+## フェーズ2：MAVLinkコア
+- UDP入出力用の`MavlinkConnection`を実装
+- `MessageRouter`受信ループを実装
+- システムIDごとの状態を持つ`TelemetryStore`を実装
+- ハートビート追跡を追加
 
-## Phase 3: RTK Injection
-- Implement `RtcmReader` TCP client
-- Implement `RtcmInjector` to send `GPS_RTCM_DATA`
-- Add config flags for enable/disable
+## フェーズ3：RTKインジェクション
+- `RtcmReader` TCPクライアントを実装
+- `GPS_RTCM_DATA`を送信する`RtcmInjector`を実装
+- 有効/無効の設定フラグを追加
 
-## Phase 4: Command and Control
-- Implement `CommandDispatcher` for arm/disarm/takeoff/land
-- Implement `GuidedControl` for NED setpoints
-- Verify response handling
+## フェーズ4：コマンドと制御
+- アーム/ディスアーム/離陸/着陸用の`CommandDispatcher`を実装
+- NEDセットポイント用の`GuidedControl`を実装
+- レスポンス処理を検証
 
-## Phase 5: UI
-- Implement `MainWindow` with drone list and telemetry panels
-- Add RTK status indicators
-- Add debug value graphs for `NAMED_VALUE_FLOAT`
+## フェーズ5：UI
+- ドローンリストとテレメトリーパネルを持つ`MainWindow`を実装
+- RTKステータスインジケーターを追加
+- `NAMED_VALUE_FLOAT`のデバッグ値グラフを追加
 
-## Phase 6: Integration and Validation
-- Run with one drone and verify telemetry
-- Run with two drones and verify system ID routing
-- Verify RTCM injection with u-center
+## フェーズ6：統合と検証
+- 1台のドローンで実行してテレメトリーを検証
+- 2台のドローンで実行してシステムIDルーティングを検証
+- u-centerでRTCMインジェクションを検証
 
-## Definition of Done
-- All acceptance criteria in spec are met
-- Config file documented
-- Logs show successful heartbeat and command sends
+## 完了の定義
+- 仕様のすべての受け入れ基準が満たされる
+- 設定ファイルが文書化される
+- ログに成功したハートビートとコマンド送信が表示される
