@@ -1,0 +1,8 @@
+# ベースライン設定ファイル
+# ここにGCSの設定を記述してください
+udp_listen_port: 14550
+drones:
+  drone1:
+    system_id: 1
+    endpoint: "192.168.1.100:14550"
+rtcm_tcp_port: 5000
