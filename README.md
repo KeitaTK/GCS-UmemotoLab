@@ -329,6 +329,20 @@ gcs-system/
 - ✅ 複数ドローン（2台以上）で動作確認完了
 - ✅ 全テストがパス、カバレッジ 80% 以上
 
+## 次の実装に向けて（Next Steps）
+以下の機能はMVP以降の次フェーズ（新規Issue）として実装を予定しています。
+
+1. **地図表示（マップUI）の実装**
+   - `GLOBAL_POSITION_INT` メッセージを受信
+   - PySide6 に `folium` や `QWebEngineView` を組み込み地図表示と機体位置のプロット
+2. **RTKステータスと通信グラフのUI連携**
+   - `GPS_RAW_INT` 等のデータをパースし、RTK FixステータスをUIに反映
+   - `NAMED_VALUE_FLOAT` などの変数を PyQtGraph を用いてリアルタイムに折れ線グラフ描画
+3. **設定ファイルとUIの動的連携**
+   - 現在固定の `gcs.yml` をUI上から更新し、動的にルーティング先やドローン（System ID）を追加・変更できる機能
+4. **実機とRaspberry Pi 5との疎通テスト**
+   - SITLでの検証が完了したため、実際にArduPilotとmavlink-routerを用いた環境でのフィールドテストの実施
+
 ## 参考資料
 
 - [MAVLink Protocol Specification](https://mavlink.io/en/)
