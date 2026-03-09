@@ -31,16 +31,42 @@ if __name__ == "__main__":
     rtcm_reader = RtcmReader(enabled=rtcm_enabled)
     rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
 
-    # 仮のGPSシステム（実装に応じて置き換え）
-    class DummyGPS:
+    # 仮のGPSシステム（MavlinkConnectionを利用してMavlinkのGPS_RTCM_DATAを送信するラッパー）
+    class GpsSystemLink:
+        def __init__(self, conn):
+            self.conn = conn
+            
         def send_rtcm_data(self, data):
-            logger.info(f"DummyGPS received RTCM: {len(data)} bytes")
-    gps_system = DummyGPS()
+            # System ID = 0 (Broadcast) for now, or based on UI selection
+            logger.info(f"Sending RTCM to MAVLink network: {len(data)} bytes")
+            # MAVLinkの gps_rtcm_data メッセージを送信
+            flags = 0
+            len_data = len(data)
+            if len_data > 180:
+                # チャンク化の簡易実装 (MVPとしてはそのまま送信または切り詰め)
+                data = data[:180]
+                len_data = len(data)
+                
+            # dataは180要素の配列である必要があるのでゼロ埋めする
+            padded_data = list(bytearray(data) + b'\x00' * (180 - len_data))
+            
+            try:
+                # pymavlinkのオブジェクトを使ってパックし、UDPで送信
+                msg = self.conn.mav.gps_rtcm_data_encode(flags, len_data, padded_data)
+                packet = msg.pack(self.conn.mav)
+                # 全ドローン（system_id=0等）へのブロードキャスト、もしくは登録済みへ
+                self.conn.send(1, packet) # まずはSystem 1宛に送ってみる
+                self.conn.send(2, packet) # 同様にSystem 2宛
+            except Exception as e:
+                logger.error(f"Failed to encode/send RTCM: {e}")
+
+    gps_system = GpsSystemLink(mav_conn)
 
     def on_rtcm_data(data):
         rtcm_injector.inject(gps_system, data)
 
     rtcm_reader.register_callback(on_rtcm_data)
+    rtcm_reader.start()
 
     # --- コマンドと制御のデモ（初期化のみ） ---
     from mavlink.command_dispatcher import CommandDispatcher

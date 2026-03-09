@@ -6,6 +6,7 @@ import yaml
 
 class MavlinkConnection:
     def __init__(self, config_path):
+        from pymavlink import mavutil
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config(config_path)
         self.udp_port = self.config.get('udp_listen_port', 14550)
@@ -13,6 +14,10 @@ class MavlinkConnection:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(("0.0.0.0", self.udp_port))
+        
+        # MAVLink encode/decode object using a dummy file
+        self.mav = mavutil.mavlink.MAVLink(None)
+        
         self.running = False
         self.recv_thread = None
         self.recv_callback = None
