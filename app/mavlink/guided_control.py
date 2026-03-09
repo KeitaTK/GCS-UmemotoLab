@@ -13,4 +13,12 @@ class GuidedControl:
 
     def handle_response(self, response):
         self.logger.info(f"GuidedControl response: {response}")
-        # ...レスポンス処理...
+        if response is None:
+            self.logger.warning("No response received.")
+            print("[LOG] No response received.")
+        elif isinstance(response, dict) and response.get("success"):
+            self.logger.info("GuidedControl command executed successfully.")
+            print("[LOG] GuidedControl command executed successfully.")
+        else:
+            self.logger.error(f"GuidedControl command failed: {response}")
+            print(f"[LOG] GuidedControl command failed: {response}")
