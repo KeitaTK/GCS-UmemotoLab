@@ -35,4 +35,12 @@ class CommandDispatcher:
 
     def handle_response(self, response):
         self.logger.info(f"Command response: {response}")
-        # ...レスポンス処理...
+        if response is None:
+            self.logger.warning("No response received.")
+            print("[LOG] No response received.")
+        elif isinstance(response, dict) and response.get("success"):
+            self.logger.info("Command executed successfully.")
+            print("[LOG] Command executed successfully.")
+        else:
+            self.logger.error(f"Command failed: {response}")
+            print(f"[LOG] Command failed: {response}")
