@@ -1,6 +1,13 @@
 # logging_config.py
 import logging
 import logging.config
+import os
+from logging.handlers import RotatingFileHandler
+
+# Ensure log directory exists
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
 
 LOGGING_CONFIG = {
     'version': 1,
@@ -12,14 +19,16 @@ LOGGING_CONFIG = {
     },
     'handlers': {
         'console': {
-            'level': 'DEBUG',
+            'level': 'INFO',  # 実機運用時のコンソールはINFOにしてノイズを減らす（必要に応じDEBUG）
             'class': 'logging.StreamHandler',
             'formatter': 'standard',
         },
         'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': 'gcs.log',
+            'level': 'DEBUG', # ファイルには全てのデバッグ情報を残す
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(log_dir, 'gcs.log'),
+            'maxBytes': 5 * 1024 * 1024,  # 5MBごとにローテーション
+            'backupCount': 5,             # 過去5回分のログファイルを保持
             'formatter': 'standard',
         },
     },

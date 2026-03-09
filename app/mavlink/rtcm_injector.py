@@ -7,7 +7,5 @@ class RtcmInjector:
             return
         # GPS_RTCM_DATA送信処理
         gps_system.send_rtcm_data(rtcm_data)
-        print(f"Injected RTCM data to {gps_system.__class__.__name__}: {len(rtcm_data)} bytes")
-        # ログ記録
-        with open("gcs.log", "a") as log_file:
-            log_file.write(f"RTCM injected to {gps_system}: {len(rtcm_data)} bytes\n")
+        # ログへの記録（ファイルI/Oの負荷を減らすためバイナリログは標準loggingに乗せるか省略）
+        pass

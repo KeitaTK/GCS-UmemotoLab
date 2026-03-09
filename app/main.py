@@ -27,8 +27,10 @@ if __name__ == "__main__":
     router.start()
 
     # RTCMインジェクション設定
-    rtcm_enabled = True  # 有効/無効フラグ
-    rtcm_reader = RtcmReader(enabled=rtcm_enabled)
+    rtcm_enabled = mav_conn.config.get('rtcm_enabled', True)
+    rtcm_port = mav_conn.config.get('rtcm_tcp_port', 15000)
+    
+    rtcm_reader = RtcmReader(port=rtcm_port, enabled=rtcm_enabled)
     rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
 
     # 仮のGPSシステム（MavlinkConnectionを利用してMavlinkのGPS_RTCM_DATAを送信するラッパー）
@@ -38,7 +40,7 @@ if __name__ == "__main__":
             
         def send_rtcm_data(self, data):
             # System ID = 0 (Broadcast) for now, or based on UI selection
-            logger.info(f"Sending RTCM to MAVLink network: {len(data)} bytes")
+            logger.debug(f"Sending RTCM to MAVLink network: {len(data)} bytes")
             # MAVLinkの gps_rtcm_data メッセージを送信
             flags = 0
             len_data = len(data)
