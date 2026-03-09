@@ -1,6 +1,0 @@
-[2026-02-27 16:18:35,103] INFO __main__: GCSアプリケーションが起動しました。
-[2026-02-27 16:18:35,104] INFO mavlink.message_router: MessageRouter受信ループ開始
-[2026-02-27 16:18:35,104] INFO mavlink.connection: UDP受信を開始: 0.0.0.0:14550
-[2026-02-27 16:27:16,823] INFO __main__: GCSアプリケーションが起動しました。
-[2026-02-27 16:27:16,824] INFO mavlink.message_router: MessageRouter受信ループ開始
-[2026-02-27 16:27:16,824] INFO mavlink.connection: UDP受信を開始: 0.0.0.0:14550

@@ -10,6 +10,9 @@ from mavlink.rtcm_reader import RtcmReader
 from mavlink.rtcm_injector import RtcmInjector
 import threading
 import time
+import sys
+from PySide6.QtWidgets import QApplication
+from ui.main_window import MainWindow
 
 if __name__ == "__main__":
     setup_logging()
@@ -39,47 +42,24 @@ if __name__ == "__main__":
 
     rtcm_reader.register_callback(on_rtcm_data)
 
-    # --- コマンドと制御のデモ ---
+    # --- コマンドと制御のデモ（初期化のみ） ---
     from mavlink.command_dispatcher import CommandDispatcher
     from mavlink.guided_control import GuidedControl
 
     dispatcher = CommandDispatcher(mav_conn)
     guided = GuidedControl(mav_conn)
 
-    # system_idを選択（例: 1）
-    system_id = 1
+    # UI起動
+    app = QApplication(sys.argv)
+    window = MainWindow(telemetry_store, dispatcher=dispatcher)
+    window.show()
 
-    # アーム
-    resp = dispatcher.send_arm(system_id)
-    dispatcher.handle_response(resp)
+    logger.info("GUIイベントループを開始します。")
+    exit_code = app.exec()
 
-    # 離陸（高度10m）
-    resp = dispatcher.send_takeoff(system_id, altitude=10)
-    dispatcher.handle_response(resp)
-
-    # ガイド制御（NED座標 x=5, y=5, z=-10）
-    resp = guided.set_position_target_local_ned(system_id, x=5, y=5, z=-10)
-    guided.handle_response(resp)
-
-    # 着陸
-    resp = dispatcher.send_land(system_id)
-    dispatcher.handle_response(resp)
-
-    # ディスアーム
-    resp = dispatcher.send_disarm(system_id)
-    dispatcher.handle_response(resp)
-
-    try:
-        while True:
-            # 1秒ごとに全システムIDのハートビートを表示
-            all_data = telemetry_store.get_all()
-            for sysid, messages in all_data.items():
-                if 'HEARTBEAT' in messages:
-                    logger.info(f"[system_id={sysid}] HEARTBEAT受信済み")
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("終了処理中...")
-        router.stop()
-        mav_conn.stop()
-        rtcm_reader.stop()
-        logger.info("RTCM injection stopped.")
+    logger.info("終了処理中...")
+    router.stop()
+    mav_conn.stop()
+    rtcm_reader.stop()
+    logger.info("RTCM injection stopped.")
+    sys.exit(exit_code)
