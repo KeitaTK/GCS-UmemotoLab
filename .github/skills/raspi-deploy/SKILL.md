@@ -113,18 +113,27 @@ ssh taki@192.168.11.19 "mavlink-routerd --version"
 
 ## ワークフロー手順
 
-### ステップ 1: 変更をプッシュ
 
-```powershell
-cd c:\Users\taki\Local\local\GCS-UmemotoLab
+### ステップ 1: 変更をプッシュ（GitHub CLI対応）
+
+```zsh
+# 変更をステージング
 git add .
+
+# コミット
 git commit -m "<変更内容を簡潔に記述>"
-git push
+
+# GitHub CLIでリポジトリをセット
+gh repo set-default KeitaTK/GCS-UmemotoLab
+
+# プッシュ
+git push origin main
 ```
 
 ### ステップ 2: Raspberry Pi で git pull
 
-```powershell
+
+```zsh
 ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && git pull"
 ```
 
