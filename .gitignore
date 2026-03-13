@@ -47,3 +47,7 @@ gcs.log
 *.ui
 *.qml
 *.qrc
+
+# Sphinx documentation
+docs_sphinx/build/
+docs_sphinx/.doctrees/
