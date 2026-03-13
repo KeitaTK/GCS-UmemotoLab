@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 GCS Backend Server - Minimal Serial MAVLink Receiver for Raspberry Pi
+RTK/RTCM3対応版
 No external dependencies (PyYAML, pymavlink extras) required.
 """
 
@@ -9,6 +10,8 @@ import time
 import threading
 import logging
 from datetime import datetime
+import os
+import json
 
 # Setup logging
 logging.basicConfig(
@@ -19,18 +22,59 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class SimpleSerialReader:
-    """Read raw MAVLink data from serial port"""
+    """Read raw MAVLink data from serial port with RTCM3 injection support"""
     
-    def __init__(self, port="/dev/ttyACM0", baudrate=115200):
+    def __init__(self, port="/dev/ttyACM0", baudrate=115200, rtk_enabled=False, rtk_host='127.0.0.1', rtk_port=15000):
         self.port = port
         self.baudrate = baudrate
         self.running = False
         self.data_buffer = bytearray()
         self.drone_info = {}
         
+        # RTK/RTCM3 configuration
+        self.rtk_enabled = rtk_enabled
+        self.rtk_host = rtk_host
+        self.rtk_port = rtk_port
+        self.rtcm_reader = None
+        self.rtcm_injector = None
+        self.seq_number = 0
+        
+    def _init_rtk(self):
+        """Initialize RTCM3 reader and injector"""
+        try:
+            from mavlink.rtcm_reader import RtcmReader
+            from mavlink.rtcm_injector import RtcmInjector
+            
+            # RTCMリーダーを初期化
+            self.rtcm_reader = RtcmReader(
+                host=self.rtk_host,
+                port=self.rtk_port,
+                enabled=True,
+                rtk_mode='tcp'
+            )
+            
+            # RTCMインジェクターを初期化
+            self.rtcm_injector = RtcmInjector(enabled=True, system_id=1, component_id=1)
+            
+            # シリアル送信コールバックを設定
+            self.rtcm_injector.set_send_callback(self._send_mavlink_frame)
+            
+            # RTCMリーダーのコールバック登録
+            self.rtcm_reader.register_callback(self._on_rtcm_data)
+            
+            # RTCMリーダーを開始
+            self.rtcm_reader.start()
+            logger.info(f"RTK/RTCM3 enabled: {self.rtk_host}:{self.rtk_port}")
+            
+        except Exception as e:
+            logger.warning(f"RTK initialization failed: {e}")
+            self.rtk_enabled = False
+        
     def start(self):
         """Start reading from serial port"""
         self.running = True
+        if self.rtk_enabled:
+            self._init_rtk()
         thread = threading.Thread(target=self._read_loop, daemon=True)
         thread.start()
         logger.info(f"Serial reader started: {self.port} @ {self.baudrate} baud")
@@ -43,15 +87,15 @@ class SimpleSerialReader:
         """Main read loop"""
         import serial
         
-        ser = None
+        self._serial_port = None
         while self.running:
             try:
-                if ser is None or not ser.is_open:
-                    ser = serial.Serial(self.port, self.baudrate, timeout=1)
-                    logger.info(f"Serial port opened: {ser.port}")
+                if self._serial_port is None or not self._serial_port.is_open:
+                    self._serial_port = serial.Serial(self.port, self.baudrate, timeout=1)
+                    logger.info(f"Serial port opened: {self._serial_port.port}")
                 
-                if ser.in_waiting > 0:
-                    chunk = ser.read(ser.in_waiting)
+                if self._serial_port.in_waiting > 0:
+                    chunk = self._serial_port.read(self._serial_port.in_waiting)
                     self.data_buffer.extend(chunk)
                     self._process_buffer()
                     
@@ -61,12 +105,12 @@ class SimpleSerialReader:
                 break
             except Exception as e:
                 logger.warning(f"Serial error: {e}")
-                if ser:
+                if self._serial_port:
                     try:
-                        ser.close()
+                        self._serial_port.close()
                     except:
                         pass
-                ser = None
+                self._serial_port = None
                 time.sleep(1)
     
     def _process_buffer(self):
@@ -259,6 +303,31 @@ class SimpleSerialReader:
         
         result_name = result_names.get(result, f'UNKNOWN_{result}')
         logger.info(f"COMMAND_ACK from Drone {sysid}: cmd={command}, result={result_name}")
+    
+    def _on_rtcm_data(self, rtcm_frame: bytes):
+        """Handle RTCM3 data received from Ntrip server"""
+        if not self.rtcm_injector:
+            return
+        
+        try:
+            # RTCMデータをPixhawkに注入
+            success = self.rtcm_injector.inject(rtcm_frame)
+            if success:
+                logger.debug(f"RTCM data injected: {len(rtcm_frame)} bytes")
+            else:
+                logger.warning("RTCM injection failed")
+        except Exception as e:
+            logger.error(f"RTCM callback error: {e}")
+    
+    def _send_mavlink_frame(self, frame: bytes):
+        """Send MAVLink frame to Pixhawk via serial port"""
+        try:
+            # This is called from RTCMInjector to send GPS_RTCM_DATA frames
+            if hasattr(self, '_serial_port') and self._serial_port and self._serial_port.is_open:
+                self._serial_port.write(frame)
+                logger.debug(f"Sent MAVLink frame: {len(frame)} bytes (msgid=67)")
+        except Exception as e:
+            logger.error(f"Serial send error: {e}")
 
     
     def get_status(self):
