@@ -277,7 +277,7 @@ Accuracy: > 20 cm
 mavlink_test_rtk_status.py --verbose
 
 # RTCM受信確認
-ssh taki@10.0.0.19 "tail -f /tmp/backend.log | grep RTCM"
+ssh taki@192.168.11.19 "tail -f /tmp/backend.log | grep RTCM"
 
 # Ntripサーバー接続確認
 telnet rtk-server.example.com 2101
@@ -295,17 +295,17 @@ Pixhawk: RTK Status = Disabled
 
 ```bash
 # 1. Ntripサーバー接続確認
-ssh taki@10.0.0.19 "nc -zv 10.0.0.19 15000"
+ssh taki@192.168.11.19 "nc -zv 192.168.11.19 15000"
 
 # 2. RTCMリーダーログ確認
-ssh taki@10.0.0.19 "grep -i rtcm /tmp/backend.log | tail -20"
+ssh taki@192.168.11.19 "grep -i rtcm /tmp/backend.log | tail -20"
 
 # 3. Pixhawk シリアル接続確認
-ssh taki@10.0.0.19 "cat /dev/ttyACM0 | od -A x -t x1 | head"
+ssh taki@192.168.11.19 "cat /dev/ttyACM0 | od -A x -t x1 | head"
 # 0xFD で始まる MAVLink フレーム期待
 
 # 4. テストサーバー実行
-ssh taki@10.0.0.19 "python3 app/dummy_rtcm_server.py &"
+ssh taki@192.168.11.19 "python3 app/dummy_rtcm_server.py &"
 # backend_minimal.py を rtk_host='127.0.0.1' で起動
 ```
 
@@ -348,7 +348,7 @@ ssh taki@10.0.0.19 "python3 app/dummy_rtcm_server.py &"
 
 ```bash
 # ラズパイで実行
-ssh taki@10.0.0.19
+ssh taki@192.168.11.19
 
 cd ~/GCS-UmemotoLab
 
@@ -377,11 +377,11 @@ timeout 30 python3 tests/test_rtk_integration.py
 
 ```bash
 # 1. MAVLink HEARTBEAT確認
-ssh taki@10.0.0.19 "python3 app/backend_minimal.py &"
+ssh taki@192.168.11.19 "python3 app/backend_minimal.py &"
 sleep 2
 
 # 2. GPS状態確認
-ssh taki@10.0.0.19 "python3 -c \"
+ssh taki@192.168.11.19 "python3 -c \"
 import sys; sys.path.insert(0, 'app')
 from mavlink.telemetry_store import TelemetryStore
 store = TelemetryStore()
@@ -390,7 +390,7 @@ print(f'System: {hb}')
 \""
 
 # 3. RTCMインジェクション（実Ntripサーバー）
-ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && cat > /tmp/rtk_config.json <<EOF
+ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && cat > /tmp/rtk_config.json <<EOF
 {
   \"rtk_enabled\": true,
   \"rtk_host\": \"ntrip.example.com\",
@@ -401,7 +401,7 @@ EOF
 "
 
 # 4. ロググ監視
-ssh taki@10.0.0.19 "tail -f /tmp/backend.log | grep -E 'RTCM|GPS|RTK'"
+ssh taki@192.168.11.19 "tail -f /tmp/backend.log | grep -E 'RTCM|GPS|RTK'"
 ```
 
 ### Phase 3: RTK Fixed 達成確認

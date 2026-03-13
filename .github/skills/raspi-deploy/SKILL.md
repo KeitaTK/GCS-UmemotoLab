@@ -1,18 +1,18 @@
 ---
 name: raspi-deploy
-description: "コードを編集してRaspberry Piでデバッグ・実行するワークフロー。使用するとき: コードに変更を加えた後にRaspberry Pi (taki@10.0.0.19) へデプロイして実行・検証したいとき。gh cli でプッシュ → SSH で git pull → 仮想環境(.venv)で実行 → 結果を検証 → エラーがあれば再編集してループというサイクルを自動化する。'デプロイ', 'ラズパイで実行', 'Raspberry Piでテスト', 'raspi deploy', 'deploy and test', 'mavlink-routerを起動' などのフレーズで呼び出される。"
+description: "コードを編集してRaspberry Piでデバッグ・実行するワークフロー。使用するとき: コードに変更を加えた後にRaspberry Pi (taki@192.168.11.19) へデプロイして実行・検証したいとき。gh cli でプッシュ → SSH で git pull → 仮想環境(.venv)で実行 → 結果を検証 → エラーがあれば再編集してループというサイクルを自動化する。'デプロイ', 'ラズパイで実行', 'Raspberry Piでテスト', 'raspi deploy', 'deploy and test', 'mavlink-routerを起動' などのフレーズで呼び出される。"
 argument-hint: "実行する操作 (例: main.py を起動, mavlink-router を設定, テストを実行)"
 ---
 
 # raspi-deploy スキル
 
-Raspberry Pi 5 (taki@10.0.0.19) へのデプロイ・実行・検証サイクルを自動化するスキルです。
+Raspberry Pi 5 (taki@192.168.11.19) へのデプロイ・実行・検証サイクルを自動化するスキルです。
 
 ## 対象環境
 
 | 項目 | 値 |
 |------|-----|
-| Raspberry Pi ホスト | `taki@10.0.0.19` |
+| Raspberry Pi ホスト | `taki@192.168.11.19` |
 | リポジトリパス (raspi) | `~/GCS-UmemotoLab` |
 | 仮想環境 | `~/GCS-UmemotoLab/.venv` |
 | アプリディレクトリ | `~/GCS-UmemotoLab/app/` |
@@ -45,18 +45,18 @@ ssh-keygen -t ed25519 -C "taki-gcs" -f "$env:USERPROFILE\.ssh\id_ed25519"
 
 ```powershell
 # 方法A: ssh-copy-id が使える場合（Git Bash / WSL）
-ssh-copy-id taki@10.0.0.19
+ssh-copy-id taki@192.168.11.19
 
 # 方法B: PowerShell ネイティブ（ssh-copy-id がない場合）
 $pubkey = Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub"
-ssh taki@10.0.0.19 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+ssh taki@192.168.11.19 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$pubkey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 # ← ここだけパスワード入力が必要
 ```
 
 ### 0-3. 動作確認
 
 ```powershell
-ssh taki@10.0.0.19 "echo 'SSH auth OK'"
+ssh taki@192.168.11.19 "echo 'SSH auth OK'"
 # パスワードなしで "SSH auth OK" が表示されれば成功
 ```
 
@@ -64,18 +64,18 @@ ssh taki@10.0.0.19 "echo 'SSH auth OK'"
 
 ```powershell
 # ラズパイ側の SSH 設定確認
-ssh taki@10.0.0.19 "sudo grep -E 'PubkeyAuthentication|AuthorizedKeysFile' /etc/ssh/sshd_config"
+ssh taki@192.168.11.19 "sudo grep -E 'PubkeyAuthentication|AuthorizedKeysFile' /etc/ssh/sshd_config"
 # → PubkeyAuthentication yes になっていること
 
 # ラズパイ側のパーミッション確認・修正
-ssh taki@10.0.0.19 "ls -la ~/.ssh/"
-ssh taki@10.0.0.19 "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+ssh taki@192.168.11.19 "ls -la ~/.ssh/"
+ssh taki@192.168.11.19 "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
 
 # ラズパイ側 SSH デーモンを再起動
-ssh taki@10.0.0.19 "sudo systemctl restart ssh"
+ssh taki@192.168.11.19 "sudo systemctl restart ssh"
 
 # Windows 側 known_hosts をリセット（IP 変更後などに必要）
-ssh-keygen -R 10.0.0.19
+ssh-keygen -R 192.168.11.19
 ```
 
 ---
@@ -85,13 +85,13 @@ ssh-keygen -R 10.0.0.19
 ### 1-1. ラズパイにリポジトリをクローン
 
 ```powershell
-ssh taki@10.0.0.19 "git clone https://github.com/KeitaTK/GCS-UmemotoLab.git ~/GCS-UmemotoLab"
+ssh taki@192.168.11.19 "git clone https://github.com/KeitaTK/GCS-UmemotoLab.git ~/GCS-UmemotoLab"
 ```
 
 ### 1-2. 仮想環境を作成してパッケージをインストール
 
 ```powershell
-ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
 ```
 
 > **注意**: PySide6 は Raspberry Pi OS (arm64) 向けビルドが必要な場合がある。
@@ -100,13 +100,13 @@ ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && python3 -m venv .venv && .venv/bin/pi
 ### 1-3. mavlink-router のインストール（通信ブリッジ用）
 
 ```powershell
-ssh taki@10.0.0.19 "sudo apt update && sudo apt install -y mavlink-router"
+ssh taki@192.168.11.19 "sudo apt update && sudo apt install -y mavlink-router"
 ```
 
 インストール後の動作確認:
 
 ```powershell
-ssh taki@10.0.0.19 "mavlink-routerd --version"
+ssh taki@192.168.11.19 "mavlink-routerd --version"
 ```
 
 ---
@@ -134,7 +134,7 @@ git push origin main
 
 
 ```zsh
-ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && git pull"
+ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && git pull"
 ```
 
 出力に `Already up to date.` または変更ファイルのリストが表示されることを確認。
@@ -147,13 +147,13 @@ ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && git pull"
 バックグラウンドサービス部分のみ起動する場合:
 
 ```powershell
-ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && timeout 30 python3 app/main.py 2>&1"
+ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && timeout 30 python3 app/main.py 2>&1"
 ```
 
 #### 3-B: テストを実行
 
 ```powershell
-ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python3 -m pytest tests/ -v 2>&1"
+ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python3 -m pytest tests/ -v 2>&1"
 ```
 
 #### 3-C: mavlink-router を起動（ArduPilot との通信ブリッジ）
@@ -161,18 +161,18 @@ ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python3 
 シリアル接続のドローン（Pixhawk）から UDP で GCS へ中継する場合:
 
 ```powershell
-ssh taki@10.0.0.19 "mavlink-routerd -e 10.0.0.19:14550 /dev/ttyAMA0:57600 &"
+ssh taki@192.168.11.19 "mavlink-routerd -e 192.168.11.19:14550 /dev/ttyAMA0:57600 &"
 ```
 
 | 引数 | 内容 |
 |------|------|
-| `-e 10.0.0.19:14550` | GCS（このラズパイ）へ UDP 転送 |
+| `-e 192.168.11.19:14550` | GCS（このラズパイ）へ UDP 転送 |
 | `/dev/ttyAMA0:57600` | Pixhawk シリアル接続 (ボーレート要確認) |
 
 mavlink-router の設定ファイルを使う場合:
 
 ```powershell
-ssh taki@10.0.0.19 "cat /etc/mavlink-router/main.conf"
+ssh taki@192.168.11.19 "cat /etc/mavlink-router/main.conf"
 ```
 
 ### ステップ 4: 結果を検証
@@ -209,11 +209,11 @@ ssh taki@10.0.0.19 "cat /etc/mavlink-router/main.conf"
 | `Permission denied (publickey)` | SSH鍵未設定 | STEP 0 の手順を実施 |
 | `Password:` プロンプトが毎回出る | SSH鍵未設定 | STEP 0 の手順を実施 |
 | `ssh-copy-id: command not found` | Git Bash/WSL なし | 方法Bの PowerShell コマンドを使う |
-| `Host key verification failed` | known_hosts の古いエントリ | `ssh-keygen -R 10.0.0.19` を実行 |
-| `ModuleNotFoundError` | パッケージ未インストール | `ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && .venv/bin/pip install <pkg>"` |
+| `Host key verification failed` | known_hosts の古いエントリ | `ssh-keygen -R 192.168.11.19` を実行 |
+| `ModuleNotFoundError` | パッケージ未インストール | `ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && .venv/bin/pip install <pkg>"` |
 | `PySide6 install failed` | arm64 ビルド問題 | `pip install PySide6` の代わりに `apt install python3-pyside6` を試す |
 | `connection refused: 14550` | mavlink-router 未起動 | ステップ 3-C を実行 |
-| `git pull` で競合 | ラズパイ側に変更あり | `ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && git stash && git pull"` |
+| `git pull` で競合 | ラズパイ側に変更あり | `ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && git stash && git pull"` |
 | `.venv` が存在しない | 初回セットアップ未実施 | STEP 1-2 のコマンドを実行 |
 | `serial.SerialException` | Pixhawk 未接続 | USB/UART 接続を確認、`ls /dev/ttyAMA*` で存在確認 |
 
@@ -221,8 +221,8 @@ ssh taki@10.0.0.19 "cat /etc/mavlink-router/main.conf"
 
 エラーが3回以上連続する場合:
 1. より根本的な原因を調査する
-2. ラズパイ上のログを確認: `ssh taki@10.0.0.19 "journalctl -n 50"`
+2. ラズパイ上のログを確認: `ssh taki@192.168.11.19 "journalctl -n 50"`
 3. 仮想環境の再構築:
    ```powershell
-   ssh taki@10.0.0.19 "cd ~/GCS-UmemotoLab && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+   ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
    ```
