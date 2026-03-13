@@ -121,29 +121,121 @@ class SimpleSerialReader:
             self.drone_info[sysid] = {
                 'first_seen': datetime.now(),
                 'last_seen': datetime.now(),
-                'message_count': 0
+                'message_count': 0,
+                'message_types': {}
             }
         
         self.drone_info[sysid]['last_seen'] = datetime.now()
         self.drone_info[sysid]['message_count'] += 1
         
-        # Log heartbeats (msgid 0)
-        if msgid == 0:
-            if payload_len >= 7:
-                vehicle_type = frame[10]
-                autopilot = frame[11]
-                base_mode = frame[12]
-                custom_mode = frame[13] | (frame[14] << 8) | (frame[15] << 16) | (frame[16] << 24)
-                system_status = frame[17]
-                
-                armed = (base_mode & 0x80) != 0
-                logger.info(f"HEARTBEAT from Drone {sysid}: type={vehicle_type}, armed={armed}, status={system_status}")
-                
-                self.drone_info[sysid]['heartbeat'] = {
-                    'type': vehicle_type,
-                    'autopilot': autopilot,
-                    'armed': armed
-                }
+        # Track message types
+        msg_type_name = self._get_message_name(msgid)
+        if msg_type_name not in self.drone_info[sysid]['message_types']:
+            self.drone_info[sysid]['message_types'][msg_type_name] = 0
+        self.drone_info[sysid]['message_types'][msg_type_name] += 1
+        
+        # Parse specific messages
+        if msgid == 0:  # HEARTBEAT
+            self._parse_heartbeat(sysid, frame[10:])
+        elif msgid == 1:  # SYS_STATUS
+            self._parse_sys_status(sysid, frame[10:])
+        elif msgid == 24:  # GPS_RAW_INT
+            self._parse_gps_raw(sysid, frame[10:])
+        elif msgid == 33:  # GLOBAL_POSITION_INT
+            self._parse_global_position(sysid, frame[10:])
+        elif msgid == 42:  # MISSION_CURRENT
+            self._parse_mission_current(sysid, frame[10:])
+        elif msgid == 253:  # NAMED_VALUE_FLOAT
+            self._parse_named_value_float(sysid, frame[10:])
+    
+    def _get_message_name(self, msgid):
+        """Get message name from ID"""
+        names = {
+            0: 'HEARTBEAT', 1: 'SYS_STATUS', 24: 'GPS_RAW_INT', 
+            33: 'GLOBAL_POSITION_INT', 42: 'MISSION_CURRENT', 253: 'NAMED_VALUE_FLOAT'
+        }
+        return names.get(msgid, f'MSG_{msgid}')
+    
+    def _parse_heartbeat(self, sysid, payload):
+        """Parse HEARTBEAT (msgid=0)"""
+        if len(payload) < 9:
+            return
+        
+        vehicle_type = payload[0]
+        autopilot = payload[1]
+        base_mode = payload[2]
+        custom_mode = payload[3] | (payload[4] << 8) | (payload[5] << 16) | (payload[6] << 24)
+        system_status = payload[7]
+        
+        armed = (base_mode & 0x80) != 0
+        logger.info(f"HEARTBEAT from Drone {sysid}: type={vehicle_type}, armed={armed}, status={system_status}")
+        
+        self.drone_info[sysid]['heartbeat'] = {
+            'type': vehicle_type,
+            'autopilot': autopilot,
+            'armed': armed,
+            'status': system_status
+        }
+    
+    def _parse_sys_status(self, sysid, payload):
+        """Parse SYS_STATUS (msgid=1)"""
+        if len(payload) < 31:
+            return
+        
+        onboard_control_sensors_health = payload[0] | (payload[1] << 8) | (payload[2] << 16) | (payload[3] << 24)
+        battery_remaining = payload[24]
+        
+        if 'sys_status' not in self.drone_info[sysid]:
+            self.drone_info[sysid]['sys_status'] = {}
+        
+        self.drone_info[sysid]['sys_status'] = {
+            'battery_remaining': battery_remaining
+        }
+        logger.debug(f"SYS_STATUS from Drone {sysid}: battery={battery_remaining}%")
+    
+    def _parse_gps_raw(self, sysid, payload):
+        """Parse GPS_RAW_INT (msgid=24)"""
+        if len(payload) < 30:
+            return
+        
+        fix_type = payload[24]
+        lat = int.from_bytes(payload[4:8], 'little', signed=True)
+        lon = int.from_bytes(payload[8:12], 'little', signed=True)
+        
+        logger.debug(f"GPS_RAW from Drone {sysid}: fix={fix_type}, lat={lat/1e7:.6f}, lon={lon/1e7:.6f}")
+    
+    def _parse_global_position(self, sysid, payload):
+        """Parse GLOBAL_POSITION_INT (msgid=33)"""
+        if len(payload) < 28:
+            return
+        
+        lat = int.from_bytes(payload[0:4], 'little', signed=True)
+        lon = int.from_bytes(payload[4:8], 'little', signed=True)
+        alt = int.from_bytes(payload[8:12], 'little', signed=True)
+        
+        logger.debug(f"GLOBAL_POSITION from Drone {sysid}: lat={lat/1e7:.6f}, lon={lon/1e7:.6f}, alt={alt/1000:.2f}m")
+    
+    def _parse_mission_current(self, sysid, payload):
+        """Parse MISSION_CURRENT (msgid=42)"""
+        if len(payload) < 4:
+            return
+        
+        seq = payload[0] | (payload[1] << 8)
+        logger.debug(f"MISSION_CURRENT from Drone {sysid}: seq={seq}")
+    
+    def _parse_named_value_float(self, sysid, payload):
+        """Parse NAMED_VALUE_FLOAT (msgid=253)"""
+        if len(payload) < 12:
+            return
+        
+        # Time boot ms (4 bytes) + value (4 bytes) + name (10 bytes)
+        import struct
+        time_boot = struct.unpack('<I', payload[0:4])[0]
+        value = struct.unpack('<f', payload[4:8])[0]
+        name = payload[8:18].decode('utf-8', errors='ignore').strip('\x00')
+        
+        logger.debug(f"NAMED_VALUE_FLOAT from Drone {sysid}: {name}={value:.3f}")
+
     
     def get_status(self):
         """Get current status"""
