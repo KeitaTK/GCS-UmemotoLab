@@ -129,3 +129,10 @@ class MavlinkConnection:
                         self.sock.sendto(data, (ip, int(port)))
                         self.logger.debug(f"送信: {ip}:{port} (system_id={system_id})")
                     break
+
+    def send_to_system(self, system_id, data):
+        """
+        Send MAVLink data to a specific system.
+        Alias for send() for clarity.
+        """
+        self.send(system_id, data)
