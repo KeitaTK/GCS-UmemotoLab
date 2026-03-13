@@ -100,6 +100,27 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 pytest tests/
 ```
 
+### APIドキュメントの生成と閲覧
+
+Sphinxを使用したPythonコードのAPIドキュメント自動生成：
+
+```bash
+# ドキュメントをビルド
+./scripts/build_docs.sh
+
+# ブラウザで表示
+open docs_sphinx/build/html/index.html
+```
+
+**その他のビルドオプション:**
+```bash
+# ドキュメントを再構築（キャッシュをクリア）
+./scripts/build_docs.sh -r
+```
+
+このドキュメントは docstring から自動生成されるため、
+コードを更新すればドキュメントも自動で最新に保たれます。
+
 ### 設定
 
 `config/gcs.yml` を編集し、ドローンのIPアドレスとSystem IDを設定します：
