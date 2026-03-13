@@ -23,3 +23,16 @@ class TelemetryStore:
     def get_all(self):
         with self._lock:
             return dict(self._data)
+    
+    def get_all_drone_ids(self):
+        """Get list of all active drone system IDs"""
+        with self._lock:
+            return list(self._data.keys())
+    
+    def get_heartbeat(self, system_id):
+        """Get HEARTBEAT message for a drone"""
+        with self._lock:
+            if system_id in self._data:
+                return self._data[system_id].get('HEARTBEAT')
+            return None
+
