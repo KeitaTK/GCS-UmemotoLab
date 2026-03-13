@@ -64,11 +64,31 @@ cd GCS-UmemotoLab
 
 # 仮想環境の作成
 python -m venv .venv
-source .venv/bin/activate  # Windowsの場合は `.venv\Scripts\activate`
+source .venv/bin/activate  # Windows PowerShell の場合は `.venv\Scripts\Activate.ps1`
 
 # 依存パッケージのインストール
 pip install -r requirements.txt
 ```
+
+Windows PowerShell では以下の手順で起動できます。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+$env:PYTHONPATH = (Resolve-Path .\app).Path
+python .\app\main.py
+```
+
+設定ファイルは次の優先順で自動選択されます。
+
+1. 環境変数 `GCS_CONFIG_PATH` で指定したファイル
+2. `config/gcs.user.local.yml`（Git 管理外のローカル専用設定）
+3. `config/gcs_local.yml`
+4. `config/gcs.yml`
+
+ローカル専用の Copilot 設定は `.github/skills/local-environment/SKILL.md` に置き、このファイルと `config/gcs.user.local.yml` は Git 管理外です。
 
 ### アプリケーションの起動
 
@@ -77,6 +97,13 @@ pip install -r requirements.txt
 ```bash
 export PYTHONPATH=$PYTHONPATH:$(pwd)/app
 python app/main.py
+```
+
+PowerShell では以下です。
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path .\app).Path
+python .\app\main.py
 ```
 
 ### ローカルテスト（SITLシミュレーター）

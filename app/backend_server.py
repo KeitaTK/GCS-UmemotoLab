@@ -10,6 +10,7 @@ sys.path.insert(0, '.')
 from logging_config import setup_logging
 import logging
 
+from config_loader import resolve_config_path
 from mavlink.connection import MavlinkConnection
 from mavlink.message_router import MessageRouter
 from mavlink.telemetry_store import TelemetryStore
@@ -22,7 +23,8 @@ if __name__ == "__main__":
 
     try:
         # 設定ファイルパス
-        config_path = "config/gcs.yml"
+        config_path = resolve_config_path()
+        logger.info(f"設定ファイルを使用します: {config_path}")
         telemetry_store = TelemetryStore()
         mav_conn = MavlinkConnection(config_path)
         router = MessageRouter(mav_conn, telemetry_store)
