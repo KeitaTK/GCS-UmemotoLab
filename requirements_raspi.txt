@@ -1,0 +1,4 @@
+pymavlink
+PyYAML
+pytest
+pytest-mock
