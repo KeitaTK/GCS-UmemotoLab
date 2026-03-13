@@ -145,6 +145,10 @@ class SimpleSerialReader:
             self._parse_global_position(sysid, frame[10:])
         elif msgid == 42:  # MISSION_CURRENT
             self._parse_mission_current(sysid, frame[10:])
+        elif msgid == 76:  # COMMAND_LONG
+            logger.debug(f"COMMAND_LONG from Drone {sysid}")
+        elif msgid == 77:  # COMMAND_ACK
+            self._parse_command_ack(sysid, frame[10:])
         elif msgid == 253:  # NAMED_VALUE_FLOAT
             self._parse_named_value_float(sysid, frame[10:])
     
@@ -152,7 +156,8 @@ class SimpleSerialReader:
         """Get message name from ID"""
         names = {
             0: 'HEARTBEAT', 1: 'SYS_STATUS', 24: 'GPS_RAW_INT', 
-            33: 'GLOBAL_POSITION_INT', 42: 'MISSION_CURRENT', 253: 'NAMED_VALUE_FLOAT'
+            33: 'GLOBAL_POSITION_INT', 42: 'MISSION_CURRENT', 
+            76: 'COMMAND_LONG', 77: 'COMMAND_ACK', 253: 'NAMED_VALUE_FLOAT'
         }
         return names.get(msgid, f'MSG_{msgid}')
     
@@ -235,6 +240,25 @@ class SimpleSerialReader:
         name = payload[8:18].decode('utf-8', errors='ignore').strip('\x00')
         
         logger.debug(f"NAMED_VALUE_FLOAT from Drone {sysid}: {name}={value:.3f}")
+    
+    def _parse_command_ack(self, sysid, payload):
+        """Parse COMMAND_ACK (msgid=77)"""
+        if len(payload) < 3:
+            return
+        
+        command = payload[0] | (payload[1] << 8)
+        result = payload[2]
+        
+        result_names = {
+            0: 'ACCEPTED',
+            1: 'REJECTED',
+            2: 'FAILED',
+            3: 'TEMPORARILY_REJECTED',
+            4: 'UNSUPPORTED'
+        }
+        
+        result_name = result_names.get(result, f'UNKNOWN_{result}')
+        logger.info(f"COMMAND_ACK from Drone {sysid}: cmd={command}, result={result_name}")
 
     
     def get_status(self):
