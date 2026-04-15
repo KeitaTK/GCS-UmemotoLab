@@ -30,9 +30,10 @@ if __name__ == "__main__":
 
     # RTCMインジェクション設定
     rtcm_enabled = mav_conn.config.get('rtcm_enabled', True)
+    rtcm_host = mav_conn.config.get('rtcm_host', '127.0.0.1')
     rtcm_port = mav_conn.config.get('rtcm_tcp_port', 15000)
     
-    rtcm_reader = RtcmReader(port=rtcm_port, enabled=rtcm_enabled)
+    rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
     rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
 
     # RTCMデータ送信コールバックを設定

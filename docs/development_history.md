@@ -3,6 +3,13 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-15 00:00: [RTK/RTCM Injection Validation]
+- 問題: u-center でのRTCMインジェクション検証を実施する際、RTCM接続先ホストがコード上で明示されず、手順が抽象的で検証しづらかった。
+- 調査: `app/main.py` の `RtcmReader` 初期化で `port` のみ指定され、`host` はデフォルト依存だった。`docs/test_cases.md` のRTCM項目も実行手順・判定条件が不足していた。
+- 試行: `app/main.py` に `rtcm_host` 設定読込を追加し、`config/gcs.yml` と `config/gcs_local.yml` に `rtcm_host` を追加。加えて `docs/test_cases.md` に u-center 検証手順、判定条件、トラブルシュートを追記し、`README.md` の設定例も更新した。
+- 結果: u-center 出力先と GCS 側接続先を設定ファイルで一致させられるようになり、RTCMインジェクションの統合検証を再現可能な手順で実施できる状態になった。
+- 備考: Windows/u-center と Raspberry Pi/GCS が別ホストの場合は `rtcm_host` を配信元IPに変更して運用する。
+
 ### 2026-03-14 08:35: [DevelopmentHistory/Workflow]
 - 問題: 履歴記録の運用は導入済みだったが、「編集の都度必ず記録する」必須性をより明確にしたい要望があった。
 - 調査: 全体指示には development-history skill 参照があり、履歴ファイルも存在するが、skill 側に必須ルールの強調を追加できる余地があった。

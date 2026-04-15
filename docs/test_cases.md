@@ -12,6 +12,31 @@
 - u-center経由でRTCMデータをインジェクションし、ドローン側で受信できるか
 - ログにRTCMインジェクション成功が記録されるか
 
+### 3-1. 事前設定
+- `config/gcs.yml` または `config/gcs_local.yml` の RTK 設定を確認
+	- `rtcm_enabled: true`
+	- `rtcm_host: 127.0.0.1`（u-center と同一ホストで動かす場合）
+	- `rtcm_tcp_port: 5000`
+
+### 3-2. 実行手順（u-center）
+1. u-center で NTRIP 接続を開始し、RTCM3 を TCP Server `127.0.0.1:5000` へ出力する。
+2. GCS を起動する。
+3. ログに以下が出ることを確認する。
+	 - `Connected to RTCM source: 127.0.0.1:5000`
+	 - `RTCM data injected: ... bytes in ... frame(s)`
+
+### 3-3. 判定
+- **成功**: 上記2ログが継続して出力され、機体側でRTK状態が改善する。
+- **失敗**: `RTCM Reader error` / `RTCM socket timeout` / `RTCM injection failed` が継続する。
+
+### 3-4. トラブルシュート
+- `Connection refused` の場合:
+	- u-center の TCP 出力先ポートが `5000` になっているか確認。
+	- `rtcm_host` が実際の配信ホストと一致しているか確認。
+- 受信できるが注入失敗する場合:
+	- MAVLink シリアル接続（Pixhawk側）が確立しているか確認。
+	- `GPS_RTCM_DATA (msgid=67)` が機体へ送信されているかログ確認。
+
 ## 4. 設定ファイル検証
 - `config/gcs.yml`の設定変更がシステムに反映されるか
 - 設定値ごとに動作が変化するか

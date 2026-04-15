@@ -158,6 +158,7 @@ drones:
   drone1:
     system_id: 1
     endpoint: "192.168.1.100:14550"
+rtcm_host: 127.0.0.1
 rtcm_tcp_port: 5000
 ```
 
