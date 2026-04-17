@@ -3,6 +3,13 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-17 16:10: [RTK/BackendServer Headless Injection]
+- 問題: u-center の `RXM-RTCM` が 0 のままで、ヘッドレス実行時にRTCM注入が確認できなかった。
+- 調査: `app/main.py` には `RtcmReader` + `RtcmInjector` が実装されていたが、Raspberry Piで実行している `app/backend_server.py` にはRTCM処理が未実装だった。
+- 試行: `app/backend_server.py` にRTCM読取・注入処理を追加し、`rtcm_enabled/rtcm_host/rtcm_tcp_port` を設定ファイルから読んでヘッドレスでも注入するよう統合した。
+- 結果: GUIなしのバックエンド実行でもRTCM受信→`GPS_RTCM_DATA`送信パスが動作する構成になり、u-center検証の前提が整った。
+- 備考: 実機確認時は `config/gcs.yml` の `rtcm_host` と `rtcm_tcp_port` を実配信元に合わせる。
+
 ### 2026-04-15 00:00: [RTK/RTCM Injection Validation]
 - 問題: u-center でのRTCMインジェクション検証を実施する際、RTCM接続先ホストがコード上で明示されず、手順が抽象的で検証しづらかった。
 - 調査: `app/main.py` の `RtcmReader` 初期化で `port` のみ指定され、`host` はデフォルト依存だった。`docs/test_cases.md` のRTCM項目も実行手順・判定条件が不足していた。
