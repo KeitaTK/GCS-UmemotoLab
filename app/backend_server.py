@@ -76,8 +76,15 @@ if __name__ == "__main__":
                     for drone_id in drone_ids:
                         hb = telemetry_store.get_heartbeat(drone_id)
                         if hb:
-                            armed = (hb.base_mode & 0x80) != 0
-                            logger.info(f"  Drone {drone_id}: type={hb.type}, armed={armed}, mode={hb.custom_mode}")
+                            # HEARTBEATの保持形式が実行環境で異なる場合に備えて防御的に処理
+                            if hasattr(hb, 'base_mode'):
+                                armed = (hb.base_mode & 0x80) != 0
+                                logger.info(
+                                    f"  Drone {drone_id}: type={getattr(hb, 'type', 'n/a')}, "
+                                    f"armed={armed}, mode={getattr(hb, 'custom_mode', 'n/a')}"
+                                )
+                            else:
+                                logger.info(f"  Drone {drone_id}: heartbeat received ({type(hb).__name__})")
                 else:
                     logger.debug("Waiting for drone heartbeats...")
                 last_log_time = current_time

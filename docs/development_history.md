@@ -3,6 +3,13 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-17 16:15: [BackendServer Heartbeat Logging Fix]
+- 問題: `app/backend_server.py` 実行中、`telemetry_store.get_heartbeat()` の戻り値が `bytes` のケースで `hb.base_mode` 参照によりクラッシュした。
+- 調査: シリアル経路の実行時にHEARTBEAT保持形式がオブジェクト固定ではなく、ログ出力部が型前提で落ちていた。
+- 試行: HEARTBEAT状態ログを防御的に変更し、`hasattr(hb, 'base_mode')` で分岐。オブジェクトでない場合は型名のみログ出力するよう修正した。
+- 結果: 定期ステータスログが原因の致命的停止を回避でき、RTCM注入検証を継続実行できるようになった。
+- 備考: HEARTBEAT保持形式は将来的に `TelemetryStore` 側で統一するのが望ましい。
+
 ### 2026-04-17 16:10: [RTK/BackendServer Headless Injection]
 - 問題: u-center の `RXM-RTCM` が 0 のままで、ヘッドレス実行時にRTCM注入が確認できなかった。
 - 調査: `app/main.py` には `RtcmReader` + `RtcmInjector` が実装されていたが、Raspberry Piで実行している `app/backend_server.py` にはRTCM処理が未実装だった。
