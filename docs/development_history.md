@@ -3,6 +3,13 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-24 15:10: [実機テスト完了: Pixhawk6C USB接続検証]
+- 問題: ローカル SITL テストは成功したが、実機での動作確認が必要だった。
+- 調査: Raspberry Pi 上で Pixhawk6C が USB `/dev/ttyACM0` で接続されていることを確認。デバイスログから Pixhawk6C (Holybro) が正常にマウントされていることを検出。
+- 試行: 設定ファイル `config/gcs_local.yml` をシリアルモード `/dev/ttyACM0:115200` に更新し、`app/backend_server.py` を起動。
+- 結果: 実機 Pixhawk6C からのハートビート受信に成功。5秒間隔で継続的にハートビートを受信し、System ID 1 として正常に認識。接続安定性が確認された。
+- 備考: USB 接続により信号の安定性が向上。今後はコマンド送信テスト（ARM/DISARM、離陸、着陸）と RTCM インジェクション検証を実施予定。
+
 ### 2026-04-17 16:15: [BackendServer Heartbeat Logging Fix]
 - 問題: `app/backend_server.py` 実行中、`telemetry_store.get_heartbeat()` の戻り値が `bytes` のケースで `hb.base_mode` 参照によりクラッシュした。
 - 調査: シリアル経路の実行時にHEARTBEAT保持形式がオブジェクト固定ではなく、ログ出力部が型前提で落ちていた。
