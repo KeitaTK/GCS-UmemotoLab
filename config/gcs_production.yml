@@ -1,0 +1,12 @@
+connection_type: serial
+serial_port: /dev/ttyACM0
+serial_baudrate: 115200
+rtcm_enabled: false
+
+udp_listen_port: 14550
+
+drones:
+  drone1:
+    system_id: 1
+    endpoint: 127.0.0.1:14550
+    name: "Pixhawk6C Main"
