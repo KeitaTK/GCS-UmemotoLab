@@ -2,7 +2,7 @@ import serial
 from pyubx2 import UBXReader, RTCM3_PROTOCOL
 
 # 設定（自分の環境に合わせてください）
-PORT = 'COM6' 
+PORT = 'COM8'  # Windows の場合の例。Linux/Mac では '/dev/ttyUSB0' などに変更してください。
 BAUD = 115200
 
 def main():
