@@ -30,4 +30,5 @@ class MessageRouter:
             self.telemetry_store.update(system_id=1, message_type='HEARTBEAT', payload=data)
         self.mavlink_conn.start(callback)
         while self.running:
-            pass  # 受信はコールバックで処理
+            # 受信はコールバックで処理されるため、ビジーウェイトを避ける
+            threading.Event().wait(0.05)

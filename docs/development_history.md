@@ -3,6 +3,13 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-27 14:10: [Phase7/運用安定化]
+- 問題: Phase 7 長時間テストで `app/backend_server.py` の CPU 使用率が高く、`monitoring.log` の更新が初回のみで継続監視が不足していた。
+- 調査: `app/mavlink/message_router.py` に `while self.running: pass` のビジーウェイトがあり、`app/mavlink/connection.py` のシリアル受信ループも無受信時に待機なしで反復していた。監視は `scripts/monitor_backend.sh` があるが定期実行設定がなかった。
+- 試行: `message_router.py` に 50ms 待機を追加し、`connection.py` に無受信時 10ms 待機と例外時 50ms 待機を追加。さらに `scripts/setup_monitoring_cron.sh` を新規作成し、`monitor_backend.sh` を 5 分間隔で実行する cron 登録を自動化した。
+- 結果: CPU 高負荷の主因だったビジーウェイトを解消し、監視ログの継続収集設定を実施できる状態になった。
+- 備考: Raspberry Pi 側で `bash ~/GCS-UmemotoLab/scripts/setup_monitoring_cron.sh` を一度実行して cron を有効化する。
+
 ### 2026-04-24 15:10: [実機テスト完了: Pixhawk6C USB接続検証]
 - 問題: ローカル SITL テストは成功したが、実機での動作確認が必要だった。
 - 調査: Raspberry Pi 上で Pixhawk6C が USB `/dev/ttyACM0` で接続されていることを確認。デバイスログから Pixhawk6C (Holybro) が正常にマウントされていることを検出。

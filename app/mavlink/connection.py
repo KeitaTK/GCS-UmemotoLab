@@ -87,6 +87,9 @@ class MavlinkConnection:
                     data = self.serial_conn.read(self.serial_conn.in_waiting)
                     if self.recv_callback:
                         self.recv_callback(data, (self.serial_port, 0))
+                else:
+                    # データ未着時は短時間待機してCPUの過負荷を避ける
+                    threading.Event().wait(0.01)
             except serial.SerialException as e:
                 self.logger.warning(f"Serial接続エラー: {e}")
                 if self.serial_conn:
@@ -98,6 +101,7 @@ class MavlinkConnection:
                 threading.Event().wait(1)  # Retry after 1 second
             except Exception as e:
                 self.logger.error(f"Serial受信エラー: {e}")
+                threading.Event().wait(0.05)
     
     def _recv_loop_udp(self):
         """Receive MAVLink data from UDP port"""
