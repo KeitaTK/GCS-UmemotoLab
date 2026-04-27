@@ -1,0 +1,29 @@
+source:
+  # ntrip または serial
+  source_type: ntrip
+
+  # source_type: ntrip の場合
+  host: 127.0.0.1
+  port: 2101
+  mountpoint: UBLOX_EVK_F9P
+  user_agent: NTRIP PythonClient
+  username: ""
+  password: ""
+
+  # source_type: serial の場合
+  serial_port: COM8
+  baudrate: 115200
+
+  # 共通
+  timeout_sec: 2.0
+
+forward:
+  host: 127.0.0.1
+  port: 50010
+
+retry:
+  reconnect_sec: 3.0
+
+log:
+  level: INFO
+  stats_interval_sec: 5

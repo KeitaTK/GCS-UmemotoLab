@@ -162,6 +162,26 @@ rtcm_host: 127.0.0.1
 rtcm_tcp_port: 5000
 ```
 
+## RTK転送サービス（統合版）
+
+NTRIP受信またはシリアル受信したRTCMを、別PCへUDP転送する統合サービスです。
+
+1. 設定ファイルを編集: `config/rtk_forwarder.yml`
+2. サービスを起動:
+
+```bash
+python rtk_forwarder_service.py --config config/rtk_forwarder.yml
+```
+
+### モード切り替え
+
+`config/rtk_forwarder.yml` の `source.source_type` を切り替えます。
+
+- `ntrip`: `host`, `port`, `mountpoint` を使用
+- `serial`: `serial_port`, `baudrate` を使用
+
+転送先は `forward.host` と `forward.port` で指定します。
+
 ## GitHub Copilotを使った開発ワークフロー
 
 このプロジェクトは、GitHub Issueとpull requestsを通じた段階的な開発フローをサポートしています。

@@ -3,6 +3,20 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-27 17:30: [RTK/Forwarder Service Integration]
+- 問題: NTRIP受信・シリアル受信のスクリプトが分かれており、再接続や設定管理を含む常時運用向けの統合サービスがなかった。
+- 調査: 既存の `rtk_rtcp_receiver.py` / `rtk_rtcp_receiver2.py` は手動実行向けで、運用時に引数管理と障害復帰が煩雑になる構成だった。
+- 試行: `rtk_forwarder_service.py` を新規作成し、YAML設定で `ntrip` / `serial` ソースを切り替え、UDP転送、定期統計ログ、自動再接続を実装。あわせて `config/rtk_forwarder.yml` と `README.md` に運用手順を追加した。
+- 結果: 1つのサービスで基地局データ取得からPC転送までを継続運用できる構成になった。
+- 備考: 認証付きNTRIPを使う場合は `config/rtk_forwarder.yml` の `username` / `password` を設定する。
+
+### 2026-04-27 16:40: [RTK/RTCM Receiver Forwarding]
+- 問題: 取得したNTRIP/RTCMデータを受信表示するだけで、別PCへストリーム転送する機能が不足していた。
+- 調査: `rtk_rtcp_receiver.py` はNTRIP受信のみ、`rtk_rtcp_receiver2.py` はシリアル解析のみで、どちらもネットワーク転送先を指定できなかった。
+- 試行: 両スクリプトをCLI引数対応に拡張し、UDP転送先IP/ポートを指定可能にした。NTRIP側はレスポンスヘッダを分離してペイロードのみ転送し、シリアル側はRTCM生データを転送しつつ解析ログを維持した。
+- 結果: 2つのスクリプトのどちらからでも、受信した補正データをPCへリアルタイム送信できる運用に改善した。
+- 備考: 受信PC側では同じUDPポートで受信待ちを行う必要がある。初期値は `50010` と `50011`。
+
 ### 2026-04-27 14:10: [Phase7/運用安定化]
 - 問題: Phase 7 長時間テストで `app/backend_server.py` の CPU 使用率が高く、`monitoring.log` の更新が初回のみで継続監視が不足していた。
 - 調査: `app/mavlink/message_router.py` に `while self.running: pass` のビジーウェイトがあり、`app/mavlink/connection.py` のシリアル受信ループも無受信時に待機なしで反復していた。監視は `scripts/monitor_backend.sh` があるが定期実行設定がなかった。
