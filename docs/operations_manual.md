@@ -57,12 +57,14 @@ $env:PYTHONPATH = (Resolve-Path .\app).Path
 python .\app\main.py
 ```
 
-#### Step 4: u-center の起動（RTK 使用時のみ）
+#### Step 4: STRSSVR の起動（RTK 使用時のみ）
 
 ```
-1. u-center を起動
-2. NTRIP キャスターに接続
-3. TCP Server を開始 (port 2101)
+1. Windows PC で STRSSVR を起動
+2. Input: Serial モード (ublox ポート、115200 baud)
+3. Output: TCP Server (0.0.0.0:2101)
+4. Message: RTCM3 を選択
+5. Start をクリック
 ```
 
 ### 起動順序の重要性
@@ -166,15 +168,19 @@ sleep 2
 ```
 
 **原因と対処**:
-1. u-center で TCP Server が起動しているか確認
-2. ポート 2101 が正しく設定されているか確認
+1. STRSSVR が Windows PC で起動しているか確認
+2. ポート 2101 が正しく設定されているか確認（STRSSVR Output: TCP Server 2101）
 3. ファイアウォールでポート 2101 が開いているか確認
+4. Raspberry Pi から TCP 接続テスト：`telnet <Windows_IP> 2101`
 
 ```bash
-# ポート確認
-netstat -an | grep 2101
+# Windows 側：ポート確認
+netstat -an | findstr :2101
 
-# リッスン状態が見えない場合は u-center で再設定
+# Raspberry Pi 側：接続テスト
+ssh taki@192.168.11.19 "telnet 192.168.11.62 2101"
+
+# リッスン状態が見えない場合は STRSSVR で再設定
 ```
 
 #### 症状 4: メモリ使用量が増加
