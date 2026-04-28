@@ -318,9 +318,7 @@ PySide6 ベースのため、自由に画面レイアウト変更可能
 
 📚 **ドキュメント**
 
-- [設計資料](docs/design.md)
-- [RTK統合ガイド](docs/rtk_integration_guide.md)
-- [開発ガイド](docs/dev_guide.md)
+- [総合ドキュメント](docs/README.md)
 
 ---
 
@@ -436,20 +434,12 @@ PySide6 ベースのため、自由に画面レイアウト変更可能
 
 ## 主要ドキュメント一覧
 
-📖 **開発者向け**
-- 仕様書: `docs/spec.md`
-- 技術設計: `docs/design.md`
-- テスト報告: `docs/test_report_20260424.md`
+📖 **統合入口**
+- 総合ドキュメント: `docs/README.md`
+
+📖 **補助資料**
+- 実装・テスト報告: `docs/RTK_BASE_STATION_FINAL_REPORT.md`
 - 開発履歴: `docs/development_history.md`
-
-📖 **RTK/RTCM 統合**
-- RTK 統合ガイド: `docs/rtk_integration_guide.md`
-- **u-center セットアップ**: `docs/rtk_setup_guide.md` ✨
-
-📖 **運用・本番環境**
-- **本番運用マニュアル**: `docs/operations_manual.md` ✨
-- **トラブルシューティング**: `docs/troubleshooting_guide.md` ✨
-- **マルチドローン操作**: `docs/multidrone_operations_guide.md` ✨
 
 ---
 
