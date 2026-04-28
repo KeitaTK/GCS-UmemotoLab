@@ -66,9 +66,9 @@
 ### 実行方法
 
 ```powershell
-# PC側 (ublox @ COM3)
+# PC側 (ublox @ COM8)
 python rtk_base_station.py `
-  --serial-port COM3 `
+  --serial-port COM8 `
   --baudrate 115200 `
   --tcp-host 0.0.0.0 `
   --tcp-port 2101 `
@@ -187,7 +187,7 @@ ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && pyth
 
 ```bash
 # 1. PC側起動（ublox接続）
-python rtk_base_station.py --serial-port COM3 --tcp-port 2101
+  python rtk_base_station.py --serial-port COM8 --tcp-port 2101
 
 # 2. Raspberry Pi 側起動
 ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"

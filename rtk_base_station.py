@@ -21,7 +21,7 @@ import serial
 class Config:
     """構成データクラス"""
     # シリアルポート設定（ublox接続）
-    serial_port: str = "COM3"
+    serial_port: str = "COM8"
     baudrate: int = 115200
     serial_timeout: float = 1.0
     
@@ -385,8 +385,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--serial-port",
-        default="COM3",
-        help="ublox シリアルポート (default: COM3)"
+        default="COM8",
+        help="ublox シリアルポート (default: COM8)"
     )
     parser.add_argument(
         "--baudrate",

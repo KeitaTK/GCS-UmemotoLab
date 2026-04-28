@@ -58,8 +58,8 @@
 # ローカルテスト
 python tests/test_rtk_base_station_integration.py
 
-# 実運用 (ublox が COM3 接続)
-python rtk_base_station.py --serial-port COM3 --baudrate 115200 --tcp-port 2101 --log-level INFO
+# 実運用 (ublox が COM8 接続)
+python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-port 2101 --log-level INFO
 ```
 
 ---
@@ -146,7 +146,7 @@ python tests/test_rtk_base_station_integration.py
 【運用フロー】
 
 1. PC側 起動
-   rtk_base_station.py --serial-port COM3
+   rtk_base_station.py --serial-port COM8
 
 2. Raspberry Pi側 起動
    backend_server.py
