@@ -3,6 +3,17 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-28 14:55: [RTK基地局オールインワン化 - Phase A完了]
+- 問題: RTK補正データの取得から配信までがシリアル分散されており、統合されていなかった。ublox ← PC（シリアル）→ Raspberry Pi（TCP/WiFi）→ ドローン という構成を一元化する必要があった。
+- 調査: 既存の `rtk_rtcp_receiver.py`（NTRIP受信）、`rtk_forwarder_service.py`（サービス化）を確認。PC側でubloxのシリアル受信を一元化するスクリプトが不足していた。
+- 試行:
+  - `rtk_base_station.py` を新規作成。ubloxからシリアルでRTCM v3フレーム受信し、TCP サーバーで Raspberry Pi へ配信。マルチスレッド構成（SerialReader + TcpServer + UdpBroadcaster）。
+  - `test_rtk_base_station_integration.py` を新規作成。ublox シミュレータを使ったローカルテスト、Raspberry Pi 統合確認。
+- 結果: 
+  - テスト1（ローカル）: ✓ PASS - 92 フレーム受信確認（30秒間、106バイト/フレーム、約3fps）
+  - テスト2（Raspberry Pi統合）: 接続確認段階（Raspberry Pi起動待ち）
+- 備考: PC 側 RTCMサービスは完成。次は Raspberry Pi 側での受信・ドローン送信の統合テストが必要。
+
 ### 2026-04-28 00:15: [RTCM インジェクション検証完了]
 - 問題: RTCM インジェクション機能が正常に動作するか、単体テストのみで実装検証が終了していなかった。
 - 調査: `tests/test_rtk_integration.py` に 3 つのテストケースが存在: `test_rtcm_reader()`、`test_rtcm_injector()`、`test_rtk_integration()`。各テストはダミーサーバーを内部起動してテストシーケンスを自動検証するユニットテスト。
