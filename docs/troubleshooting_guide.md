@@ -198,30 +198,27 @@ sleep 2
 ```
 
 **原因**:
-- u-center が起動していない
-- u-center の TCP Server が起動していない
+- STRSSVR が起動していない
+- STRSSVR の Output TCP Server が起動していない
 - ポート 2101 が誤設定
 
 **解決手順**:
 
 ```bash
-# Step 1: u-center を起動
-# Windows PC で u-center を起動
+# Step 1: Windows PC で STRSSVR を起動
+# C:\\tools\\strsvr.exe を実行
 
-# Step 2: Tools → NTRIP Server を開く
-# (または TCP Server)
+# Step 2: STRSSVR を設定
+# - Input: Serial モード (COM8, 115200 baud)
+# - Output: TCP Server (0.0.0.0:2101)
+# - Message: RTCM3 を選択
 
-# Step 3: TCP Server 設定
-# - Host: 127.0.0.1 (ローカルホスト)
-# - Port: 2101
-# - Format: RTCM3
+# Step 3: Start をクリック
 
-# Step 4: Start をクリック
-
-# Step 5: Raspberry Pi で設定を確認
+# Step 4: Raspberry Pi で設定を確認
 ssh taki@192.168.11.19 "cat ~/GCS-UmemotoLab/config/gcs_local.yml | grep rtcm"
 
-# Step 6: Backend を再起動して接続確認
+# Step 5: Backend を再起動して接続確認
 pkill -f backend_server
 sleep 2
 .venv/bin/python app/backend_server.py 2>&1 | head -20
@@ -245,7 +242,7 @@ sleep 2
 
 ```bash
 # Step 1: RTCM フォーマットを確認
-# u-center で RTCM3 を選択しているか確認
+# STRSSVR で RTCM3 を選択しているか確認
 
 # Step 2: Pixhawk ファームウェアを確認
 # QGroundControl で接続
