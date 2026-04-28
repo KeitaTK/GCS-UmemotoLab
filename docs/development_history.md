@@ -3,6 +3,20 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-04-28 15:12: [PHASE C-1/RTCM接続先修正]
+- 問題: Raspberry Pi 側の RTCM 設定が `127.0.0.1` を指しており、Windows PC 上で起動した `rtk_base_station.py` に接続できなかった。
+- 調査: Windows 側の LAN IP を確認したところ `192.168.11.62` だった。Pi 側の `backend_server.py` 起動ログでも `Connection refused` が出ており、接続先不一致が原因と判断した。
+- 試行: `config/gcs_local.yml` の `rtcm_host` を `192.168.11.62` に更新した。
+- 結果: Pi が Windows 側の基地局へ接続する前提が整った。
+- 備考: `backend_server.py` は再起動して設定を読み直す必要がある。
+
+### 2026-04-28 15:10: [RTK基地局/COMポート修正]
+- 問題: RTK基地局の実行例とデフォルト設定に COM3 が残っており、実際の接続ポート COM8 と不一致だった。
+- 調査: `rtk_base_station.py` の既定値と CLI 引数、`docs/RTK_BASE_STATION_IMPLEMENTATION.md` と `docs/RTK_BASE_STATION_FINAL_REPORT.md` の実行例を確認し、COM3 表記が複数箇所に残存していることを確認した。
+- 試行: シリアルポートのデフォルト値とヘルプ文言を COM8 に更新し、関連ドキュメントの実行例も COM8 に統一した。
+- 結果: 基地局のコードと文書のポート表記が実機接続に合わせて整合した。
+- 備考: 今後は Windows 側の ublox 接続ポートを COM8 前提で案内する。
+
 ### 2026-04-28 14:55: [RTK基地局オールインワン化 - Phase A完了]
 - 問題: RTK補正データの取得から配信までがシリアル分散されており、統合されていなかった。ublox ← PC（シリアル）→ Raspberry Pi（TCP/WiFi）→ ドローン という構成を一元化する必要があった。
 - 調査: 既存の `rtk_rtcp_receiver.py`（NTRIP受信）、`rtk_forwarder_service.py`（サービス化）を確認。PC側でubloxのシリアル受信を一元化するスクリプトが不足していた。

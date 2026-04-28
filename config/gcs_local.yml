@@ -10,5 +10,5 @@ drones:
 
 # RTCM/RTK settings
 rtcm_enabled: true
-rtcm_host: 127.0.0.1
+rtcm_host: 192.168.11.62
 rtcm_tcp_port: 2101
