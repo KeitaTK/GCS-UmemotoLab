@@ -3,6 +3,204 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-05-29 21:30: [エラーハンドリング実装 - Phase 3-2実装完了] ✅
+- **目標**: UDP/Serial の接続エラーを検出・回復し、ユーザーに接続状態を可視化する。
+- **実装内容**:
+  - **connection.py 拡張** (エラーハンドリングと回復):
+    - `error_callbacks`: エラー発生時のコールバック登録システム
+    - `register_error_callback(callback)`: コールバック登録メソッド
+    - `get_connection_status()`: 接続状態を dict で返す (`is_connected`, `connection_type`, `packet_received`, `packet_loss`, `last_error`)
+    - `_trigger_error_callback(error_type, message)`: 登録済みコールバック実行（全callback順序実行保証）
+    - UDP タイムアウト検出: `socket.settimeout(5.0)` + 10回連続タイムアウトで UDP_TIMEOUT エラー
+    - Serial 自動再接続: exponential backoff (1.0 → 1.5 → 2.25 → 3.375 → 5.0秒 cap、無限ループ防止)
+    - パケット損失追跡: `packet_loss_count`, `packet_received_count` カウンター
+  - **main_window.py 統合** (UI表示):
+    - `connection` パラメータを __init__ に追加
+    - Connection Status Group パネル追加 (4ラベル: Status/Type/Packets/Error)
+    - `_setup_connection_callbacks()`: error コールバック登録 + エラーダイアログ表示
+    - `_update_connection_status_display()`: Connection Status Group 自動更新
+    - `update_displays()` に `_update_connection_status_display()` 呼び出し追加
+    - エラーダイアログ: CRITICAL/TIMEOUT 時に warning dialog 表示
+  - **main.py 統合**:
+    - `MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn)` に変更
+    - connection インスタンスを UI に渡す
+  - **テストスイート作成** (test_connection_errors.py):
+    - 19個の包括的テストケース作成:
+      - エラーコールバック登録・実行・複数コールバック対応 (6テスト)
+      - UDP タイムアウト検出 (1テスト)
+      - Serial exponential backoff (2テスト)
+      - 接続状態追跡・パケットカウント (3テスト)
+      - エラータイプ分類 (3テスト)
+      - 接続状態更新 (2テスト)
+      - コールバック実行順序・一貫性 (2テスト)
+    - テスト構成: `create_temp_config()` で YAML config ファイル自動生成、各テスト独立実行
+    - 構文チェック: ✅ PASS (全ファイル)
+- **テスト結果**: ✅ **19/19 PASS** (test_connection_errors.py)
+- **統合テスト**: ✅ **27/27 PASS** (test_command_retry.py 8 + test_connection_errors.py 19)
+- **技術的ハイライト**:
+  - Exponential backoff: Serial 接続エラーから自動回復 (無限ループ防止)
+  - Callback-based architecture: エラー検出 → UI 通知までの流れを非同期で実行
+  - Connection state persistence: パケットカウント・エラーカウント・接続状態を1秒ごと更新
+  - 実行順序保証: 複数コールバック登録時の確実な実行順序保証
+- **ファイル変更**:
+  ```
+  app/mavlink/connection.py:       connection state tracking, error callbacks, UDP/Serial recovery
+  app/ui/main_window.py:           connection parameter, Connection Status Group UI, error display, key name alignment
+  app/main.py:                     pass connection to MainWindow
+  tests/test_connection_errors.py: 19 comprehensive test cases (PASS 19/19)
+  ```
+- **次ステップ**:
+  - Raspberry Pi での実機テスト検証
+  - 実際のネットワークエラー条件での検証
+  - Phase 1-3 (GPS 拡張) または Phase 3-1 (Guided Mode 実機テスト) の実施
+
+### 2026-05-29 21:00: [グラフ化機能実装 - Phase 1-2実装完了]
+- **目標**: 複数の NAMED_VALUE_FLOAT テレメトリーをグラフ表示し、データトレンドを可視化する。
+- **実装内容**:
+  - **main_window.py 大幅リファクタリング**:
+    - QTabWidget を導入して 3 つのタブ構造に変更（Dashboard/Graph/Raw Data）
+    - `_create_dashboard_tab()`: 既存の System Status/Battery/GPS/Command Status パネルを構成
+    - `_create_graph_tab()`: telemetry_plotter.py の TelemetryPlotter をタブに統合
+    - `_create_raw_data_tab()`: 選択中のドローンの MAVLink メッセージを JSON 風に表示
+    - `update_displays()` に統合：Dashboard/Graph/Raw Data を毎 1 秒更新
+    - `update_dashboard()`: テレメトリー更新処理を分離
+    - `update_graph()`: plotter.update_data() を呼び出してグラフを自動更新
+    - `update_raw_data()`: 受信メッセージの最初の 10 件を表示
+  - **UI レイアウト改善**:
+    - Window サイズを 1200x800 にデフォルト設定
+    - ドローンリストはタブの左にそのまま配置（コンテキスト保持）
+    - タブビューが右パネルの大部分を占有（スケーラブル）
+    - ScrollArea で各タブの内容をスクロール対応
+  - **telemetry_plotter.py の整合性確認**:
+    - pyqtgraph での real-time plot 表示対応
+    - Drone/Field コンボボックスでフィルタリング機能
+    - Clear ボタンでグラフデータリセット
+    - 最大 500 ポイント履歴保持
+- **構文チェック**: ✅ PASS（2ファイル全て OK）
+- **ファイル変更**:
+  ```
+  ✅ app/ui/main_window.py         (完全リファクタリング: 3 タブ構造導入)
+  ✅ app/ui/telemetry_plotter.py   (既に実装済み、整合性確認)
+  ```
+- **UI 構成**:
+  - Tab 1 (Dashboard): System Status・Battery・GPS・Command Status・制御ボタン
+  - Tab 2 (Graph): pyqtgraph による real-time 折れ線グラフ（Drone/Field 選択可能）
+  - Tab 3 (Raw Data): 選択ドローンのメッセージリスト表示
+- **状態**: **実装完全確定、UI 動作テスト待ち**
+
+### 2026-05-29 22:00: [タイムアウト・リトライ機構実装 - Phase 2-2実装完了]
+- **目標**: コマンド実行時のタイムアウトを自動検出し、最大 3 回まで自動リトライする機構を実装・検証。
+- **実装内容**:
+  - **command_dispatcher.py 強化**:
+    - `_track_command()` に `component_id` と `params` を保存して、リトライ時の再送信に対応
+    - `check_timeouts()` メソッド内でリトライ対象コマンドをリスト化し、ロック外で再送信
+    - `_resend_command()` 新規メソッド：タイムアウト時の自動再送信処理
+    - リトライ回数 0→1→2→3 で追跡可能
+    - 最大リトライ超過後は timeout コールバックを実行して待機リストから削除
+  - **main_window.py UI 拡張**:
+    - Command Status グループを「Command Status & Retry」に改名
+    - 新ラベル `cmd_retry_label` を追加：「Retries: X/3」形式で表示
+    - リトライ回数による色分け：0 回=緑、1-2 回=オレンジ、3 回=赤
+    - `_update_command_status_display()` でリトライ情報を毎 1 秒更新
+  - **test_command_retry.py 作成**:
+    - CommandDispatcher のリトライ機能を網羅的にテスト
+    - 8 つのテストケース：
+      1. `test_track_command_creates_pending_entry`: コマンド追跡の初期化確認
+      2. `test_handle_command_ack_accepted`: ACK（result=0）の処理確認
+      3. `test_handle_command_ack_denied`: 拒否（result=2）の処理確認
+      4. `test_check_timeouts_triggers_retry`: タイムアウト時の自動リトライ確認
+      5. `test_check_timeouts_marks_failed_after_max_retries`: 最大リトライ超過時の処理確認
+      6. `test_ack_callback_registration`: コールバック登録と実行確認
+      7. `test_get_ack_status_string`: MAV_RESULT コード変換確認
+      8. `test_multiple_pending_commands`: 複数コマンド同時追跡確認
+- **テスト結果**: ✅ 8/8 PASS（pytest 8.4.2）
+- **構文チェック**: ✅ PASS（2ファイル OK）
+- **ファイル変更**:
+  ```
+  ✅ app/mavlink/command_dispatcher.py    (リトライ機構強化, _resend_command 追加)
+  ✅ app/ui/main_window.py                (リトライ UI 表示機能追加)
+  ✅ tests/test_command_retry.py          (新規作成: 8 テストケース)
+  ```
+- **動作仕様**:
+  - コマンド送信 → 5 秒タイムアウト検出 → 自動リトライ
+  - リトライ 3 回まで：timeout コールバック実行後も待機継続
+  - リトライ 3 回超過 → timeout コールバック実行 → 待機リストから削除
+  - UI：リトライ回数をリアルタイム表示、色分け表示で状態を可視化
+- **状態**: **実装完全確定、実機テスト待ち**
+
+### 2026-05-29 20:00: [COMMAND_ACK確認応答処理実装 - Phase 2-1実装完了]
+- **目標**: コマンド実行時に COMMAND_ACK メッセージを待機し、応答状態を UI に表示する機能を実装。
+- **実装内容**:
+  - **command_dispatcher.py 大幅拡張**:
+    - `_pending_commands` 辞書でコマンド追跡（送信時刻・リトライ回数・状態管理）
+    - `handle_command_ack()` メソッドで COMMAND_ACK 受信時に待機コマンド更新
+    - `check_timeouts()` メソッドで 5 秒超過コマンドを自動リトライ（最大 3 回）
+    - ACK/タイムアウト コールバック登録機構実装
+    - `get_pending_commands()` で保留中コマンド一覧取得
+    - MAV_RESULT コード（0=ACCEPTED, 2=DENIED, 4=FAILED など）を人間が読める文字列に変換
+  - **message_router.py 強化**:
+    - CommandDispatcher インスタンスを受け取る設計に変更
+    - `_parse_mavlink_message()` メソッドで受信メッセージを MAVLink デコード
+    - `_handle_command_ack()` 専用メソッドで COMMAND_ACK を検出→dispatcher に通知
+    - 500ms ごとにコマンドタイムアウト自動チェック
+  - **main.py 初期化順序改善**:
+    - CommandDispatcher → MessageRouter 初期化順序を変更し、MessageRouter で ACK を処理可能に
+    - `dispatcher.guided` 初期化を前倒し
+  - **main_window.py UI 拡張**:
+    - 新グループボックス「Command Status」追加：最後のコマンド名・ACK ステータス・待機中コマンド数を表示
+    - `_setup_dispatcher_callbacks()` で ACK コールバック登録
+    - ACK ステータスに色分け：ACCEPTED=緑、TIMEOUT/FAILED=赤、その他=オレンジ
+    - `_update_command_status_display()` で毎 1 秒更新
+- **構文チェック**: ✅ PASS（4ファイル全て OK）
+- **ファイル変更**:
+  ```
+  ✅ app/mavlink/command_dispatcher.py    (大幅拡張: 140行以上追加)
+  ✅ app/mavlink/message_router.py        (初期化パラメータ追加, ACK処理実装)
+  ✅ app/main.py                          (初期化順序改善)
+  ✅ app/ui/main_window.py                (ACK/タイムアウト UI + コールバック統合)
+  ```
+- **動作仕様**:
+  - コマンド送信時に `_track_command()` で内部追跡開始
+  - 500ms ごとに timeout チェック→タイムアウト時は自動リトライ
+  - COMMAND_ACK 受信で即座に待機コマンド更新→UI 表示更新
+  - 最大 3 回リトライしてもタイムアウトなら failure コールバック実行
+- **状態**: **実装完全確定、ドローンコマンド送受信テスト待ち**
+
+### 2026-05-29 19:00: [GCS UI強化 - Phase 1-1実装完了・確定版]
+- 問題: main_window.py の System Status 表示機能の実装途中で複数回の形式崩れが発生。
+- 調査: git checkout で元のバージョンにリセットしてから段階的に改善を加える方針に変更。
+- 実装内容:
+  - **import 充実**: QGroupBox, QGridLayout を追加
+  - **UI パネル追加**: System Status（Armed/Mode）、Battery（電圧・電流・残量）、GPS（衛星数・位置・高度）
+  - **update_label 拡張**: テレメトリー表示処理を大幅拡張、SYS_STATUS と GLOBAL_POSITION_INT に対応
+  - **ドローン選択時の即座更新**: `_on_drone_selected` メソッド実装、itemSelectionChanged シグナル接続
+  - **エラー処理強化**: コマンド送信前に drone 選択確認、詳細ログ出力
+- 構文チェック: ✅ PASS（3ファイル全て OK）
+- ファイル変更:
+  ```
+  ✅ app/ui/main_window.py      (完全改善版)
+  ✅ app/mavlink/telemetry_store.py  (既に実装済み)
+  ✅ app/main.py                (既に実装済み)
+  ```
+- 状態: **実装完全確定、動作テスト待ち**
+
+### 2026-05-29 18:00: [GCS未実装機能の実装開始 - Phase 1-1完了]
+- 問題: GCS の UI が基本的なテレメトリー表示しか対応しておらず、バッテリー・GPS 情報が表示されていなかった。
+- 調査: IMPLEMENTATION_DETAILS.md でテレメトリー受信機能は実装済みだが UI 表示が未完成であることを確認。telemetry_store.py の設計を確認し、SYS_STATUS 抽出メソッド追加の必要性を特定。
+- 実装内容:
+  - **telemetry_store.py**: `get_sys_status()` と `get_global_position()` メソッドを追加（HEARTBEAT と同じパターン）
+  - **main_window.py**: SYS_STATUS（バッテリー電圧・電流・残量）、GPS（衛星数・位置・高度）表示用の UI パネル群を追加
+  - **main.py**: dispatcher に guided オブジェクトを付与し、UI から Guided Mode を操作可能に
+
+
+  - **requirements.txt**: pyqtgraph・matplotlib を追加（後続のグラフ化に対応）
+- 状態: 
+  - ✅ SYS_STATUS（バッテリー）表示: 実装完了
+  - ✅ GPS 情報表示: 実装完了
+  - ⏳ グラフ化: telemetry_plotter.py 作成済み、UI 統合待ち
+  - ⏳ Guided Mode UI: 制御入力フィールド実装済み、テスト待ち
+- 次ステップ: Phase 1-2（グラフ化）は telemetry_plotter.py の UI 統合、Phase 2-1（COMMAND_ACK）は command_dispatcher.py 改善
+
 ### 2026-04-28 15:35: [docs統合/総合ドキュメント作成]
 - 問題: docs 配下の資料が複数に分散しており、入口となる1本の案内がなかった。
 - 調査: `docs/project_presentation.md` と各種 RTK/運用ガイドを確認し、情報の重複が大きい一方で参照先が分散していることを確認した。

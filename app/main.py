@@ -25,7 +25,16 @@ if __name__ == "__main__":
     logger.info(f"設定ファイルを使用します: {config_path}")
     telemetry_store = TelemetryStore()
     mav_conn = MavlinkConnection(config_path)
-    router = MessageRouter(mav_conn, telemetry_store)
+    
+    # --- コマンド制御の初期化（MessageRouter前に行う） ---
+    from mavlink.command_dispatcher import CommandDispatcher
+    from mavlink.guided_control import GuidedControl
+
+    dispatcher = CommandDispatcher(mav_conn)
+    dispatcher.guided = GuidedControl(mav_conn)
+    
+    # MessageRouter を CommandDispatcher と一緒に初期化
+    router = MessageRouter(mav_conn, telemetry_store, command_dispatcher=dispatcher)
     router.start()
 
     # RTCMインジェクション設定
@@ -57,16 +66,9 @@ if __name__ == "__main__":
     rtcm_reader.register_callback(on_rtcm_data)
     rtcm_reader.start()
 
-    # --- コマンドと制御のデモ（初期化のみ） ---
-    from mavlink.command_dispatcher import CommandDispatcher
-    from mavlink.guided_control import GuidedControl
-
-    dispatcher = CommandDispatcher(mav_conn)
-    guided = GuidedControl(mav_conn)
-
     # UI起動
     app = QApplication(sys.argv)
-    window = MainWindow(telemetry_store, dispatcher=dispatcher)
+    window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn)
     window.show()
 
     logger.info("GUIイベントループを開始します。")

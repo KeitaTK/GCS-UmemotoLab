@@ -35,4 +35,18 @@ class TelemetryStore:
             if system_id in self._data:
                 return self._data[system_id].get('HEARTBEAT')
             return None
+    
+    def get_sys_status(self, system_id):
+        """Get SYS_STATUS message for a drone (battery, GPS, etc.)"""
+        with self._lock:
+            if system_id in self._data:
+                return self._data[system_id].get('SYS_STATUS')
+            return None
+    
+    def get_global_position(self, system_id):
+        """Get GLOBAL_POSITION_INT message for a drone (GPS coordinates)"""
+        with self._lock:
+            if system_id in self._data:
+                return self._data[system_id].get('GLOBAL_POSITION_INT')
+            return None
 
