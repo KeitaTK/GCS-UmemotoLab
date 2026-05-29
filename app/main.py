@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     # UI起動
     app = QApplication(sys.argv)
-    window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn)
+    window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn, rtcm_reader=rtcm_reader)
     window.show()
 
     logger.info("GUIイベントループを開始します。")

@@ -158,6 +158,89 @@ class DummyRtcmServer:
         return bytes(frame)
 
 
+class FlakyRtcmServer:
+    """接続ごとに1フレーム送信して切断するRTCMサーバー"""
+    
+    def __init__(self, host='127.0.0.1', port=15000, expected_connections=2, restart_delay=0.2):
+        self.host = host
+        self.port = port
+        self.expected_connections = expected_connections
+        self.restart_delay = restart_delay
+        self.socket = None
+        self.running = False
+        self.client = None
+        self.thread = None
+        self.accepted_connections = 0
+    
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        time.sleep(0.5)
+        logger.info(f"Flaky RTCM server started on {self.host}:{self.port}")
+    
+    def stop(self):
+        self.running = False
+        if self.client:
+            try:
+                self.client.close()
+            except:
+                pass
+        if self.socket:
+            try:
+                self.socket.close()
+            except:
+                pass
+        if self.thread:
+            self.thread.join()
+    
+    def _run(self):
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind((self.host, self.port))
+            self.socket.listen(1)
+            
+            while self.running and self.accepted_connections < self.expected_connections:
+                self.socket.settimeout(1)
+                try:
+                    self.client, addr = self.socket.accept()
+                    self.accepted_connections += 1
+                    logger.info(f"Client connected for reconnect test: {addr}")
+                    
+                    frame = self._generate_rtcm_frames()[0]
+                    self.client.send(frame)
+                    time.sleep(0.05)
+                    self.client.close()
+                    self.client = None
+                    logger.info("Client disconnected for reconnect test")
+                    
+                    if self.accepted_connections < self.expected_connections:
+                        time.sleep(self.restart_delay)
+                except socket.timeout:
+                    continue
+        except Exception as e:
+            logger.error(f"Reconnect test server error: {e}")
+    
+    def _generate_rtcm_frames(self):
+        payload = bytearray()
+        msg_type = 1001
+        payload.append((msg_type >> 6) & 0xFF)
+        payload.append(((msg_type & 0x3F) << 2) | 0x00)
+        payload.extend(b'\x00' * 25)
+        return [self._build_rtcm_frame(payload)]
+    
+    def _build_rtcm_frame(self, payload):
+        frame = bytearray()
+        frame.append(0xD3)
+        length = len(payload)
+        frame.append((length >> 8) & 0x3F)
+        frame.append(length & 0xFF)
+        frame.extend(payload)
+        frame.extend(b'\x00\x00\x00')
+        return bytes(frame)
+
+
 def test_rtcm_reader():
     """RtcmReader テスト"""
     logger.info("=== Testing RtcmReader ===")
@@ -279,6 +362,39 @@ def test_rtk_integration():
     return True
 
 
+def test_rtcm_reader_reconnects_after_disconnect():
+    """RtcmReader が切断後に再接続できることを確認する"""
+    logger.info("=== Testing RtcmReader reconnect ===")
+
+    server = FlakyRtcmServer('127.0.0.1', 15002, expected_connections=2, restart_delay=0.2)
+    server.start()
+
+    reader = RtcmReader(host='127.0.0.1', port=15002, enabled=True)
+    received_frames = []
+
+    def callback(frame):
+        received_frames.append(frame)
+        logger.info(f"Reconnect test received RTCM frame: {len(frame)} bytes")
+
+    reader.register_callback(callback)
+    reader.start()
+
+    time.sleep(4)
+
+    reader.stop()
+    server.stop()
+
+    logger.info(f"Reconnect test received {len(received_frames)} RTCM frames")
+    logger.info(f"Reconnect test stats: {reader.stats}")
+
+    assert len(received_frames) >= 2, "Expected at least 2 RTCM frames after reconnect"
+    assert reader.stats['connections'] >= 2, "Expected at least 2 successful connections"
+    assert reader.stats['reconnects'] >= 1, "Expected at least 1 reconnect event"
+
+    logger.info("✓ RtcmReader reconnect test PASSED")
+    return True
+
+
 def main():
     """すべてのテストを実行"""
     logger.info("=" * 60)
@@ -287,6 +403,12 @@ def main():
     
     results = []
     
+    try:
+        results.append(("RtcmReader reconnect", test_rtcm_reader_reconnects_after_disconnect()))
+    except Exception as e:
+        logger.error(f"RtcmReader reconnect test failed: {e}", exc_info=True)
+        results.append(("RtcmReader reconnect", False))
+
     try:
         results.append(("RtcmReader", test_rtcm_reader()))
     except Exception as e:

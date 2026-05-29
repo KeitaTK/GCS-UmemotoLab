@@ -3,6 +3,27 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-05-29 23:59: [未実装機能の実装拡張]
+- **問題**: 実装機能ドキュメントで未実装扱いになっていた UI 表示、ガイドモード、コマンド制御、複数フィールド表示、RTK 状態監視をまとめて実装したかった。
+- **調査**: `TelemetryStore` は単一メッセージ保持だったため、NAMED_VALUE_FLOAT の履歴集約が必要だった。`MavlinkConnection` には送信 API がなく、`MainWindow` も単一選択前提だった。
+- **試行**: `TelemetryStore` に NAMED_VALUE_FLOAT 履歴を追加し、`TelemetryPlotter` を複数フィールド比較表示へ拡張した。`MavlinkConnection` に `COMMAND_LONG` と `SET_POSITION_TARGET_LOCAL_NED` の送信 API を追加し、`CommandDispatcher` に再送用パラメータ保持・複数選択送信・降下率付き着陸を追加した。`MainWindow` に SYS_STATUS/GLOBAL_POSITION_INT 表示、Takeoff 高度入力、ARM 状態チェック、Land 降下率、Guided 位置/速度制御、RTK 統計表示、複数選択操作を追加した。
+- **結果**: コマンド、RTK、テレメトリー、ガイド制御の主要な未実装項目を実装し、既存のコマンド再送/RTK 統合テストも通過した。
+- **備考**: 複数パネルの自由レイアウト編集、NTRIP 再取得、厳密なグループ同期制御は今後の改善対象。
+
+### 2026-05-29 23:50: [実装機能ドキュメントの現状反映]
+- **問題**: `docs/IMPLEMENTATION_DETAILS.md` に、現在のコードと一致しない未実装表現が残っていた。
+- **調査**: `app/mavlink/command_dispatcher.py` では `COMMAND_ACK` の追跡とタイムアウト/リトライがあり、`app/ui/main_window.py` と `app/ui/telemetry_plotter.py` では NAMED_VALUE_FLOAT のグラフ表示が実装済みだった。`app/mavlink/rtcm_reader.py` には再接続処理も追加済みだった。
+- **試行**: コマンド ACK、グラフ表示、RTCM 自動再接続、既知の制限事項、実装状況マトリクスを現状に合わせて更新した。
+- **結果**: ドキュメントが実装済み機能と未対応機能を正しく区別する内容になった。
+- **備考**: UI の自由レイアウト編集や高度な複数コマンド制御は今後の改善候補。
+
+### 2026-05-29 23:30: [RTCM切断復帰の再接続実装]
+- **問題**: RTCM ストリームが切断されると `RtcmReader` が再接続せず、RTK 注入が止まる状態だった。
+- **調査**: `app/mavlink/rtcm_reader.py` の受信ループでは `recv()` が空データを返すと終了しており、切断後の再接続処理がなかった。`docs/IMPLEMENTATION_DETAILS.md` でも切断時対応が未実装として残っていた。
+- **試行**: `RtcmReader` に TCP 再接続ループ、指数バックオフ、接続統計を追加し、`tests/test_rtk_integration.py` に切断後の再接続を検証するテストを追加した。
+- **結果**: 切断後も reader が再接続して RTCM フレームを再受信できるようになった。関連ドキュメントの未実装メモも更新した。
+- **備考**: NTRIP の再取得や高度な状態復旧は今後の拡張対象。
+
 ### 2026-05-29 21:30: [エラーハンドリング実装 - Phase 3-2実装完了] ✅
 - **目標**: UDP/Serial の接続エラーを検出・回復し、ユーザーに接続状態を可視化する。
 - **実装内容**:

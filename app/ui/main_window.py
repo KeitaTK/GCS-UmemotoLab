@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QLabel, QVBoxLayout, QWidget, QHBoxLayout, 
     QListWidget, QPushButton, QMessageBox, QGroupBox, QGridLayout,
-    QTabWidget, QScrollArea
+    QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView
 )
 from PySide6.QtCore import QTimer
 import logging
@@ -10,11 +10,12 @@ import time
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
-    def __init__(self, telemetry_store, dispatcher=None, connection=None):
+    def __init__(self, telemetry_store, dispatcher=None, connection=None, rtcm_reader=None):
         super().__init__()
         self.telemetry_store = telemetry_store
         self.dispatcher = dispatcher
         self.connection = connection  # MavlinkConnection instance
+        self.rtcm_reader = rtcm_reader
         self.setWindowTitle("GCS Telemetry")
         self.resize(1200, 800)
         
@@ -33,11 +34,13 @@ class MainWindow(QMainWindow):
         # ドローンリスト（左パネル）
         self.drone_list = QListWidget()
         self.drone_list.setMinimumWidth(200)
+        self.drone_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.drone_list.itemSelectionChanged.connect(self._on_drone_selected)
         main_layout.addWidget(self.drone_list)
 
         # タブビュー（右パネル）
         self.tab_widget = QTabWidget()
+        self.tab_widget.setMovable(True)
         main_layout.addWidget(self.tab_widget, 1)
 
         # === Tab 1: Dashboard ===
@@ -145,22 +148,101 @@ class MainWindow(QMainWindow):
         self.rtk_status_label = QLabel("RTK Status: Unknown")
         layout.addWidget(self.rtk_status_label)
 
+        # ===== Flight Control Group =====
+        flight_group = QGroupBox("Flight Control")
+        flight_layout = QGridLayout()
+
+        self.takeoff_altitude_spin = QDoubleSpinBox()
+        self.takeoff_altitude_spin.setRange(1.0, 500.0)
+        self.takeoff_altitude_spin.setValue(10.0)
+        self.takeoff_altitude_spin.setSuffix(" m")
+
+        self.land_descent_rate_spin = QDoubleSpinBox()
+        self.land_descent_rate_spin.setRange(0.0, 20.0)
+        self.land_descent_rate_spin.setValue(1.5)
+        self.land_descent_rate_spin.setSingleStep(0.5)
+        self.land_descent_rate_spin.setSuffix(" m/s")
+
+        self.guided_north_spin = QDoubleSpinBox()
+        self.guided_north_spin.setRange(-500.0, 500.0)
+        self.guided_north_spin.setValue(0.0)
+        self.guided_east_spin = QDoubleSpinBox()
+        self.guided_east_spin.setRange(-500.0, 500.0)
+        self.guided_east_spin.setValue(0.0)
+        self.guided_down_spin = QDoubleSpinBox()
+        self.guided_down_spin.setRange(-500.0, 500.0)
+        self.guided_down_spin.setValue(0.0)
+
+        self.guided_vx_spin = QDoubleSpinBox()
+        self.guided_vx_spin.setRange(-20.0, 20.0)
+        self.guided_vy_spin = QDoubleSpinBox()
+        self.guided_vy_spin.setRange(-20.0, 20.0)
+        self.guided_vz_spin = QDoubleSpinBox()
+        self.guided_vz_spin.setRange(-20.0, 20.0)
+        self.guided_yaw_spin = QDoubleSpinBox()
+        self.guided_yaw_spin.setRange(-180.0, 180.0)
+        self.guided_yaw_spin.setSuffix(" deg")
+
+        self.btn_takeoff = QPushButton("Takeoff")
+        self.btn_land = QPushButton("Land")
+        self.btn_guided_position = QPushButton("Send Guided Position")
+        self.btn_guided_velocity = QPushButton("Send Guided Velocity")
+        self.btn_arm_all = QPushButton("Arm Selected")
+        self.btn_disarm_all = QPushButton("Disarm Selected")
+
+        flight_layout.addWidget(QLabel("Takeoff Altitude:"), 0, 0)
+        flight_layout.addWidget(self.takeoff_altitude_spin, 0, 1)
+        flight_layout.addWidget(QLabel("Land Descent Rate:"), 1, 0)
+        flight_layout.addWidget(self.land_descent_rate_spin, 1, 1)
+        flight_layout.addWidget(self.btn_takeoff, 0, 2)
+        flight_layout.addWidget(self.btn_land, 1, 2)
+
+        flight_layout.addWidget(QLabel("North:"), 2, 0)
+        flight_layout.addWidget(self.guided_north_spin, 2, 1)
+        flight_layout.addWidget(QLabel("East:"), 3, 0)
+        flight_layout.addWidget(self.guided_east_spin, 3, 1)
+        flight_layout.addWidget(QLabel("Down:"), 4, 0)
+        flight_layout.addWidget(self.guided_down_spin, 4, 1)
+
+        flight_layout.addWidget(QLabel("Vx:"), 2, 2)
+        flight_layout.addWidget(self.guided_vx_spin, 2, 3)
+        flight_layout.addWidget(QLabel("Vy:"), 3, 2)
+        flight_layout.addWidget(self.guided_vy_spin, 3, 3)
+        flight_layout.addWidget(QLabel("Vz:"), 4, 2)
+        flight_layout.addWidget(self.guided_vz_spin, 4, 3)
+        flight_layout.addWidget(QLabel("Yaw:"), 5, 2)
+        flight_layout.addWidget(self.guided_yaw_spin, 5, 3)
+
+        flight_layout.addWidget(self.btn_guided_position, 5, 0, 1, 2)
+        flight_layout.addWidget(self.btn_guided_velocity, 6, 0, 1, 2)
+        flight_layout.addWidget(self.btn_arm_all, 6, 2)
+        flight_layout.addWidget(self.btn_disarm_all, 6, 3)
+
+        flight_group.setLayout(flight_layout)
+        layout.addWidget(flight_group)
+
         # 制御ボタン
         control_panel = QHBoxLayout()
         self.btn_arm = QPushButton("Arm")
         self.btn_disarm = QPushButton("Disarm")
-        self.btn_takeoff = QPushButton("Takeoff (10m)")
-        self.btn_land = QPushButton("Land")
+        self.btn_select_all = QPushButton("Select All")
+        self.btn_clear_selection = QPushButton("Clear Selection")
 
         control_panel.addWidget(self.btn_arm)
         control_panel.addWidget(self.btn_disarm)
-        control_panel.addWidget(self.btn_takeoff)
-        control_panel.addWidget(self.btn_land)
+        control_panel.addWidget(self.btn_select_all)
+        control_panel.addWidget(self.btn_clear_selection)
 
         self.btn_arm.clicked.connect(self.cmd_arm)
         self.btn_disarm.clicked.connect(self.cmd_disarm)
         self.btn_takeoff.clicked.connect(self.cmd_takeoff)
         self.btn_land.clicked.connect(self.cmd_land)
+        self.btn_guided_position.clicked.connect(self.cmd_guided_position)
+        self.btn_guided_velocity.clicked.connect(self.cmd_guided_velocity)
+        self.btn_arm_all.clicked.connect(self.cmd_arm)
+        self.btn_disarm_all.clicked.connect(self.cmd_disarm)
+        self.btn_select_all.clicked.connect(self.select_all_drones)
+        self.btn_clear_selection.clicked.connect(self.clear_drone_selection)
 
         layout.addLayout(control_panel)
         layout.addStretch()
@@ -193,54 +275,122 @@ class MainWindow(QMainWindow):
         return widget
 
     def get_selected_system_id(self):
+        ids = self.get_selected_system_ids()
+        return ids[0] if ids else None
+
+    def get_selected_system_ids(self):
         selected_items = self.drone_list.selectedItems()
         if not selected_items:
-            return None
-        sysid_str = selected_items[0].text()
-        try:
-            return int(sysid_str)
-        except ValueError:
-            return None
+            return []
+        system_ids = []
+        for item in selected_items:
+            try:
+                system_ids.append(int(item.text()))
+            except ValueError:
+                continue
+        return system_ids
+
+    def select_all_drones(self):
+        self.drone_list.selectAll()
+
+    def clear_drone_selection(self):
+        self.drone_list.clearSelection()
 
     def _on_drone_selected(self):
         """Called when drone selection changes"""
         self.update_label()
 
     def cmd_arm(self):
-        sysid = self.get_selected_system_id()
-        if not sysid:
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
-            logger.info(f"ARM command sent to drone {sysid}")
-            self.dispatcher.arm(sysid, component_id=1)
+            for sysid in system_ids:
+                logger.info(f"ARM command sent to drone {sysid}")
+                self.dispatcher.arm(sysid, component_id=1)
 
     def cmd_disarm(self):
-        sysid = self.get_selected_system_id()
-        if not sysid:
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
-            logger.info(f"DISARM command sent to drone {sysid}")
-            self.dispatcher.disarm(sysid, component_id=1)
+            for sysid in system_ids:
+                logger.info(f"DISARM command sent to drone {sysid}")
+                self.dispatcher.disarm(sysid, component_id=1)
+
+    def _is_armed(self, system_id):
+        hb = self.telemetry_store.get_heartbeat(system_id)
+        if not hb:
+            return False
+        try:
+            return (hb.base_mode & 0x80) != 0
+        except Exception:
+            return False
 
     def cmd_takeoff(self):
-        sysid = self.get_selected_system_id()
-        if not sysid:
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
-            logger.info(f"TAKEOFF command sent to drone {sysid}")
-            self.dispatcher.takeoff(sysid, component_id=1, altitude=10.0)
+            altitude = float(self.takeoff_altitude_spin.value())
+            for sysid in system_ids:
+                if not self._is_armed(sysid):
+                    QMessageBox.warning(self, "Warning", f"Drone {sysid} is not armed.")
+                    continue
+                logger.info(f"TAKEOFF command sent to drone {sysid} at {altitude}m")
+                self.dispatcher.takeoff(sysid, component_id=1, altitude=altitude)
 
     def cmd_land(self):
-        sysid = self.get_selected_system_id()
-        if not sysid:
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
-            logger.info(f"LAND command sent to drone {sysid}")
-            self.dispatcher.land(sysid, component_id=1)
+            descent_rate = float(self.land_descent_rate_spin.value())
+            for sysid in system_ids:
+                logger.info(f"LAND command sent to drone {sysid} (descent_rate={descent_rate})")
+                self.dispatcher.land(sysid, component_id=1, descent_rate=descent_rate)
+
+    def cmd_guided_position(self):
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
+            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
+            return
+
+        guided = getattr(self.dispatcher, 'guided', None)
+        if not guided:
+            QMessageBox.warning(self, "Warning", "Guided control is not available.")
+            return
+
+        north = float(self.guided_north_spin.value())
+        east = float(self.guided_east_spin.value())
+        down = float(self.guided_down_spin.value())
+        yaw = float(self.guided_yaw_spin.value())
+        for sysid in system_ids:
+            logger.info(f"Guided position sent to drone {sysid}: NED=({north}, {east}, {down}), yaw={yaw}")
+            guided.set_position_target_local_ned(sysid, component_id=1, x=north, y=east, z=down, yaw=yaw)
+
+    def cmd_guided_velocity(self):
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
+            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
+            return
+
+        guided = getattr(self.dispatcher, 'guided', None)
+        if not guided:
+            QMessageBox.warning(self, "Warning", "Guided control is not available.")
+            return
+
+        vx = float(self.guided_vx_spin.value())
+        vy = float(self.guided_vy_spin.value())
+        vz = float(self.guided_vz_spin.value())
+        yaw = float(self.guided_yaw_spin.value())
+        for sysid in system_ids:
+            logger.info(f"Guided velocity sent to drone {sysid}: vel=({vx}, {vy}, {vz}), yaw={yaw}")
+            guided.set_velocity_target_local_ned(sysid, component_id=1, vx=vx, vy=vy, vz=vz, yaw=yaw)
 
     def _setup_dispatcher_callbacks(self):
         """Register callbacks for command ACK and timeout events."""
@@ -384,6 +534,7 @@ class MainWindow(QMainWindow):
         self.update_graph()
         self.update_raw_data()
         self._update_connection_status_display()
+        self.update_rtk_status_from_reader()
 
     def update_dashboard(self):
         """Update dashboard tab telemetry displays"""
@@ -483,3 +634,18 @@ class MainWindow(QMainWindow):
     def update_rtk_status(self, status):
         """Update RTK status indicator"""
         self.rtk_status_label.setText(f"RTK Status: {status}")
+
+    def update_rtk_status_from_reader(self):
+        if not self.rtcm_reader:
+            return
+        try:
+            stats = getattr(self.rtcm_reader, 'stats', {})
+            status = (
+                f"enabled={getattr(self.rtcm_reader, 'enabled', False)} "
+                f"messages={stats.get('messages_received', 0)} "
+                f"connections={stats.get('connections', 0)} "
+                f"reconnects={stats.get('reconnects', 0)}"
+            )
+            self.update_rtk_status(status)
+        except Exception as e:
+            logger.debug(f"Error updating RTK status: {e}")

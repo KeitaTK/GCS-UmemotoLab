@@ -3,7 +3,6 @@ Real-time telemetry plotter for NAMED_VALUE_FLOAT data
 """
 import logging
 from collections import defaultdict, deque
-from datetime import datetime
 import pyqtgraph as pg
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton
 from PySide6.QtCore import Qt
@@ -19,8 +18,9 @@ class TelemetryPlotter(QWidget):
         self.max_points = max_points
         
         # Data storage: {system_id: {field_name: deque of values}}
-        self.data_history = defaultdict(lambda: defaultdict(deque))
-        self.timestamps = defaultdict(deque)
+        self.data_history = defaultdict(lambda: defaultdict(lambda: deque(maxlen=self.max_points)))
+        self.timestamps = defaultdict(lambda: defaultdict(lambda: deque(maxlen=self.max_points)))
+        self.curves = {}
         
         # UI Setup
         layout = QVBoxLayout()
@@ -49,6 +49,7 @@ class TelemetryPlotter(QWidget):
         self.plot_widget.setTitle('Named Value Float - Real-Time Plot')
         self.plot_widget.setBackground('w')
         self.plot_widget.showGrid(True, True)
+        self.plot_widget.addLegend()
         layout.addWidget(self.plot_widget)
         
         self.setLayout(layout)
@@ -63,29 +64,19 @@ class TelemetryPlotter(QWidget):
     def update_data(self, telemetry_store):
         """Update plotter with latest data from telemetry store"""
         self.telemetry_store = telemetry_store
+        self.data_history.clear()
+        self.timestamps.clear()
         
-        # Collect all NAMED_VALUE_FLOAT data
         all_data = telemetry_store.get_all()
-        
         for sysid, messages in all_data.items():
-            nvf = messages.get('NAMED_VALUE_FLOAT')
-            if nvf:
+            history = messages.get('NAMED_VALUE_FLOAT_HISTORY', {})
+            for field_name, entries in history.items():
                 try:
-                    # Extract field name and value
-                    field_name = getattr(nvf, 'name', 'unknown')
-                    value = getattr(nvf, 'value', 0.0)
-                    timestamp = getattr(nvf, 'time_usec', 0) / 1e6
-                    
-                    # Store data
-                    self.data_history[sysid][field_name].append(value)
-                    if len(self.data_history[sysid][field_name]) > self.max_points:
-                        self.data_history[sysid][field_name].popleft()
-                    
-                    self.timestamps[sysid].append(timestamp)
-                    if len(self.timestamps[sysid]) > self.max_points:
-                        self.timestamps[sysid].popleft()
+                    for entry in entries[-self.max_points:]:
+                        self.data_history[sysid][field_name].append(entry.get('value', 0.0))
+                        self.timestamps[sysid][field_name].append(entry.get('timestamp', 0.0) / 1e6)
                 except Exception as e:
-                    logger.debug(f"Error extracting NAMED_VALUE_FLOAT: {e}")
+                    logger.debug(f"Error extracting NAMED_VALUE_FLOAT history: {e}")
         
         # Update combo boxes
         self._update_combo_boxes()
@@ -112,9 +103,9 @@ class TelemetryPlotter(QWidget):
         # Get available fields for selected drone
         if drones and current_drone in drones:
             sysid = int(current_drone)
-            fields = sorted(self.data_history[sysid].keys())
+            fields = ['All Fields'] + sorted(self.data_history[sysid].keys())
         else:
-            fields = []
+            fields = ['All Fields'] if drones else []
         
         # Update field combo
         self.field_combo.blockSignals(True)
@@ -141,20 +132,28 @@ class TelemetryPlotter(QWidget):
             field_name = self.field_combo.currentText()
             
             if not drone_str or not field_name:
-                self.curve.setData([])
+                self.plot_widget.clear()
                 return
             
             sysid = int(drone_str)
-            values = list(self.data_history[sysid][field_name])
-            
-            if len(values) > 0:
-                # Generate x-axis as time indices
-                x_data = list(range(len(values)))
-                self.curve.setData(x_data, values, pen='b')
-                
-                self.plot_widget.setTitle(f'Drone {sysid} - {field_name}')
+            self.plot_widget.clear()
+            self.plot_widget.addLegend()
+
+            if field_name == 'All Fields':
+                fields = sorted(self.data_history[sysid].keys())
             else:
-                self.curve.setData([])
+                fields = [field_name]
+
+            colors = ['b', 'r', 'g', 'c', 'm', 'y', 'w']
+            for index, field in enumerate(fields):
+                values = list(self.data_history[sysid][field])
+                if not values:
+                    continue
+                x_data = list(range(len(values)))
+                pen = pg.mkPen(colors[index % len(colors)], width=2)
+                self.plot_widget.plot(x_data, values, pen=pen, name=field)
+
+            self.plot_widget.setTitle(f'Drone {sysid} - {field_name}')
         except Exception as e:
             logger.error(f"Error updating plot: {e}")
     

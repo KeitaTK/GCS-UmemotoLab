@@ -29,28 +29,63 @@ class CommandDispatcher:
         self._ack_callbacks = []  # [(callback, system_id), ...]
         self._timeout_callbacks = []  # [(callback, system_id), ...]
 
+    def _get_target_system_ids(self, system_id):
+        if system_id is None:
+            if getattr(self.connection, 'connection_type', 'udp') == 'serial':
+                return [1]
+            drones = getattr(self.connection, 'drones', {}) or {}
+            return sorted({int(info.get('system_id')) for info in drones.values() if info.get('system_id') is not None})
+        if isinstance(system_id, (list, tuple, set)):
+            return [int(value) for value in system_id]
+        return [int(system_id)]
+
+    def _send_command(self, system_id: int, component_id: int, command: int, confirmation: int = 0, **params):
+        self.connection.send_command_long(system_id, component_id, command=command, confirmation=confirmation, **params)
+
+    def send_command_to_targets(self, system_ids, component_id: int, command: int, confirmation: int = 0, **params):
+        for target_system_id in self._get_target_system_ids(system_ids):
+            self._send_command(target_system_id, component_id, command, confirmation=confirmation, **params)
+
+    def arm_all(self, system_ids=None, component_id: int = 1):
+        self.send_command_to_targets(system_ids, component_id, 400, param1=1)
+
+    def disarm_all(self, system_ids=None, component_id: int = 1):
+        self.send_command_to_targets(system_ids, component_id, 400, param1=0)
+
+    def takeoff_all(self, altitude: float, system_ids=None, component_id: int = 1):
+        self.send_command_to_targets(system_ids, component_id, 22, param7=altitude)
+
+    def land_all(self, system_ids=None, component_id: int = 1, descent_rate: float = None):
+        for target_system_id in self._get_target_system_ids(system_ids):
+            self.land(target_system_id, component_id=component_id, descent_rate=descent_rate)
+
     def arm(self, system_id: int, component_id: int):
         self.logger.info(f"Sending ARM command to system_id={system_id}, component_id={component_id}")
-        self.connection.send_command_long(system_id, component_id, command=400, confirmation=0, param1=1)
-        self._track_command(system_id, command_id=400, description="ARM")
+        self._send_command(system_id, component_id, 400, param1=1)
+        self._track_command(system_id, command_id=400, description="ARM", component_id=component_id, params={'param1': 1})
         print(f"[LOG] ARM command sent: system_id={system_id}, component_id={component_id}")
 
     def disarm(self, system_id: int, component_id: int):
         self.logger.info(f"Sending DISARM command to system_id={system_id}, component_id={component_id}")
-        self.connection.send_command_long(system_id, component_id, command=400, confirmation=0, param1=0)
-        self._track_command(system_id, command_id=400, description="DISARM")
+        self._send_command(system_id, component_id, 400, param1=0)
+        self._track_command(system_id, command_id=400, description="DISARM", component_id=component_id, params={'param1': 0})
         print(f"[LOG] DISARM command sent: system_id={system_id}, component_id={component_id}")
 
     def takeoff(self, system_id: int, component_id: int, altitude: float):
         self.logger.info(f"Sending TAKEOFF command to system_id={system_id}, component_id={component_id}, altitude={altitude}")
-        self.connection.send_command_long(system_id, component_id, command=22, confirmation=0, param7=altitude)
-        self._track_command(system_id, command_id=22, description=f"TAKEOFF ({altitude}m)")
+        self._send_command(system_id, component_id, 22, param7=altitude)
+        self._track_command(system_id, command_id=22, description=f"TAKEOFF ({altitude}m)", component_id=component_id, params={'param7': altitude})
         print(f"[LOG] TAKEOFF command sent: system_id={system_id}, component_id={component_id}, altitude={altitude}")
 
-    def land(self, system_id: int, component_id: int):
+    def land(self, system_id: int, component_id: int, descent_rate: float = None):
         self.logger.info(f"Sending LAND command to system_id={system_id}, component_id={component_id}")
-        self.connection.send_command_long(system_id, component_id, command=21, confirmation=0)
-        self._track_command(system_id, command_id=21, description="LAND")
+        params = {}
+        if descent_rate is not None and descent_rate > 0:
+            self._send_command(system_id, component_id, 178, param1=2, param2=descent_rate)
+            params = {'param1': 2, 'param2': descent_rate}
+        self._send_command(system_id, component_id, 21)
+        description = "LAND" if descent_rate is None else f"LAND (descent_rate={descent_rate})"
+        self._track_command(system_id, command_id=21, description=description, component_id=component_id, params=params)
         print(f"[LOG] LAND command sent: system_id={system_id}, component_id={component_id}")
 
     def handle_response(self, response):
@@ -65,7 +100,7 @@ class CommandDispatcher:
             self.logger.error(f"Command failed: {response}")
             print(f"[LOG] Command failed: {response}")
 
-    def _track_command(self, system_id: int, command_id: int, description: str = ""):
+    def _track_command(self, system_id: int, command_id: int, description: str = "", component_id: int = 1, params: dict = None):
         """Track a command for ACK monitoring."""
         with self._pending_lock:
             # Generate a sequence number based on current pending commands
@@ -78,8 +113,8 @@ class CommandDispatcher:
                 'sent_time': time.time(),
                 'retries': 0,
                 'status': 'pending',  # pending, acked, timeout, failed
-                'component_id': 1,  # Store for retry
-                'params': {}  # Store command parameters for retry
+                'component_id': component_id,
+                'params': params or {}
             }
             self.logger.debug(f"Tracking command: system_id={system_id}, seq={seq}, cmd={command_id} ({description})")
 
@@ -200,7 +235,8 @@ class CommandDispatcher:
         
         try:
             self.logger.info(f"Retrying command: system_id={system_id}, cmd={command_id}, attempt {cmd_info['retries']}")
-            self.connection.send_command_long(system_id, component_id, command=command_id, confirmation=0, param1=1)
+            retry_params = cmd_info.get('params', {})
+            self._send_command(system_id, component_id, command_id, **retry_params)
             self.logger.info(f"Command resent: {cmd_info['description']}")
         except Exception as e:
             self.logger.error(f"Error resending command: {e}")

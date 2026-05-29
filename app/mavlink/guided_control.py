@@ -11,6 +11,11 @@ class GuidedControl:
         self.connection.send_set_position_target_local_ned(system_id, component_id, x, y, z, vx, vy, vz, yaw)
         print(f"[LOG] SET_POSITION_TARGET_LOCAL_NED sent: system_id={system_id}, component_id={component_id}, pos=({x},{y},{z}), vel=({vx},{vy},{vz}), yaw={yaw}")
 
+    def set_velocity_target_local_ned(self, system_id: int, component_id: int, vx: float, vy: float, vz: float, yaw=0):
+        self.logger.info(f"Sending velocity target to system_id={system_id}, component_id={component_id}, vx={vx}, vy={vy}, vz={vz}, yaw={yaw}")
+        self.connection.send_set_position_target_local_ned(system_id, component_id, 0, 0, 0, vx, vy, vz, yaw=yaw, type_mask=0b0000110111000111)
+        print(f"[LOG] Velocity target sent: system_id={system_id}, component_id={component_id}, vel=({vx},{vy},{vz}), yaw={yaw}")
+
     def handle_response(self, response):
         self.logger.info(f"GuidedControl response: {response}")
         if response is None:

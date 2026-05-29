@@ -20,10 +20,14 @@ class RtcmReader:
         self.thread = None
         self.running = False
         self.callbacks = []
+        self.reconnect_delay = 1.0
+        self.max_reconnect_delay = 5.0
         self.stats = {
             'messages_received': 0,
             'bytes_received': 0,
-            'last_message_time': None
+            'last_message_time': None,
+            'connections': 0,
+            'reconnects': 0
         }
 
     def start(self):
@@ -54,60 +58,59 @@ class RtcmReader:
 
     def _read_loop(self):
         """RTCMストリーム受信ループ"""
+        buffer = bytearray()
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.settimeout(5)
-            self.sock.connect((self.host, self.port))
-            logger.info(f"Connected to RTCM source: {self.host}:{self.port}")
-            
-            # Ntripの場合、GGA文（位置情報）を初期送信
-            if self.rtk_mode == 'ntrip':
-                self._send_ntrip_gga()
-            
-            buffer = bytearray()
             while self.running:
                 try:
+                    if self.sock is None:
+                        self._connect_socket()
+                        self.stats['connections'] += 1
+                        self.reconnect_delay = 1.0
+                        logger.info(f"Connected to RTCM source: {self.host}:{self.port}")
+
+                        # Ntripの場合、GGA文（位置情報）を初期送信
+                        if self.rtk_mode == 'ntrip':
+                            self._send_ntrip_gga()
+
                     data = self.sock.recv(4096)
                     if not data:
-                        logger.warning("RTCM connection closed by server")
-                        break
-                    
+                        raise ConnectionError("RTCM connection closed by server")
+
                     buffer.extend(data)
                     self.stats['bytes_received'] += len(data)
-                    
+
                     # RTCMメッセージを解析
                     while len(buffer) >= 3:
                         # RTCM v3フレームは0xD3で開始
                         if buffer[0] != 0xd3:
                             buffer.pop(0)
                             continue
-                        
+
                         if len(buffer) < 6:
                             break
-                        
+
                         # フレーム長を抽出（10ビット）
-                        reserved = buffer[1] >> 6
                         frame_len = ((buffer[1] & 0x3f) << 8) | buffer[2]
-                        
+
                         # フレーム全体が揃っているか確認
                         total_len = 6 + frame_len  # ヘッダ(3) + 予約(1) + 長さ(2) + ペイロード + CRC(3)
                         if len(buffer) < total_len:
                             break
-                        
+
                         frame = bytes(buffer[:total_len])
                         buffer = buffer[total_len:]
-                        
+
                         # CRC検証（簡易版）
                         if self._validate_rtcm_frame(frame):
                             msg_type = self._parse_rtcm_message_type(frame)
                             self.stats['messages_received'] += 1
-                            
+
                             # タイムスタンプ更新
                             import time
                             self.stats['last_message_time'] = time.time()
-                            
+
                             logger.debug(f"RTCM message type {msg_type} received ({len(frame)} bytes)")
-                            
+
                             # コールバック実行
                             for cb in self.callbacks:
                                 try:
@@ -116,23 +119,52 @@ class RtcmReader:
                                     logger.error(f"Callback error: {e}")
                         else:
                             logger.warning("RTCM frame CRC validation failed")
-                
+
                 except socket.timeout:
                     logger.warning("RTCM socket timeout")
                     continue
+                except (ConnectionError, ConnectionResetError, BrokenPipeError, OSError) as e:
+                    logger.warning(f"RTCM stream disconnected: {e}")
+                    self.stats['reconnects'] += 1
+                    self._close_socket()
+                    buffer.clear()
+                    if not self.running:
+                        break
+                    threading.Event().wait(self.reconnect_delay)
+                    self.reconnect_delay = min(self.reconnect_delay * 1.5, self.max_reconnect_delay)
+                    continue
                 except Exception as e:
                     logger.error(f"Read error: {e}")
-                    break
+                    self.stats['reconnects'] += 1
+                    self._close_socket()
+                    buffer.clear()
+                    if not self.running:
+                        break
+                    threading.Event().wait(self.reconnect_delay)
+                    self.reconnect_delay = min(self.reconnect_delay * 1.5, self.max_reconnect_delay)
+                    continue
         
         except Exception as e:
             logger.error(f"RTCM Reader error: {e}")
         finally:
-            if self.sock:
-                try:
-                    self.sock.close()
-                except:
-                    pass
+            self._close_socket()
             logger.info("RTCM Reader loop ended")
+
+    def _connect_socket(self):
+        """Create and connect a new TCP socket."""
+        self._close_socket()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(5)
+        self.sock.connect((self.host, self.port))
+
+    def _close_socket(self):
+        """Close the active socket if one exists."""
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+            self.sock = None
     
     def _validate_rtcm_frame(self, frame):
         """RTCMフレームのCRCを検証（簡易版）"""

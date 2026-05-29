@@ -6,6 +6,7 @@ import yaml
 import serial
 import os
 import time
+import struct
 
 class MavlinkConnection:
     """
@@ -57,6 +58,7 @@ class MavlinkConnection:
         self.running = False
         self.recv_thread = None
         self.recv_callback = None
+        self._tx_seq = 0
 
     def _load_config(self, path):
         with open(path, 'r') as f:
@@ -256,3 +258,83 @@ class MavlinkConnection:
         Alias for send() for clarity.
         """
         self.send(system_id, data)
+
+    def _next_seq(self):
+        seq = self._tx_seq & 0xFF
+        self._tx_seq = (self._tx_seq + 1) & 0xFF
+        return seq
+
+    def _crc16(self, data):
+        """CRC-16 CCITT calculation used by the existing command sender."""
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= byte << 8
+            for _ in range(8):
+                crc <<= 1
+                if crc & 0x10000:
+                    crc ^= 0x1021
+            crc &= 0xFFFF
+        return crc
+
+    def _build_mavlink_v2_frame(self, msgid: int, payload: bytes) -> bytes:
+        frame = bytearray()
+        frame.append(0xFD)
+        frame.append(len(payload))
+        frame.append(0x00)
+        frame.append(0x00)
+        frame.append(self._next_seq())
+        frame.append(255)
+        frame.append(0)
+        frame.append(msgid & 0xFF)
+        frame.append((msgid >> 8) & 0xFF)
+        frame.append((msgid >> 16) & 0xFF)
+        frame.extend(payload)
+        crc = self._crc16(frame[1:])
+        frame.append(crc & 0xFF)
+        frame.append((crc >> 8) & 0xFF)
+        return bytes(frame)
+
+    def _send_encoded_frame(self, system_id, frame: bytes):
+        self.send(system_id, frame)
+
+    def send_command_long(self, system_id, component_id, command, confirmation=0, **params):
+        """Send COMMAND_LONG as a MAVLink v2 frame."""
+        param_values = [float(params.get(f'param{i}', 0.0)) for i in range(1, 8)]
+        payload = struct.pack('<fffffff', *param_values)
+        payload += struct.pack('<HBBB', int(command), int(system_id), int(component_id), int(confirmation))
+        frame = self._build_mavlink_v2_frame(76, payload)
+        self._send_encoded_frame(system_id, frame)
+        self.logger.debug(
+            f"COMMAND_LONG sent: system_id={system_id}, component_id={component_id}, command={command}, params={param_values}, confirmation={confirmation}"
+        )
+
+    def send_set_position_target_local_ned(self, system_id, component_id, x, y, z, vx=0, vy=0, vz=0, yaw=0, yaw_rate=0, coordinate_frame=1, type_mask=None):
+        """Send SET_POSITION_TARGET_LOCAL_NED as a MAVLink v2 frame."""
+        if type_mask is None:
+            # Use position targets by default and ignore velocity/acceleration/yaw-rate fields.
+            type_mask = 0b0000111111000111
+
+        payload = struct.pack(
+            '<IBBBHfffffffffff',
+            int(time.time() * 1000) & 0xFFFFFFFF,
+            int(system_id),
+            int(component_id),
+            int(coordinate_frame),
+            int(type_mask),
+            float(x), float(y), float(z),
+            float(vx), float(vy), float(vz),
+            0.0, 0.0, 0.0,
+            float(yaw),
+            float(yaw_rate),
+        )
+        frame = self._build_mavlink_v2_frame(84, payload)
+        self._send_encoded_frame(system_id, frame)
+        self.logger.debug(
+            f"SET_POSITION_TARGET_LOCAL_NED sent: system_id={system_id}, component_id={component_id}, pos=({x},{y},{z}), vel=({vx},{vy},{vz}), yaw={yaw}, yaw_rate={yaw_rate}"
+        )
+
+    def send_to_systems(self, system_ids, frame_builder):
+        """Send a built frame to multiple systems."""
+        for system_id in system_ids:
+            frame = frame_builder(system_id)
+            self._send_encoded_frame(system_id, frame)
