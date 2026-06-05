@@ -1,14 +1,19 @@
 # main.py
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from logging_config import setup_logging
 import logging
 
-from config_loader import resolve_config_path
+from rtk_tools.config_loader import resolve_config_path
 
 from mavlink.connection import MavlinkConnection
 from mavlink.message_router import MessageRouter
-from mavlink.telemetry_store import TelemetryStore
-from mavlink.rtcm_reader import RtcmReader
-from mavlink.rtcm_injector import RtcmInjector
+from rtk_tools.telemetry_store import TelemetryStore
+from rtk_tools.rtcm_reader import RtcmReader
+from rtk_tools.rtcm_injector import RtcmInjector
 import threading
 import time
 import sys
@@ -27,8 +32,8 @@ if __name__ == "__main__":
     mav_conn = MavlinkConnection(config_path)
     
     # --- コマンド制御の初期化（MessageRouter前に行う） ---
-    from mavlink.command_dispatcher import CommandDispatcher
-    from mavlink.guided_control import GuidedControl
+    from rtk_tools.command_dispatcher import CommandDispatcher
+    from rtk_tools.guided_control import GuidedControl
 
     dispatcher = CommandDispatcher(mav_conn)
     dispatcher.guided = GuidedControl(mav_conn)

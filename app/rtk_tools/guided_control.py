@@ -1,5 +1,5 @@
 import logging
-from .connection import MavlinkConnection
+from mavlink.connection import MavlinkConnection
 
 class GuidedControl:
     def __init__(self, connection: MavlinkConnection):

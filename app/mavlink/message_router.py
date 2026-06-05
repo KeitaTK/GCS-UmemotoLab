@@ -2,7 +2,7 @@
 import threading
 import logging
 from pymavlink import mavutil
-from .telemetry_store import TelemetryStore
+from rtk_tools.telemetry_store import TelemetryStore
 
 class MessageRouter:
     def __init__(self, mavlink_conn, telemetry_store, command_dispatcher=None):

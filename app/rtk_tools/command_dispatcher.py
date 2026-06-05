@@ -1,7 +1,7 @@
 import logging
 import time
 import threading
-from .connection import MavlinkConnection
+from mavlink.connection import MavlinkConnection
 
 class CommandDispatcher:
     """
