@@ -19,7 +19,7 @@ LOGGING_CONFIG = {
     },
     'handlers': {
         'console': {
-            'level': 'INFO',  # 実機運用時のコンソールはINFOにしてノイズを減らす（必要に応じDEBUG）
+            'level': 'DEBUG',  # デバッグモード：すべてのログを表示
             'class': 'logging.StreamHandler',
             'formatter': 'standard',
         },

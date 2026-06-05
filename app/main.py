@@ -37,6 +37,34 @@ if __name__ == "__main__":
     router = MessageRouter(mav_conn, telemetry_store, command_dispatcher=dispatcher)
     router.start()
 
+# UI起動前に、バックグラウンドスレッドで数秒後に送信する
+    def request_streams():
+        import time
+        
+        logger.info("Pixhawk接続安定化のため待機中...")
+        time.sleep(2.0)
+        
+        try:
+            logger.info("Pixhawkにデータストリームを要求します")
+            # pymavlinkの純正エンコーダーを使用して msgid=66 を生成
+            msg = mav_conn.mav.request_data_stream_encode(
+                1,  # target_system (Pixhawk本体)
+                0,  # target_component (0にすると「全機能」宛てのブロードキャストになり確実です)
+                0,  # req_stream_id (0: 全データ)
+                5,  # req_message_rate (5Hz)
+                1   # start_stop (1: 送信開始)
+            )
+            
+            # メッセージをバイナリ（バイト列）に変換して送信
+            frame = msg.pack(mav_conn.mav)
+            mav_conn.send(1, frame)
+            
+            logger.info("データストリーム要求を送信しました！")
+        except Exception as e:
+            logger.error(f"データストリーム要求の送信に失敗しました: {e}")
+
+    threading.Thread(target=request_streams, daemon=True).start()
+
     # RTCMインジェクション設定
     rtcm_enabled = mav_conn.config.get('rtcm_enabled', True)
     rtcm_host = mav_conn.config.get('rtcm_host', '127.0.0.1')

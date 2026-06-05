@@ -3,15 +3,31 @@ from PySide6.QtWidgets import (
     QListWidget, QPushButton, QMessageBox, QGroupBox, QGridLayout,
     QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView
 )
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal, QObject
 import logging
 import time
 
 logger = logging.getLogger(__name__)
 
+# Thread-safe signal emitter for GUI updates
+class GuiSignals(QObject):
+    """Signals for thread-safe GUI updates"""
+    show_warning = Signal(str, str)  # title, message
+    show_error = Signal(str, str)    # title, message
+    update_connection_status = Signal()
+    update_command_status = Signal()
+
 class MainWindow(QMainWindow):
     def __init__(self, telemetry_store, dispatcher=None, connection=None, rtcm_reader=None):
         super().__init__()
+        
+        # Initialize GUI signals for thread-safe updates
+        self.gui_signals = GuiSignals()
+        self.gui_signals.show_warning.connect(self._show_warning_dialog)
+        self.gui_signals.show_error.connect(self._show_error_dialog)
+        self.gui_signals.update_connection_status.connect(self._update_connection_status_display)
+        self.gui_signals.update_command_status.connect(self._update_command_status_display)
+        
         self.telemetry_store = telemetry_store
         self.dispatcher = dispatcher
         self.connection = connection  # MavlinkConnection instance
@@ -259,16 +275,20 @@ class MainWindow(QMainWindow):
 
     def _create_raw_data_tab(self):
         """Create the Raw Data tab"""
+        # QTextEdit をこのメソッド内でインポート（ファイル上部のインポートエラーを防ぐため）
+        from PySide6.QtWidgets import QTextEdit, QVBoxLayout, QLabel, QWidget
+        
         layout = QVBoxLayout()
         
         self.raw_data_label = QLabel("Raw MAVLink Data (JSON-like format)")
         layout.addWidget(self.raw_data_label)
         
-        self.raw_data_text = QLabel("")
-        self.raw_data_text.setWordWrap(True)
-        scroll = QScrollArea()
-        scroll.setWidget(self.raw_data_text)
-        layout.addWidget(scroll)
+        # QLabel と QScrollArea の組み合わせをやめ、QTextEdit に変更
+        self.raw_data_text = QTextEdit()
+        self.raw_data_text.setReadOnly(True)  # 読み取り専用にする
+        self.raw_data_text.setStyleSheet("font-family: monospace;") # 等幅フォント
+        
+        layout.addWidget(self.raw_data_text)
         
         widget = QWidget()
         widget.setLayout(layout)
@@ -298,7 +318,8 @@ class MainWindow(QMainWindow):
 
     def _on_drone_selected(self):
         """Called when drone selection changes"""
-        self.update_label()
+        if hasattr(self, '_update_dashboard'):
+                self._update_dashboard()
 
     def cmd_arm(self):
         system_ids = self.get_selected_system_ids()
@@ -404,7 +425,7 @@ class MainWindow(QMainWindow):
                 'time': time.time()
             }
             logger.info(f"COMMAND_ACK: system_id={system_id}, cmd={command_id}, result={status_str}")
-            self._update_command_status_display()
+            self.gui_signals.update_command_status.emit()
         
         def on_timeout(system_id, command_id, description):
             """Called when command times out."""
@@ -413,8 +434,8 @@ class MainWindow(QMainWindow):
                 'time': time.time()
             }
             logger.warning(f"Command TIMEOUT: system_id={system_id}, {description}")
-            QMessageBox.warning(self, "Command Timeout", f"Command {description} timed out on drone {system_id}")
-            self._update_command_status_display()
+            self.gui_signals.show_warning.emit("Command Timeout", f"Command {description} timed out on drone {system_id}")
+            self.gui_signals.update_command_status.emit()
         
         self.dispatcher.register_ack_callback(on_ack)
         self.dispatcher.register_timeout_callback(on_timeout)
@@ -431,10 +452,9 @@ class MainWindow(QMainWindow):
             
             # Show warning dialog for critical errors
             if 'CRITICAL' in error_type or 'TIMEOUT' in error_type:
-                QMessageBox.warning(self, "Connection Error", 
-                    f"{error_type}\n{message}", QMessageBox.Ok)
+                self.gui_signals.show_warning.emit("Connection Error", f"{error_type}\n{message}")
             
-            self._update_connection_status_display()
+            self.gui_signals.update_connection_status.emit()
         
         self.connection.register_error_callback(on_connection_error)
 
@@ -610,6 +630,10 @@ class MainWindow(QMainWindow):
 
     def update_raw_data(self):
         """Update raw data tab"""
+        # 現在Raw Dataタブを開いていない場合は、処理をスキップして負荷を減らす
+        if self.tab_widget.currentWidget() != self.raw_data_widget:
+            return
+
         try:
             sysid = self.get_selected_system_id()
             if not sysid:
@@ -622,18 +646,50 @@ class MainWindow(QMainWindow):
                 return
             
             messages = all_data[sysid]
-            raw_text = f"System ID: {sysid}\n\n"
+            raw_text = f"=== System ID: {sysid} Latest MAVLink Data ===\n\n"
             
-            for msg_type, msg in list(messages.items())[:10]:  # Show first 10 messages
-                raw_text += f"{msg_type}: {str(msg)[:100]}...\n"
+            # すべてのメッセージ種類をループ処理
+            for msg_type, msg in sorted(messages.items()):
+                # pymavlinkのオブジェクトを辞書（dict）形式に変換
+                if hasattr(msg, 'to_dict'):
+                    msg_dict = msg.to_dict()
+                    # 不要な 'mavpackettype' キーを削除（見やすくするため）
+                    msg_dict.pop('mavpackettype', None)
+                    
+                    # 辞書の中身を見やすい文字列に整形
+                    formatted_data = "\n".join([f"  {k}: {v}" for k, v in msg_dict.items()])
+                    raw_text += f"[{msg_type}]\n{formatted_data}\n\n"
+                else:
+                    # to_dict がない場合はそのまま文字列として表示
+                    raw_text += f"[{msg_type}]\n  {str(msg)}\n\n"
             
+            # 1. 現在のスクロール位置を記憶する
+            scrollbar = self.raw_data_text.verticalScrollBar()
+            current_scroll_pos = scrollbar.value()
+            
+            # 2. テキストを更新する
             self.raw_data_text.setText(raw_text)
+            
+            # 3. スクロール位置を元に戻す
+            scrollbar.setValue(current_scroll_pos)
+            
+            # (オプション) 等幅フォントにして数値を見やすくする
+            self.raw_data_text.setStyleSheet("font-family: monospace;")
+            
         except Exception as e:
             logger.debug(f"Error updating raw data: {e}")
 
     def update_rtk_status(self, status):
         """Update RTK status indicator"""
         self.rtk_status_label.setText(f"RTK Status: {status}")
+
+    def _show_warning_dialog(self, title: str, message: str):
+        """Show warning dialog (thread-safe slot)"""
+        QMessageBox.warning(self, title, message)
+    
+    def _show_error_dialog(self, title: str, message: str):
+        """Show error dialog (thread-safe slot)"""
+        QMessageBox.critical(self, title, message)
 
     def update_rtk_status_from_reader(self):
         if not self.rtcm_reader:

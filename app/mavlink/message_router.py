@@ -1,6 +1,7 @@
 # MessageRouter: 受信ループとディスパッチ
 import threading
 import logging
+from pymavlink import mavutil
 from .telemetry_store import TelemetryStore
 
 class MessageRouter:
@@ -17,6 +18,7 @@ class MessageRouter:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         self.logger.info("MessageRouter受信ループ開始")
+        self.mav = mavutil.mavlink.MAVLink(None)
 
     def stop(self):
         self.running = False
@@ -46,24 +48,51 @@ class MessageRouter:
     def _parse_mavlink_message(self, data, addr):
         """Parse incoming MAVLink message and route to appropriate handler."""
         try:
-            from pymavlink import mavutil
+
             mav = mavutil.mavlink.MAVLink(None)
             
-            # Attempt to unpack message
-            msg = mav.parse_char_array(data)
-            if not msg:
+            # Attempt to unpack message using correct API
+            msgs = None
+            try:
+                # Try newer API first (parse_buffer for bytes)
+                msgs = self.mav.parse_buffer(data)
+            except (AttributeError, TypeError):
+                try:
+                    # Fallback to parse_char_array
+                    msgs = mav.parse_char_array(data)
+                except (AttributeError, TypeError):
+                    # Last resort: try unpacking with struct
+                    if len(data) < 8:
+                        return
+                    # Parse as raw MAVLink 1.0 frame
+                    try:
+                        msgs = mav.decode(data)
+                    except:
+                        return
+            
+            if not msgs:
                 return
             
-            # Route message based on type
-            msg_type = msg.get_type()
-            system_id = msg.get_srcSystem()
+            # Handle both single message and list of messages
+            if not isinstance(msgs, list):
+                msgs = [msgs]
             
-            # Handle COMMAND_ACK
-            if msg_type == 'COMMAND_ACK':
-                self._handle_command_ack(system_id, msg)
-            
-            # Store telemetry data
-            self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
+            for msg in msgs:
+                if not msg:
+                    continue
+                
+                # Route message based on type
+                msg_type = msg.get_type()
+                system_id = msg.get_srcSystem()
+                
+                self.logger.debug(f"Received {msg_type} from system {system_id}")
+                
+                # Handle COMMAND_ACK
+                if msg_type == 'COMMAND_ACK':
+                    self._handle_command_ack(system_id, msg)
+                
+                # Store telemetry data
+                self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
             
         except Exception as e:
             self.logger.debug(f"MAVLink parse error: {e}")

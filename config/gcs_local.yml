@@ -1,5 +1,7 @@
 # GCS Configuration - Local Development (UDP mode)
-connection_type: udp
+connection_type: serial
+serial_port: /dev/tty.usbmodem212201
+serial_baudrate: 115200
 
 # UDP settings
 udp_listen_port: 14550
@@ -9,6 +11,6 @@ drones:
     endpoint: "127.0.0.1:14550"
 
 # RTCM/RTK settings
-rtcm_enabled: true
+rtcm_enabled: false
 rtcm_host: 192.168.11.62
 rtcm_tcp_port: 2101

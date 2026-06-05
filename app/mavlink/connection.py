@@ -195,7 +195,7 @@ class MavlinkConnection:
     def _recv_loop_udp(self):
         """Receive MAVLink data from UDP port with packet loss detection"""
         timeout_count = 0
-        max_consecutive_timeouts = 10  # Detect connection loss
+        max_consecutive_timeouts = 30  # Increased threshold for local dev (was 10)
         
         while self.running:
             try:

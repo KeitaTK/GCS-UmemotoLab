@@ -362,18 +362,29 @@ gcs-system/
 │   ├── ui/
 │   │   ├── main_window.py    # メインUI
 │   │   └── panels/           # 各パネルコンポーネント
+│   │   └── telemetry_plotter.py # テレメトリープロッター
 │   ├── mavlink/
 │   │   ├── connection.py     # UDP 接続管理
 │   │   ├── router.py         # メッセージルーター
 │   │   └── commands.py       # コマンド送信
+│   │   └── command_dispatcher.py # コマンドディスパッチャー
 │   ├── rtk/
 │   │   └── injector.py       # RTK 補正配信
+│   │   └── rtcm_reader.py    # RTCMリーダー
 │   └── telemetry/
 │       └── store.py          # テレメトリーデータ
+├── rtk_tools/
+│   ├── rtk_base_station.py   # RTKベースステーションスクリプト
+│   ├── rtk_forwarder_service.py # RTK転送サービス
+│   ├── rtk_rtcp_receiver.py  # RTCM受信機1
+│   └── rtk_rtcp_receiver2.py # RTCM受信機2
 ├── tests/
 │   ├── test_connection.py    # 接続テスト
 │   ├── test_router.py        # ルーターテスト
-│   └── test_commands.py      # コマンドテスト
+│   ├── test_commands.py      # コマンドテスト
+│   ├── test_command_dispatcher.py # コマンドディスパッチャーテスト
+│   ├── test_telemetry_store.py # テレメトリーストアテスト
+│   └── test_rtk_integration.py # RTK統合テスト
 └── docs/
     ├── spec.md               # 詳細仕様
     ├── dev_guide.md          # 開発ガイド
