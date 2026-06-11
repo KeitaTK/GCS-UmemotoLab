@@ -29,9 +29,14 @@ class CommandDispatcher:
         self._ack_callbacks = []  # [(callback, system_id), ...]
         self._timeout_callbacks = []  # [(callback, system_id), ...]
 
-    def _get_target_system_ids(self, system_id):
-        # 迷わず Pixhawk 本体のIDである 1 を返します
-        return [1]
+    def _get_target_system_ids(self, system_ids):
+        # 引数で与えられた system_id リストをそのまま返す
+        # 単一のsystem_idが渡された場合はリスト化する
+        if system_ids is None:
+            return []
+        if isinstance(system_ids, (list, tuple)):
+            return list(system_ids)
+        return [system_ids]
 
     def _send_command(self, system_id: int, component_id: int, command: int, confirmation: int = 0, **params):
         self.connection.send_command_long(system_id, component_id, command=command, confirmation=confirmation, **params)
@@ -54,17 +59,20 @@ class CommandDispatcher:
             self.land(target_system_id, component_id=component_id, descent_rate=descent_rate)
 
     def arm(self, system_id: int, component_id: int):
+        self.logger.info(f"Sending ARM command to system_id={system_id}, component_id={component_id}")
         print(f"DEBUG: [Arm] Attempting Force-Arm sequence for system_id={system_id}")
-        
-        # 1. モードセット(176)を修正
-        # 引数を減らし、キーワード引数形式で渡すか、必要な分だけ渡します
-        self._send_command(system_id, component_id, 176, param1=0)
-        time.sleep(0.3)
 
-        # 2. アーム送信(400)を修正
-        self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
-        
-        print(f"[LOG] ARM command sent.")
+        # 1. モードセット(176)を即時送信（GUIDEDモードに設定）
+        self._send_command(system_id, component_id, 176, param1=0)
+
+        # 2. 0.3秒後にアーム送信(400)  — threading.TimerでUIスレッドをブロックしない
+        def _delayed_arm():
+            self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
+            self._track_command(system_id, command_id=400, description="ARM", component_id=component_id, params={'param1': 1})
+            self.logger.info(f"ARM command sent to system_id={system_id}")
+            print(f"[LOG] ARM command sent: system_id={system_id}")
+
+        threading.Timer(0.3, _delayed_arm).start()
 
     def disarm(self, system_id: int, component_id: int):
         self.logger.info(f"Sending DISARM command to system_id={system_id}, component_id={component_id}")

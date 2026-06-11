@@ -298,14 +298,24 @@ class MavlinkConnection:
         self.send(system_id, frame)
 
     def send_command_long(self, system_id, component_id, command, confirmation=0, **params):
-        """Send COMMAND_LONG as a MAVLink v2 frame."""
-        param_values = [float(params.get(f'param{i}', 0.0)) for i in range(1, 8)]
-        payload = struct.pack('<fffffff', *param_values)
-        payload += struct.pack('<HBBB', int(command), int(system_id), int(component_id), int(confirmation))
-        frame = self._build_mavlink_v2_frame(76, payload)
+        """Send COMMAND_LONG using pymavlink's standard encoder (correct CRC)."""
+        msg = self.mav.command_long_encode(
+            target_system=system_id,
+            target_component=component_id,
+            command=command,
+            confirmation=confirmation,
+            param1=float(params.get('param1', 0.0)),
+            param2=float(params.get('param2', 0.0)),
+            param3=float(params.get('param3', 0.0)),
+            param4=float(params.get('param4', 0.0)),
+            param5=float(params.get('param5', 0.0)),
+            param6=float(params.get('param6', 0.0)),
+            param7=float(params.get('param7', 0.0)),
+        )
+        frame = msg.pack(self.mav)
         self._send_encoded_frame(system_id, frame)
         self.logger.debug(
-            f"COMMAND_LONG sent: system_id={system_id}, component_id={component_id}, command={command}, params={param_values}, confirmation={confirmation}"
+            f"COMMAND_LONG sent: system_id={system_id}, component_id={component_id}, command={command}, params=[{params}], confirmation={confirmation}"
         )
 
     def send_set_position_target_local_ned(self, system_id, component_id, x, y, z, vx=0, vy=0, vz=0, yaw=0, yaw_rate=0, coordinate_frame=1, type_mask=None):
