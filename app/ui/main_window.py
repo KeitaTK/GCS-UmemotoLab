@@ -130,15 +130,21 @@ class MainWindow(QMainWindow):
         # ===== GPS Status Group =====
         gps_group = QGroupBox("GPS Status")
         gps_layout = QGridLayout()
+        self.gps_fix_label = QLabel("Fix: N/A")
         self.gps_satellites_label = QLabel("Satellites: 0")
         self.gps_coords_label = QLabel("Lat/Lon: N/A")
         self.gps_altitude_label = QLabel("Altitude: N/A")
-        gps_layout.addWidget(QLabel("Satellites:"), 0, 0)
-        gps_layout.addWidget(self.gps_satellites_label, 0, 1)
-        gps_layout.addWidget(QLabel("Position:"), 1, 0)
-        gps_layout.addWidget(self.gps_coords_label, 1, 1)
-        gps_layout.addWidget(QLabel("Altitude:"), 2, 0)
-        gps_layout.addWidget(self.gps_altitude_label, 2, 1)
+        self.gps_hdop_label = QLabel("HDOP: N/A")
+        gps_layout.addWidget(QLabel("Fix:"), 0, 0)
+        gps_layout.addWidget(self.gps_fix_label, 0, 1)
+        gps_layout.addWidget(QLabel("Satellites:"), 1, 0)
+        gps_layout.addWidget(self.gps_satellites_label, 1, 1)
+        gps_layout.addWidget(QLabel("Position:"), 2, 0)
+        gps_layout.addWidget(self.gps_coords_label, 2, 1)
+        gps_layout.addWidget(QLabel("Altitude:"), 3, 0)
+        gps_layout.addWidget(self.gps_altitude_label, 3, 1)
+        gps_layout.addWidget(QLabel("HDOP:"), 4, 0)
+        gps_layout.addWidget(self.gps_hdop_label, 4, 1)
         gps_group.setLayout(gps_layout)
         layout.addWidget(gps_group)
 
@@ -591,8 +597,37 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.debug(f"Error processing SYS_STATUS: {e}")
             
-            # Update GPS Status
-            if sys_status:
+            # Update GPS Status (from GPS_RAW_INT for fix_type & satellites)
+            gps_raw = self.telemetry_store.get_gps_raw(sysid)
+            if gps_raw:
+                try:
+                    fix_type = getattr(gps_raw, 'fix_type', -1)
+                    fix_names = {
+                        0: "NO_GPS", 1: "NO_FIX", 2: "2D_FIX", 3: "3D_FIX",
+                        4: "DGPS", 5: "RTK_FLOAT", 6: "RTK_FIXED",
+                        7: "STATIC", 8: "PPP"
+                    }
+                    fix_name = fix_names.get(fix_type, f"UNKNOWN({fix_type})")
+                    # Color-code: green for good fix, yellow for partial, red for none
+                    if fix_type >= 5:   # RTK_FLOAT or RTK_FIXED
+                        color = "green"
+                    elif fix_type >= 3:  # 3D_FIX or DGPS
+                        color = "orange"
+                    else:
+                        color = "red"
+                    self.gps_fix_label.setText(
+                        f'<span style="color:{color};font-weight:bold">{fix_name}</span>'
+                    )
+
+                    num_sats = getattr(gps_raw, 'satellites_visible', 0)
+                    self.gps_satellites_label.setText(f"{num_sats} satellites")
+
+                    hdop = getattr(gps_raw, 'eph', 0) / 100.0  # cm -> m
+                    self.gps_hdop_label.setText(f"{hdop:.2f} m")
+                except Exception as e:
+                    logger.debug(f"Error processing GPS_RAW_INT: {e}")
+            elif sys_status:
+                # Fallback: get satellite count from SYS_STATUS
                 try:
                     gps_sats = getattr(sys_status, 'gps_nsat', 0)
                     self.gps_satellites_label.setText(f"{gps_sats} satellites")

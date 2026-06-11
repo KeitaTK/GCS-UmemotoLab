@@ -85,7 +85,22 @@ class MessageRouter:
                 msg_type = msg.get_type()
                 system_id = msg.get_srcSystem()
                 
-                self.logger.debug(f"Received {msg_type} from system {system_id}")
+                # Enhanced logging for GPS_RAW_INT with fix_type
+                if msg_type == 'GPS_RAW_INT':
+                    fix_type = getattr(msg, 'fix_type', -1)
+                    fix_name = self._gps_fix_type_name(fix_type)
+                    num_sats = getattr(msg, 'satellites_visible', 0)
+                    lat = getattr(msg, 'lat', 0) / 1e7
+                    lon = getattr(msg, 'lon', 0) / 1e7
+                    alt = getattr(msg, 'alt', 0) / 1000.0
+                    hdop = getattr(msg, 'eph', 0) / 100.0  # HDOP in cm -> m
+                    self.logger.info(
+                        f"GPS_RAW from sys={system_id}: fix={fix_type}({fix_name}), "
+                        f"sats={num_sats}, lat={lat:.6f}, lon={lon:.6f}, "
+                        f"alt={alt:.2f}m, hdop={hdop:.2f}"
+                    )
+                else:
+                    self.logger.debug(f"Received {msg_type} from system {system_id}")
                 
                 # Handle COMMAND_ACK
                 if msg_type == 'COMMAND_ACK':
@@ -118,3 +133,20 @@ class MessageRouter:
             self.logger.info(f"COMMAND_ACK processed: system_id={system_id}, cmd={command_id}, result={result}")
         except Exception as e:
             self.logger.error(f"Error handling COMMAND_ACK: {e}")
+
+    @staticmethod
+    def _gps_fix_type_name(fix_type: int) -> str:
+        """Convert MAVLink GPS_FIX_TYPE to human-readable string."""
+        fix_names = {
+            0: "NO_GPS",
+            1: "NO_FIX",
+            2: "2D_FIX",
+            3: "3D_FIX",
+            4: "DGPS",
+            5: "RTK_FLOAT",
+            6: "RTK_FIXED",
+            7: "STATIC",
+            8: "PPP",
+        }
+        return fix_names.get(fix_type, f"UNKNOWN({fix_type})")
+

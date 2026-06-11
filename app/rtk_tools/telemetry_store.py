@@ -64,6 +64,13 @@ class TelemetryStore:
                 return self._data[system_id].get('SYS_STATUS')
             return None
     
+    def get_gps_raw(self, system_id):
+        """Get GPS_RAW_INT message for a drone (fix_type, satellites, hdop, etc.)"""
+        with self._lock:
+            if system_id in self._data:
+                return self._data[system_id].get('GPS_RAW_INT')
+            return None
+    
     def get_global_position(self, system_id):
         """Get GLOBAL_POSITION_INT message for a drone (GPS coordinates)"""
         with self._lock:
