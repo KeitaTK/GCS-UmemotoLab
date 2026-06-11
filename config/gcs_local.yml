@@ -1,16 +1,15 @@
-# GCS Configuration - Local Development (UDP mode)
-connection_type: serial
-serial_port: /dev/tty.usbmodem212201
-serial_baudrate: 115200
+# GCS Configuration - New Aircraft via Raspberry Pi Bridge (WiFi)
+# Pixhawk TELEM1 → Raspberry Pi (UART) → UDP WiFi → MacBook GCS
+connection_type: udp
 
-# UDP settings
+# UDP settings: connect to Raspberry Pi via WiFi
 udp_listen_port: 14550
 drones:
   drone1:
     system_id: 1
-    endpoint: "127.0.0.1:14550"
+    endpoint: "192.168.11.51:14550"
 
-# RTCM/RTK settings
+# RTCM/RTK settings (disabled for now)
 rtcm_enabled: false
 rtcm_host: 192.168.11.62
 rtcm_tcp_port: 2101
