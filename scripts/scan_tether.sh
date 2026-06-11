@@ -82,11 +82,22 @@ fi
 
 echo "[INFO] スキャン対象サブネット: ${FOUND_SUBNET}.0/24"
 echo ""
-# --- スキャン実行 ---
-echo "[SCAN] Raspberry Pi を検索中..."
-echo ""
 
 FOUND_HOSTS=()
+
+# --- mDNS チェック（最速・NAT64環境でも使える） ---
+echo "[SCAN] mDNS (raspi5.local) をチェック..."
+mdns_result=$(ssh $SSH_OPTS ${SSH_USER}@raspi5.local "echo 'OK' && hostname" 2>/dev/null || true)
+if echo "$mdns_result" | grep -q "OK"; then
+    mdns_host=$(echo "$mdns_result" | tail -1)
+    echo "  OK 発見！ ${SSH_USER}@raspi5.local (hostname: $mdns_host)"
+    FOUND_HOSTS+=("raspi5.local")
+fi
+
+# --- スキャン実行 ---
+echo "[SCAN] IPで Raspberry Pi を検索中..."
+echo ""
+
 PRIORITY_IPS=("${FOUND_SUBNET}.19" "${FOUND_SUBNET}.11" "${FOUND_SUBNET}.100" "${FOUND_SUBNET}.101" "${FOUND_SUBNET}.10")
 
 echo "[SCAN] 優先IPをチェック中..."
