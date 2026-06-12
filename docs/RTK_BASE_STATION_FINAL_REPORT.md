@@ -23,7 +23,7 @@
               (192.168.11.19:2101)
                    │
 ┌──────────────────┴──────────────────────┐
-│      Raspberry Pi 5 (taki@192.168.11.19)│
+│      Raspberry Pi 5 (taki@100.123.158.105)│
 │  ┌───────────────────────────────────┐  │
 │  │  backend_server.py 実行           │  │
 │  │  - TCP から RTCM 受信             │  │
@@ -114,7 +114,7 @@ Pixhawk6C
 ```bash
 # Raspberry Pi上
 
-ssh taki@192.168.11.19
+ssh taki@100.123.158.105
 
 cd ~/GCS-UmemotoLab
 source .venv/bin/activate
@@ -143,7 +143,7 @@ python app/backend_server.py 2>&1 | tee backend_rtk.log
 python tests/test_rtk_base_station_integration.py
 
 # Raspberry Pi テスト
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python tests/test_rtk_base_station_integration.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python tests/test_rtk_base_station_integration.py"
 ```
 
 ---
@@ -155,7 +155,7 @@ ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && pyth
 ### 実施環境
 
 - Windows PC（ローカル開発機）
-- Raspberry Pi 5（taki@192.168.11.19）
+- Raspberry Pi 5（taki@100.123.158.105）
 - SITL シミュレーション + 実機テスト
 
 ### 完了したテスト
@@ -221,7 +221,7 @@ ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && pyth
   python rtk_base_station.py --serial-port COM8 --tcp-port 2101
 
 # 2. Raspberry Pi 側起動
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
 
 # 3. u-center で監視
 #    - Receiver → ublox 接続
@@ -300,7 +300,7 @@ $ports
 ### Raspberry Pi側 backend_server が起動しない
 
 ```bash
-ssh taki@192.168.11.19
+ssh taki@100.123.158.105
 
 # ログ確認
 tail -100 ~/GCS-UmemotoLab/backend_rtk.log

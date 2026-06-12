@@ -554,7 +554,7 @@ python app/backend_server.py
 
 ```bash
 # SSH ログイン
-ssh taki@192.168.11.19
+ssh taki@100.123.158.105
 
 # リポジトリ更新
 cd ~/GCS-UmemotoLab

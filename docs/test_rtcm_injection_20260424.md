@@ -24,14 +24,14 @@
 
 ### Step 1: ダミー RTCM サーバー起動
 ```bash
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && \
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && \
   source .venv/bin/activate && \
   timeout 120 python3 app/dummy_rtcm_server.py &"
 ```
 
 ### Step 2: Backend 起動（RTCM 有効化）
 ```bash
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && \
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && \
   source .venv/bin/activate && \
   timeout 60 python3 app/backend_server.py"
 ```

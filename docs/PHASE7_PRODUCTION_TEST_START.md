@@ -135,8 +135,8 @@ bash ~/GCS-UmemotoLab/scripts/monitor_backend.sh
 
 ```bash
 # ログ収集
-scp taki@192.168.11.19:~/GCS-UmemotoLab/backend_production.log docs/phase7_backend_24h.log
-scp taki@192.168.11.19:~/GCS-UmemotoLab/monitoring.log docs/phase7_monitoring_24h.log
+scp taki@100.123.158.105:~/GCS-UmemotoLab/backend_production.log docs/phase7_backend_24h.log
+scp taki@100.123.158.105:~/GCS-UmemotoLab/monitoring.log docs/phase7_monitoring_24h.log
 
 # 中間レポート作成
 # → 進捗 87% へ更新

@@ -27,7 +27,7 @@ class TestConfig:
     """テスト設定"""
     pc_host: str = "127.0.0.1"
     pc_tcp_port: int = 2101
-    raspi_host: str = "192.168.11.19"  # Raspberry Pi IP
+    raspi_host: str = "100.123.158.105"  # Raspberry Pi IP
     raspi_backend_port: int = 14550
     test_duration_sec: int = 30
     rtcm_frame_size: int = 100

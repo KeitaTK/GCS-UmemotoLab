@@ -50,7 +50,7 @@
 
 ```bash
 # Raspberry Pi で RTCM ダミーサーバー起動
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && timeout 120 python3 app/dummy_rtcm_server.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && timeout 120 python3 app/dummy_rtcm_server.py"
 ```
 
 ---
@@ -79,7 +79,7 @@ ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && timeout 120 python3 app/dummy_rtc
 #### 4-1: 設定ファイルを RTCM 有効化で作成
 
 ```bash
-ssh taki@192.168.11.19 "cat > ~/GCS-UmemotoLab/config/gcs_local.yml << 'EOF'
+ssh taki@100.123.158.105 "cat > ~/GCS-UmemotoLab/config/gcs_local.yml << 'EOF'
 connection_type: serial
 serial_port: /dev/ttyACM0
 serial_baudrate: 115200
@@ -98,7 +98,7 @@ EOF
 #### 4-2: Backend を起動して RTCM インジェクションを監視
 
 ```bash
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && timeout 60 python3 app/backend_server.py 2>&1"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && timeout 60 python3 app/backend_server.py 2>&1"
 ```
 
 **期待する出力**:

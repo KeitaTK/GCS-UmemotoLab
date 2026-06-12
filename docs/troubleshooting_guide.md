@@ -219,7 +219,7 @@ sleep 2
 # Step 4: Start をクリック
 
 # Step 5: Raspberry Pi で設定を確認
-ssh taki@192.168.11.19 "cat ~/GCS-UmemotoLab/config/gcs_local.yml | grep rtcm"
+ssh taki@100.123.158.105 "cat ~/GCS-UmemotoLab/config/gcs_local.yml | grep rtcm"
 
 # Step 6: Backend を再起動して接続確認
 pkill -f backend_server
@@ -372,7 +372,7 @@ cat config/gcs_local.yml | grep system_id
 
 # Step 4: 接続ポートを確認
 # mavlink-router の設定を確認
-ssh taki@192.168.11.19 "ps aux | grep mavlink"
+ssh taki@100.123.158.105 "ps aux | grep mavlink"
 
 # Step 5: 各ドローンを個別に テスト
 # Drone 1 だけ接続 → 動作確認

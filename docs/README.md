@@ -25,7 +25,7 @@ Windows PC -> TCP/Wi-Fi -> Raspberry Pi 5 -> Serial/USB -> Pixhawk
 python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0.0 --tcp-port 2101 --log-level INFO
 
 # Raspberry Pi 側
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
 ```
 
 ### 2. 設定
@@ -76,7 +76,7 @@ python tests/test_rtk_base_station_integration.py
 ```
 
 ```bash
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python tests/test_phase_c_integration.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python tests/test_phase_c_integration.py"
 ```
 
 ## 運用メモ

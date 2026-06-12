@@ -32,7 +32,7 @@
 
 ```bash
 # Raspberry Pi に接続
-ssh taki@192.168.11.19
+ssh taki@100.123.158.105
 
 # Backend サーバーを起動
 cd ~/GCS-UmemotoLab
@@ -247,15 +247,15 @@ tail -f gcs.log | grep -i "command"
 
 ```bash
 # 1. 接続を切断
-ssh taki@192.168.11.19 "pkill -f backend_server"
+ssh taki@100.123.158.105 "pkill -f backend_server"
 
 # 2. Pixhawk を再起動（電源OFF → 5秒待機 → ON）
 
 # 3. Raspberry Pi を再起動
-ssh taki@192.168.11.19 "sudo reboot"
+ssh taki@100.123.158.105 "sudo reboot"
 
 # 4. 再起動後、Backend を起動
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && .venv/bin/python app/backend_server.py"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && .venv/bin/python app/backend_server.py"
 
 # 5. ハートビート受信を確認
 ```
@@ -264,23 +264,23 @@ ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && .venv/bin/python app/backend_serv
 
 ```bash
 # 1. Raspberry Pi のネットワーク接続を確認
-ssh taki@192.168.11.19 "ip addr | grep inet"
+ssh taki@100.123.158.105 "ip addr | grep inet"
 
 # 2. ルーターを再起動
 # (物理的にルーターの電源をOFF → 10秒待機 → ON)
 
 # 3. Raspberry Pi を再起動
-ssh taki@192.168.11.19 "sudo reboot"
+ssh taki@100.123.158.105 "sudo reboot"
 ```
 
 ### USB シリアルポート認識エラー
 
 ```bash
 # 1. ホットプラグ解除
-ssh taki@192.168.11.19 "sudo tee /sys/bus/usb/devices/*/remove"
+ssh taki@100.123.158.105 "sudo tee /sys/bus/usb/devices/*/remove"
 
 # 2. USB ポートをリセット
-ssh taki@192.168.11.19 "sudo usb-devices"
+ssh taki@100.123.158.105 "sudo usb-devices"
 
 # 3. Pixhawk を再接続
 ```

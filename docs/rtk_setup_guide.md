@@ -49,7 +49,7 @@ Raspberry Pi で以下を実行:
 
 ```bash
 # config/gcs_local.yml で RTCM を有効化
-ssh taki@192.168.11.19 "cat > ~/GCS-UmemotoLab/config/gcs_local.yml << 'EOF'
+ssh taki@100.123.158.105 "cat > ~/GCS-UmemotoLab/config/gcs_local.yml << 'EOF'
 connection_type: serial
 serial_port: /dev/ttyACM0
 serial_baudrate: 115200
@@ -65,7 +65,7 @@ EOF
 "
 
 # backend_server を起動
-ssh taki@192.168.11.19 "cd ~/GCS-UmemotoLab && timeout 60 .venv/bin/python app/backend_server.py 2>&1 | grep -E 'RTCM|heartbeat|Active drones'"
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && timeout 60 .venv/bin/python app/backend_server.py 2>&1 | grep -E 'RTCM|heartbeat|Active drones'"
 ```
 
 ### Step 5: RTCM インジェクション確認
