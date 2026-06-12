@@ -209,8 +209,6 @@ class MainWindow(QMainWindow):
         self.btn_land = QPushButton("Land")
         self.btn_guided_position = QPushButton("Send Guided Position")
         self.btn_guided_velocity = QPushButton("Send Guided Velocity")
-        self.btn_arm_all = QPushButton("Arm Selected")
-        self.btn_disarm_all = QPushButton("Disarm Selected")
 
         flight_layout.addWidget(QLabel("Takeoff Altitude:"), 0, 0)
         flight_layout.addWidget(self.takeoff_altitude_spin, 0, 1)
@@ -237,8 +235,6 @@ class MainWindow(QMainWindow):
 
         flight_layout.addWidget(self.btn_guided_position, 5, 0, 1, 2)
         flight_layout.addWidget(self.btn_guided_velocity, 6, 0, 1, 2)
-        flight_layout.addWidget(self.btn_arm_all, 6, 2)
-        flight_layout.addWidget(self.btn_disarm_all, 6, 3)
 
         flight_group.setLayout(flight_layout)
         layout.addWidget(flight_group)
@@ -267,8 +263,6 @@ class MainWindow(QMainWindow):
         self.btn_land.clicked.connect(self.cmd_land)
         self.btn_guided_position.clicked.connect(self.cmd_guided_position)
         self.btn_guided_velocity.clicked.connect(self.cmd_guided_velocity)
-        self.btn_arm_all.clicked.connect(self.cmd_arm)
-        self.btn_disarm_all.clicked.connect(self.cmd_disarm)
         self.btn_select_all.clicked.connect(self.select_all_drones)
         self.btn_clear_selection.clicked.connect(self.clear_drone_selection)
 
