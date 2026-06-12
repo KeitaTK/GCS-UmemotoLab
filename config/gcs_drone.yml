@@ -1,26 +1,21 @@
-# GCS Configuration - Real Drone (Serial/USB Connection)
-# Pixhawk、ArduPilotなどの実機ドローン用設定
+# GCS Configuration — Raspi Direct (GCSをRaspi上で実行する場合)
+# Raspi上のmavlink-routerがttyAMA0→UDP:14550にブリッジしている前提
+#
+# 使い方 (Raspi上で):
+#   cd GCS-UmemotoLab
+#   source .venv/bin/activate
+#   export GCS_CONFIG_PATH=config/gcs_raspi_direct.yml
+#   python app/main.py
 
-# 接続方式: serial (Serial/USB接続の場合)
-#          udp (テレメトリ/WiFi接続の場合)
-connection_type: serial
+connection_type: udp
+udp_listen_port: 14551  # 14550はmavlink-routerが使用中なので別ポート
 
-# === Serial/USB 設定 ===
-# Pixhawk をUSB接続した場合の設定
-serial_port: /dev/tty.usbmodem212201    # 検出されたシリアルポート
-serial_baudrate: 115200                 # 標準: 115200 (ArduPilot)
-
-# === UDP 設定（テレメトリ/WiFi用）===
-udp_listen_port: 14550
-
-# === ドローン設定 ===
 drones:
   drone1:
-    system_id: 1                         # ArduPilot デフォルト: 1
-    endpoint: "127.0.0.1:14550"
+    system_id: 1
+    endpoint: "127.0.0.1:14550"  # mavlink-routerのUDPサーバー
+    name: "Pixhawk6C Main"
 
-# === RTCM/RTK 設定 ===
-# 実機飛行で RTK が必要ない場合は false に設定
 rtcm_enabled: false
-rtcm_host: 192.168.11.62
+rtcm_host: 127.0.0.1
 rtcm_tcp_port: 2101

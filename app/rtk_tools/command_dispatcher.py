@@ -58,6 +58,56 @@ class CommandDispatcher:
         for target_system_id in self._get_target_system_ids(system_ids):
             self.land(target_system_id, component_id=component_id, descent_rate=descent_rate)
 
+    def _set_param(self, system_id: int, component_id: int, param_id: str, value: float):
+        """Send PARAM_SET to configure a Pixhawk parameter via MAVLink."""
+        param_type = 9  # MAV_PARAM_TYPE_REAL32
+        msg = self.connection.mav.param_set_encode(
+            target_system=system_id,
+            target_component=component_id,
+            param_id=param_id.encode('utf-8'),
+            param_value=float(value),
+            param_type=param_type
+        )
+        frame = msg.pack(self.connection.mav)
+        self.connection.send(system_id, frame)
+        self.logger.info(f"PARAM_SET sent: {param_id}={value} to sysid={system_id}")
+
+    def force_arm(self, system_id: int, component_id: int):
+        """Arm the drone with pre-arm checks disabled (ARMING_CHECK=0, FS_THR_ENABLE=0, AHRS_EKF_TYPE=0).
+        
+        Use this when the drone rejects standard arm due to:
+          - RC not found (no radio connected)
+          - GPS not fixed (indoor testing)
+          - EKF attitude not initialized
+        
+        The disabling params are set first, then standard arm sequence runs.
+        """
+        self.logger.info(f"Force ARM: disabling pre-arm checks for sysid={system_id}")
+        print(f"[ForceArm] Disabling checks: ARMING_CHECK=0, FS_THR_ENABLE=0, AHRS_EKF_TYPE=0")
+
+        for param_id, val in [
+            ("ARMING_CHECK", 0.0),
+            ("FS_THR_ENABLE", 0.0),
+            ("AHRS_EKF_TYPE", 0.0),
+        ]:
+            self._set_param(system_id, component_id, param_id, val)
+
+        # Wait for params to take effect, then call normal arm
+        def _force_delayed_arm():
+            self.arm(system_id, component_id)
+
+        threading.Timer(0.5, _force_delayed_arm).start()
+
+    def restore_arm_params(self, system_id: int, component_id: int):
+        """Restore safe defaults for params that force_arm() disables."""
+        self.logger.info(f"Restoring arm params for sysid={system_id}")
+        for param_id, val in [
+            ("ARMING_CHECK", 1.0),
+            ("FS_THR_ENABLE", 1.0),
+            ("AHRS_EKF_TYPE", 3.0),
+        ]:
+            self._set_param(system_id, component_id, param_id, val)
+
     def arm(self, system_id: int, component_id: int):
         self.logger.info(f"Sending ARM command to system_id={system_id}, component_id={component_id}")
         print(f"DEBUG: [Arm] Attempting Force-Arm sequence for system_id={system_id}")
