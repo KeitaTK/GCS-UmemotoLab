@@ -1,440 +1,328 @@
-# ArduPilot用カスタムGCS（地上管制局）
+# GCS UmemotoLab — ArduPilot 地上管制局
 
-Windows上で複数のArduPilotドローンを制御・監視するマルチドローン対応の地上管制局システムです。
+macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
+マルチドローン対応の地上管制局（GCS）システム**です。
 
 ## 概要
 
-- **通信方式**: MAVLink v2 over UDP/Wi-Fi
-- **ハードウェア**: Windows PC + Raspberry Pi 5（通信ブリッジ）
-- **言語**: Python 3.10+
-- **UI**: PySide6（Qt）
-- **特徴**: カスタムMAVLinkメッセージ、RTKインジェクション、マルチドローン対応
+| 項目 | 内容 |
+|------|------|
+| **通信方式** | MAVLink v2 over UDP/Serial |
+| **ハードウェア** | PC + Raspberry Pi 5（通信ブリッジ）+ Pixhawk |
+| **言語** | Python 3.10+ |
+| **UI** | PySide6 (Qt 6) |
+| **特徴** | マルチドローン、RTK補正、プリチェック無効Arm |
 
 ### 主な機能
 
 | 機能 | 説明 |
 |------|------|
-| **テレメトリー受信** | HEARTBEAT、SYS_STATUS、位置情報、カスタムメッセージ |
-| **機体制御** | アーム/ディスアーム、離陸/着陸、ガイド制御（Guided mode） |
-| **RTK補正** | u-center経由のRTCM配信により、地上局からドローンへのRTK Fixを実現 |
-| **マルチドローン** | System IDによる複数ドローンの識別・制御 |
+| **テレメトリ受信** | HEARTBEAT, SYS_STATUS, GPS, バッテリー |
+| **機体制御** | アーム/ディスアーム、離陸/着陸、Guided制御 |
+| **強制アーム** | ARMING_CHECK 等を無効化してアーム（屋内テスト用） |
+| **RTK補正** | RTCMストリームの受信とドローンへの配信 |
+| **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
+
+---
 
 ## システムアーキテクチャ
 
 ```
-┌─────────────────────┐
-│  Windows PC (GCS)   │
-│  ┌───────────────┐  │
-│  │  Python App   │  │
-│  │  (PySide6)    │  │
-│  │  pymavlink    │  │
-│  └───────────────┘  │
-└──────────┬──────────┘
-           │ UDP/TCP
-      Wi-Fi Network
-           │
-┌──────────┴──────────┐
-│  Raspberry Pi 5     │
-│  mavlink-router     │
-│  (通信ブリッジ)      │
-└──────────┬──────────┘
-           │ Serial
-    ┌──────┴──────┐
-    │   ArduPilot │
-    │   (Pixhawk) │
-    └─────────────┘
+┌──────────────────────────┐
+│        PC/Mac (GCS)      │
+│  ┌────────────────────┐  │
+│  │  Python App        │  │
+│  │  (PySide6 + MAVLink)│  │
+│  └─────────┬──────────┘  │
+└────────────┼─────────────┘
+             │ SSH Tunnel / Tailscale
+      (UDP/TCP MAVLink)
+             │
+┌────────────┼─────────────┐
+│  Raspberry Pi 5          │
+│  ┌────────────────────┐  │
+│  │  mavlink-router    │  │
+│  │  ttyAMA0→UDP:14550 │  │
+│  └─────────┬──────────┘  │
+└────────────┼─────────────┘
+             │ UART (GPIO 14/15)
+             │ Baud: 115200
+┌────────────┼─────────────┐
+│    Pixhawk (ArduPilot)   │
+│    TELEM1 接続           │
+│    System ID: 1          │
+└──────────────────────────┘
 ```
+
+### Raspi 配線
+
+| Pixhawk TELEM1 | Raspi GPIO | 物理Pin |
+|----------------|------------|---------|
+| TX → | GPIO 15 (RX) | Pin 10 |
+| RX → | GPIO 14 (TX) | Pin 8 |
+| RTS → | GPIO 17 | Pin 11 |
+| CTS → | GPIO 16 | Pin 36 |
+| GND → | GND | Pin 6 |
+
+---
 
 ## セットアップ
 
 ### 前提条件
 
 - Python 3.10 以上
-- Windows 10/11 / macOS / Linux
-- Raspberry Pi 5 + mavlink-router（実機ドローン側の場合）
-- u-center（オプション、RTK使用時）
+- macOS / Windows / Linux
+- [Raspberry Pi 5 + mavlink-router](#raspberry-pi-5-の設定)（実機ドローン側）
+- Tailscale（推奨、リモート接続用）
 
 ### インストール
 
 ```bash
-# リポジトリのクローン
 git clone https://github.com/KeitaTK/GCS-UmemotoLab.git
 cd GCS-UmemotoLab
 
-# 仮想環境の作成
 python -m venv .venv
-source .venv/bin/activate  # Windows PowerShell の場合は `.venv\Scripts\Activate.ps1`
-
-# 依存パッケージのインストール
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Windows PowerShell では以下の手順で起動できます。
+### クイック起動
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-$env:PYTHONPATH = (Resolve-Path .\app).Path
-python .\app\main.py
+```bash
+export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+python app/main.py
 ```
 
-設定ファイルは次の優先順で自動選択されます。
-
-1. 環境変数 `GCS_CONFIG_PATH` で指定したファイル
-2. `config/gcs.user.local.yml`（Git 管理外のローカル専用設定）
+設定ファイルの自動選択順序:
+1. `$GCS_CONFIG_PATH` 環境変数
+2. `config/gcs.user.local.yml`（Git管理外）
 3. `config/gcs_local.yml`
 4. `config/gcs.yml`
 
-ローカル専用の Copilot 設定は `.github/skills/local-environment/SKILL.md` に置き、このファイルと `config/gcs.user.local.yml` は Git 管理外です。
+---
 
-### アプリケーションの起動
+## Raspberry Pi 5 の設定
 
-起動前に `PYTHONPATH` を設定し、`app/main.py` を実行します。
-
-```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python app/main.py
-```
-
-PowerShell では以下です。
-
-```powershell
-$env:PYTHONPATH = (Resolve-Path .\app).Path
-python .\app\main.py
-```
-
-### ローカルテスト（SITLシミュレーター）
-
-実機がない環境でも、ダミーのドローンを起動して動作をテストできます。
+### 1. mavlink-router のインストール
 
 ```bash
-# GCSを起動（1つ目のターミナル）
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python app/main.py
-
-# ダミードローン（SITL）を起動（2つ目のターミナル）
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python app/dummy_sitl.py 1  # 1はシステムID
+sudo apt install mavlink-router
 ```
 
-### 自動テストの実行
+### 2. 設定ファイル: `/etc/mavlink-router/main.conf`
+
+```ini
+[General]
+ReportStats=false
+MavlinkVersion=2.0
+
+[UartEndpoint pixhawk]
+Device = /dev/ttyAMA0
+Baud = 115200
+
+[UdpEndpoint gcs]
+Address = 0.0.0.0
+Port = 14550
+Mode = Server
+```
+
+### 3. サービスの有効化
 
 ```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-pytest tests/
+sudo systemctl enable mavlink-router
+sudo systemctl start mavlink-router
+sudo systemctl status mavlink-router  # 確認
 ```
 
-### APIドキュメントの生成と閲覧
+### 4. UART有効化（`/boot/firmware/config.txt`）
 
-Sphinxを使用したPythonコードのAPIドキュメント自動生成：
+```
+enable_uart=1
+dtoverlay=uart0
+dtoverlay=uart2
+dtoverlay=uart3
+dtoverlay=uart4
+dtoverlay=uart5
+```
+
+---
+
+## 接続方法
+
+### 方法 A: SSHトンネル経由（推奨）
+
+GCSのPC/MacとRaspiが別ネットワークでも接続可能。
 
 ```bash
-# ドキュメントをビルド
-./scripts/build_docs.sh
+# 別ターミナルでSSHトンネルを確立
+ssh -L 14550:localhost:14550 taki@raspi5.local
 
-# ブラウザで表示
-open docs_sphinx/build/html/index.html
+# Tailscale経由の場合
+ssh -L 14550:localhost:14550 \
+    -o ProxyCommand="tailscale nc %h %p" \
+    taki@100.123.158.105
 ```
 
-**その他のビルドオプション:**
-```bash
-# ドキュメントを再構築（キャッシュをクリア）
-./scripts/build_docs.sh -r
-```
-
-このドキュメントは docstring から自動生成されるため、
-コードを更新すればドキュメントも自動で最新に保たれます。
-
-### 設定
-
-`config/gcs.yml` を編集し、ドローンのIPアドレスとSystem IDを設定します：
-
+設定ファイル:
 ```yaml
-udp_listen_port: 14550
+# config/gcs_production.yml
+connection_type: udp
+udp_listen_port: 14551
 drones:
   drone1:
     system_id: 1
-    endpoint: "192.168.1.100:14550"
-rtcm_host: 127.0.0.1
-rtcm_tcp_port: 5000
+    endpoint: "127.0.0.1:14550"
 ```
 
-## RTK転送サービス（統合版）
+### 方法 B: 同一ネットワーク（直接UDP）
 
-NTRIP受信またはシリアル受信したRTCMを、別PCへUDP転送する統合サービスです。
+Mac/Raspiが同じWiFiに接続されている場合。
 
-1. 設定ファイルを編集: `config/rtk_forwarder.yml`
-2. サービスを起動:
+```yaml
+# 設定例
+drones:
+  drone1:
+    endpoint: "172.20.10.12:14550"  # RaspiのローカルIP
+```
+
+### 方法 C: Raspi上でGCSを直接実行
 
 ```bash
-python rtk_forwarder_service.py --config config/rtk_forwarder.yml
-```
-
-### モード切り替え
-
-`config/rtk_forwarder.yml` の `source.source_type` を切り替えます。
-
-- `ntrip`: `host`, `port`, `mountpoint` を使用
-- `serial`: `serial_port`, `baudrate` を使用
-
-転送先は `forward.host` と `forward.port` で指定します。
-
-## GitHub Copilotを使った開発ワークフロー
-
-このプロジェクトは、GitHub Issueとpull requestsを通じた段階的な開発フローをサポートしています。
-
-### 開発フロー図
-
-```
-1. Issue作成
-   ↓
-2. Copilotに実装委譲
-   ↓
-3. Pull Request作成
-   ↓
-4. ローカルテスト・検証
-   ↓
-5. 動作確認後、Merge
-```
-
-### ステップバイステップ
-
-#### 1️⃣ Issue の作成
-
-目的のタスクを以下の形式でIssueとして作成します：
-
-**例：** 「SYS_STATUSメッセージの受信とUI表示機能を実装」
-
-```markdown
-## 概要
-ドローンのバッテリー状態やシステムヘルスを表示するため、
-SYS_STATUSメッセージをパースしてUIに表示する機能を実装します。
-
-## 受け入れ基準
-- [ ] SYS_STATUSメッセージの受信ロジック実装
-- [ ] バッテリー電圧をステータスパネルに表示
-- [ ] システムエラーフラグの可視化
-- [ ] ユニットテストの作成
-
-## 参考資料
-- MAVLink仕様: https://mavlink.io/en/messages/common.html#SYS_STATUS
-```
-
-#### 2️⃣ Copilotへの実装委譲
-
-以下のコマンドをターミナルで実行：
-
-```bash
-# フィーチャーブランチの作成
-git checkout -b feature/sys-status-display
-
-# Copilotに実装を指示（VS Codeのチャットで）
-# 「このIssueを実装してください」
-```
-
-**VS Code Copilot Chat での指示例：**
-
-```
-Issue #XX: SYS_STATUSメッセージの受信とUI表示機能を実装してください。
-受け入れ基準：
-- SYS_STATUSメッセージの受信ロジック実装
-- バッテリー電圧をステータスパネルに表示
-- システムエラーフラグの可視化
-- ユニットテストの作成
-
-前提条件：
-- 既存の MavlinkConnection クラスを使用
-- TelemetryStore に SYS_STATUS データを保存
-```
-
-#### 3️⃣ Pull Request の作成
-
-Copilotが実装完了後、PR を作成します：
-
-```bash
-git add .
-git commit -m "feat: Implement SYS_STATUS message reception and UI display (#XX)"
-git push origin feature/sys-status-display
-```
-
-**PR テンプレート（自動）:**
-
-```markdown
-## Issue
-Closes #XX
-
-## 変更内容
-- SYS_STATUSメッセージの受信ロジック実装
-- バッテリー電圧をステータスパネルに表示
-- システムエラーフラグの可視化
-- ユニットテストの作成（テストカバレッジ: 85%以上）
-
-## テスト方法
-1. ドローンを接続
-2. GCSアプリを起動
-3. ステータスパネルにバッテリー情報が表示されることを確認
-4. pytest で自動テストを実行
-```
-
-#### 4️⃣ 検証（Verification）
-
-**ローカル環境での動作確認：**
-
-```bash
-# ブランチをチェックアウト
-git checkout feature/sys-status-display
-git pull origin feature/sys-status-display
-
-# テスト実行
-pytest tests/ -v
-
-# GCS アプリの起動と動作確認
+# Raspi上で
+cd GCS-UmemotoLab
+source .venv/bin/activate
+export GCS_CONFIG_PATH=config/gcs_raspi_direct.yml
+export PYTHONPATH=$PYTHONPATH:$(pwd)/app
 python app/main.py
 ```
 
-**確認項目：**
-- ✅ テストがすべてパス
-- ✅ ドローンと通信でき、SYS_STATUSが表示される
-- ✅ エラーハンドリングが機能する
-- ✅ ログに異常が出ていない
+---
 
-**検証完了後、コメントで報告：**
+## 操作方法
 
-```markdown
-## 検証結果
+### メイン画面
 
-- ✅ テスト成功（5/5 cases passed）
-- ✅ 実ドローンで動作確認完了
-- ✅ コード品質：問題なし
-- 📌 別途確認不要
+| ボタン | 機能 |
+|--------|------|
+| **Arm** | 選択したドローンをアーム |
+| **Disarm** | 選択したドローンをディスアーム |
+| **Force Arm** | ⚠️ プリチェック無効化アーム（屋内テスト専用） |
+| **Takeoff** | 離陸（要アーム状態） |
+| **Land** | 着陸 |
+| **Send Guided Position/Velocity** | NED座標でのGuided制御 |
 
-Approved! 準備完了。
-```
+### Force Arm（強制アーム）
 
-#### 5️⃣ Merge
+屋内テストでRC非接続・GPS未Fix・EKF未初期化時にアームするための機能。
 
-検証が完了したら、PR をマージします：
+無効化するパラメータ:
+- `ARMING_CHECK = 0`（プリアームチェック全スキップ）
+- `FS_THR_ENABLE = 0`（ラジオフェールセーフ無効）
+- `AHRS_EKF_TYPE = 0`（EKF無効）
+
+> **⚠️ 警告**: 実飛行では絶対に使用しないでください。
+> テスト後は `dispatcher.restore_arm_params()` でデフォルトに戻してください。
+
+---
+
+## テスト
+
+### ダミードローンテスト（実機不要）
 
 ```bash
-# main ブランチへ切り替え
-git checkout main
-
-# フィーチャーブランチをマージ
-git merge --no-ff feature/sys-status-display
-
-# リモートにプッシュ
-git push origin main
-
-# フィーチャーブランチの削除
-git branch -d feature/sys-status-display
-git push origin --delete feature/sys-status-display
+export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+python tests/test_arm_dummy.py
 ```
 
-GitHub UI からのマージ（推奨）:
-1. PR ページの "Merge pull request" ボタンをクリック
-2. Commit message: デフォルト（Issue #XX の参照を自動挿入）
-3. "Confirm merge" をクリック
-4. "Delete branch" をクリック
+### 実機アームテスト
 
-## ワークフロー推奨事項
+```bash
+# SSHトンネル確立後
+export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+python tests/test_arm_live.py
+```
 
-| 段階 | 責任 | ツール |
-|------|------|--------|
-| Issue 作成 | 開発者（デザイナー） | GitHub Issues |
-| 実装 | GitHub Copilot | VS Code + Copilot |
-| テスト | GitHub Copilot | pytest |
-| 検証 | 開発者（人間） | ローカル環境 |
-| Merge | 開発者 | GitHub |
+### 全テスト実行
+
+```bash
+pytest tests/ -v
+```
+
+---
 
 ## プロジェクト構造
 
 ```
-gcs-system/
-├── README.md                 # このファイル
-├── requirements.txt          # Python 依存パッケージ
+GCS-UmemotoLab/
+├── README.md                  # 本ファイル
+├── requirements.txt            # Python依存
 ├── config/
-│   └── gcs.yml              # GCS 設定ファイル
+│   ├── gcs.yml                 # デフォルト設定
+│   ├── gcs_production.yml      # 本番用（SSHトンネル）
+│   ├── gcs_raspi_direct.yml    # Raspi直接実行用
+│   └── gcs_local.yml           # ローカル開発用
 ├── app/
-│   ├── main.py              # アプリケーション入口
+│   ├── main.py                 # エントリーポイント
 │   ├── ui/
-│   │   ├── main_window.py    # メインUI
-│   │   └── panels/           # 各パネルコンポーネント
-│   │   └── telemetry_plotter.py # テレメトリープロッター
+│   │   ├── main_window.py      # メインUI + 制御ボタン
+│   │   └── telemetry_plotter.py
 │   ├── mavlink/
-│   │   ├── connection.py     # UDP 接続管理
-│   │   ├── router.py         # メッセージルーター
-│   │   └── commands.py       # コマンド送信
-│   │   └── command_dispatcher.py # コマンドディスパッチャー
-│   ├── rtk/
-│   │   └── injector.py       # RTK 補正配信
-│   │   └── rtcm_reader.py    # RTCMリーダー
-│   └── telemetry/
-│       └── store.py          # テレメトリーデータ
-├── rtk_tools/
-│   ├── rtk_base_station.py   # RTKベースステーションスクリプト
-│   ├── rtk_forwarder_service.py # RTK転送サービス
-│   ├── rtk_rtcp_receiver.py  # RTCM受信機1
-│   └── rtk_rtcp_receiver2.py # RTCM受信機2
+│   │   ├── connection.py       # UDP/Serial接続管理
+│   │   ├── router.py           # メッセージルーター
+│   │   └── message_router.py
+│   └── rtk_tools/
+│       ├── command_dispatcher.py  # コマンド送信（Arm/ForceArm等）
+│       ├── guided_control.py      # Guidedモード制御
+│       ├── telemetry_store.py     # テレメトリデータ保持
+│       ├── rtcm_reader.py
+│       └── rtcm_injector.py
 ├── tests/
-│   ├── test_connection.py    # 接続テスト
-│   ├── test_router.py        # ルーターテスト
-│   ├── test_commands.py      # コマンドテスト
-│   ├── test_command_dispatcher.py # コマンドディスパッチャーテスト
-│   ├── test_telemetry_store.py # テレメトリーストアテスト
-│   └── test_rtk_integration.py # RTK統合テスト
-└── docs/
-    ├── spec.md               # 詳細仕様
-    ├── dev_guide.md          # 開発ガイド
-    └── design.md             # アーキテクチャ設計
+│   ├── test_arm_dummy.py       # ダミー機アームテスト
+│   ├── test_arm_live.py         # 実機アームテスト
+│   ├── test_command_dispatcher.py
+│   ├── test_command_retry.py
+│   ├── test_telemetry_store.py
+│   └── test_raspi_connection/   # Raspi接続確認テスト
+├── docs/                       # 詳細ドキュメント
+└── scripts/                    # ビルド・デプロイスクリプト
 ```
 
-## MVPで実装する機能
+---
 
-1. **リポジトリセットアップ**：フォルダー構造、基本設定
-2. **MAVLink コア**：UDP入出力、メッセージルーター、状態管理
-3. **RTK インジェクション**：RTCM リーダー、データ配信
-4. **コマンド制御**：アーム/ディスアーム、離陸/着陸
-5. **UI**：ドローンリスト、テレメトリー表示、制御パネル
-6. **統合テスト**：シングル・マルチドローン検証
+## Raspi 実機接続チェックリスト
 
-## 受け入れ基準（成功の定義）
+実機テスト前に以下を確認してください：
 
-- ✅ 少なくとも1台のドローンのHEARTBEATが表示される
-- ✅ NAMED_VALUE_FLOAT 値がリアルタイム更新される
-- ✅ アーム/ディスアームが成功する
-- ✅ RTCMストリームが転送され、ログに記録される
-- ✅ 複数ドローン（2台以上）で動作確認完了
-- ✅ 全テストがパス、カバレッジ 80% 以上
+- [ ] PixhawkのTELEM1がRaspiのGPIO 14/15に接続されている
+- [ ] Pixhawkにバッテリーが接続され、LED点灯中
+- [ ] Raspiの `mavlink-router` が稼働中（`systemctl status mavlink-router`）
+- [ ] `/etc/mavlink-router/main.conf` の Device が `ttyAMA0` に設定されている
+- [ ] SSHトンネルが確立されている（方法Aの場合）
+- [ ] GCS UIを起動してドローンがリストに表示される
 
-## 次の実装に向けて（Next Steps）
-以下の機能はMVP以降の次フェーズ（新規Issue）として実装を予定しています。
+### トラブルシューティング
 
-1. **地図表示（マップUI）の実装**
-   - `GLOBAL_POSITION_INT` メッセージを受信
-   - PySide6 に `folium` や `QWebEngineView` を組み込み地図表示と機体位置のプロット
-2. **RTKステータスと通信グラフのUI連携**
-   - `GPS_RAW_INT` 等のデータをパースし、RTK FixステータスをUIに反映
-   - `NAMED_VALUE_FLOAT` などの変数を PyQtGraph を用いてリアルタイムに折れ線グラフ描画
-3. **設定ファイルとUIの動的連携**
-   - 現在固定の `gcs.yml` をUI上から更新し、動的にルーティング先やドローン（System ID）を追加・変更できる機能
-4. **実機とRaspberry Pi 5との疎通テスト**
-   - SITLでの検証が完了したため、実際にArduPilotとmavlink-routerを用いた環境でのフィールドテストの実施
+| 現象 | 確認項目 |
+|------|----------|
+| ハートビートが来ない | Pixhawk電源ON? TELEM1配線? `dmesg \| grep tty` |
+| アームが拒否される | Force Armボタンを使用、もしくは`ARMING_CHECK=0`を設定 |
+| SSH接続不可 | Tailscale起動確認: `tailscale status` |
+
+---
 
 ## 参考資料
 
-- [MAVLink Protocol Specification](https://mavlink.io/en/)
-- [ArduPilot Documentation](https://ardupilot.org/dev/)
-- [pymavlink Guide](https://github.com/ArduPilot/pymavlink)
-- [PySide6 Documentation](https://doc.qt.io/qtforpython/)
-- [GitHub Issues & Pull Requests](https://docs.github.com/en/issues)
+- [MAVLink Protocol](https://mavlink.io/en/)
+- [ArduPilot Docs](https://ardupilot.org/dev/)
+- [pymavlink](https://github.com/ArduPilot/pymavlink)
+- [mavlink-router](https://github.com/mavlink-router/mavlink-router)
+- [PySide6](https://doc.qt.io/qtforpython/)
 
 ## ライセンス
 
-[MIT License](LICENSE)
+MIT License
 
 ## 問い合わせ
 
-質問や機能提案は GitHub Issues で受け付けています。
+GitHub Issues: https://github.com/KeitaTK/GCS-UmemotoLab/issues

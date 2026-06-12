@@ -1,12 +1,30 @@
-connection_type: serial
-serial_port: /dev/ttyACM0
-serial_baudrate: 115200
-rtcm_enabled: false
+# GCS Production Configuration — Raspi Bridge via SSH Tunnel
+# 
+# アーキテクチャ:
+#   Mac (GCS) → SSH Tunnel → Raspi (mavlink-router) → ttyAMA0 → Pixhawk
+#
+# 起動前準備:
+#   # SSHトンネル確立（別ターミナルで実行）
+#   ssh -L 14550:localhost:14550 -L 5760:localhost:5760 taki@raspi5.local
+#
+#   # もしくはTailscale経由
+#   ssh -L 14550:localhost:14550 -L 5760:localhost:5760 \\
+#       -o ProxyCommand="tailscale nc %h %p" taki@100.123.158.105
+#
+# 起動:
+#   export GCS_CONFIG_PATH=config/gcs_production.yml
+#   export PYTHONPATH=$PYTHONPATH:$(pwd)/app
+#   python app/main.py
 
-udp_listen_port: 14550
+connection_type: udp
+udp_listen_port: 14551  # SSHトンネルが14550を使うので別ポート
 
 drones:
   drone1:
     system_id: 1
-    endpoint: 127.0.0.1:14550
+    endpoint: "127.0.0.1:14550"  # SSHトンネル経由でローカルホストに転送
     name: "Pixhawk6C Main"
+
+rtcm_enabled: false
+rtcm_host: 127.0.0.1
+rtcm_tcp_port: 2101
