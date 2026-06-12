@@ -39,7 +39,7 @@ param(
 )
 
 $RepoRoot   = "c:\Users\taki\Local\local\GCS-UmemotoLab"
-$RaspiHost  = "taki@100.123.158.105"
+$RaspiHost  = "taki@raspi5.local"
 $RaspiRepo  = "~/GCS-UmemotoLab"
 $VenvPython = "$RaspiRepo/.venv/bin/python3"
 
@@ -64,7 +64,7 @@ if ($sshTest -ne "OK") {
     Write-Host "  2. 鍵の生成: ssh-keygen -t ed25519 -C 'taki-gcs'"
     Write-Host "  3. 鍵のコピー (PowerShell):"
     Write-Host "     `$pubkey = Get-Content `"`$env:USERPROFILE\.ssh\id_ed25519.pub`""
-    Write-Host "     ssh taki@100.123.158.105 `"mkdir -p ~/.ssh && echo '`$pubkey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`""
+    Write-Host "     ssh taki@raspi5.local `"mkdir -p ~/.ssh && echo '`$pubkey' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`""
     exit 1
 }
 Write-Success "SSH 接続 OK ($RaspiHost)"
