@@ -60,6 +60,7 @@ async def telemetry_websocket(ws: WebSocket):
 
 async def broadcast_loop():
     """Every 1 second, build telemetry payload and send to all _active_clients."""
+    global _active_clients
     # Imported lazily so they are set by api.server.init_api() at startup
     from api.server import telemetry_store, connection, dispatcher, rtcm_reader
 
