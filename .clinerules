@@ -1,0 +1,101 @@
+# GCS-UmemotoLab プロジェクトインストラクション
+
+## プロジェクト概要
+
+MAVLink v2（UDP/Serial）ベースのマルチドローン地上管制局（GCS）システム。
+PC + Raspberry Pi 5（通信ブリッジ）+ Pixhawk 構成で、テレメトリ監視・機体制御・RTK補正・マルチドローン同時制御を行う。
+
+| 項目 | 内容 |
+|------|------|
+| 言語 | Python 3.10+（pyproject.toml は >=3.14 指定） |
+| UI | PySide6 (Qt 6) + pyqtgraph |
+| MAVLink | pymavlink |
+| パッケージ管理(PC) | UV (`uv sync`) |
+| パッケージ管理(Raspi) | pip（`requirements_raspi.txt`） |
+| テスト | pytest / unittest |
+
+## ディレクトリ構造
+
+| ディレクトリ | 役割 |
+|-------------|------|
+| `app/` | メインアプリケーションコード |
+| `app/main.py` | エントリポイント |
+| `app/ui/` | PySide6 画面（MainWindow, テレメトリプロッタ） |
+| `app/mavlink/` | MAVLink 接続・メッセージルーティング |
+| `app/rtk_tools/` | RTK補正、コマンド制御、Guided制御、テレメトリ保存 |
+| `app/api/` | REST API サーバ |
+| `app/logging_config.py` | ロギング設定 |
+| `tests/` | 全テスト（pytest / unittest） |
+| `config/` | YAML 設定ファイル（gcs.yml, gcs_production.yml 等） |
+| `scripts/` | ビルド・ユーティリティスクリプト |
+| `docs/` | 開発履歴・設計ドキュメント・運用マニュアル |
+| `memory-bank/` | Cline メモリバンク（未作成の場合は必要に応じて作成） |
+| `rtk_tools/` | スタンドアロン RTK ツール |
+| `logs/` | ログ出力先（gcs.log） |
+
+## コーディング規約
+
+1. **Python 3.10+ 準拠** — 型ヒント推奨。`pyproject.toml` の `requires-python` に従う。
+2. **ロギング** — `app/logging_config.py` の `setup_logging()` をエントリポイントで呼び出し、`logging.getLogger(__name__)` でロガー取得。
+3. **MAVLink** — `pymavlink` を使用。`app/mavlink/connection.py` の `MavlinkConnection` クラス経由で接続管理。
+4. **インポート** — `app/` 内のモジュールは `app/` を sys.path 基準とした相対パス（`from rtk_tools.xxx import ...`）で記述。
+5. **設定** — `config/` 下の YAML ファイルを使用。ローカル固有設定は `config/gcs.user.local.yml`（gitignore 対象）。
+6. **日本語可** — コメント・ドキュメント・ログメッセージは日本語を使用してよい。
+
+## テスト規約
+
+1. **テストフレームワーク** — pytest を基本とする（一部 unittest 混在）。
+2. **配置** — `tests/` ディレクトリに配置。
+3. **実行方法** — `app/` を PYTHONPATH に追加して実行：
+   ```bash
+   PYTHONPATH=app:$PYTHONPATH pytest tests/ -v
+   ```
+   または、テストファイル先頭で `sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'app'))` を記述。
+4. **テスト命名** — `test_<対象>.py` 形式。
+
+## 環境構築
+
+### PC（開発環境）
+```bash
+uv sync                    # 依存パッケージ一括インストール
+PYTHONPATH=app python app/main.py  # アプリ起動
+```
+
+### Raspberry Pi（実機環境）
+```bash
+pip install -r requirements_raspi.txt  # pip を使用
+```
+
+## 禁止事項
+
+- **PC側で `pip install` を使用しない** — UV (`uv sync` / `uv add`) を使用すること。
+- **`requirements.txt` を削除しない** — Raspi用に維持する。
+- **メモリバンク更新時** — `memory-bank/` ディレクトリ内の該当ファイルを直接編集すること。新規ファイル作成も可。
+- **`config/gcs.user.local.yml` をコミットしない** — .gitignore 対象。
+- **`docs/development_history.md` の更新を忘れない** — コード・ドキュメント変更時は必ず先頭に履歴を追記（後述）。
+
+## GitHub / スキル連携
+
+`.github/copilot-instructions.md` の指示を必ず参照し、以下を遵守する：
+
+### raspi-deploy スキル
+Raspberry Pi へのデプロイ・実行・検証時は `.github/skills/raspi-deploy/SKILL.md` に従う。
+- SSH: `ssh raspi`（Tailscale 経由、~/.ssh/config 要設定）
+- リポジトリパス: `~/GCS-UmemotoLab`（Raspi上）
+- ワークフロー: `git push` → `ssh raspi "git pull"` → `ssh raspi "source .venv/bin/activate && python app/main.py"`
+
+### development-history スキル
+コードまたはドキュメント編集時は、**編集の都度** `.github/skills/development-history/SKILL.md` に従い `docs/development_history.md` の先頭へ履歴を追記する。
+
+記録形式:
+```md
+### YYYY-MM-DD HH:MM: [機能名/コンポーネント]
+- 問題: [発生した問題の簡潔な説明]
+- 調査: [調査内容・原因]
+- 試行: [実施した変更・試したこと]
+- 結果: [最終的な結果・解決方法]
+- 備考: [その他重要な情報]
+```
+
+### local-environment スキル
+ローカル環境固有の設定や実行手順が必要な場合は `.github/skills/local-environment/SKILL.md` を参照（存在する場合のみ。このスキルは gitignore 対象）。
