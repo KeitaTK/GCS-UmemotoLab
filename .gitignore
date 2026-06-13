@@ -55,3 +55,12 @@ docs_sphinx/.doctrees/
 # Local-only Copilot skill and config
 .github/skills/local-environment/
 config/gcs.user.local.yml
+
+# Kanban / Cline worktree
+.cline/
+
+# Claude settings
+.claude/
+
+# Memory bank (separate repository)
+memory-bank/
