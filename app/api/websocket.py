@@ -61,8 +61,8 @@ async def telemetry_websocket(ws: WebSocket):
 async def broadcast_loop():
     """Every 1 second, build telemetry payload and send to all _active_clients."""
     global _active_clients
-    # Imported lazily so they are set by api.server.init_api() at startup
-    from api.server import telemetry_store, connection, dispatcher, rtcm_reader
+    # Read from api.server module each iteration so connect/disconnect works
+    import api.server as api_srv
 
     while True:
         await asyncio.sleep(1.0)
@@ -71,7 +71,12 @@ async def broadcast_loop():
             continue
 
         try:
-            payload = _build_payload(telemetry_store, connection, dispatcher, rtcm_reader)
+            payload = _build_payload(
+                api_srv.telemetry_store,
+                api_srv.connection,
+                api_srv.dispatcher,
+                api_srv.rtcm_reader,
+            )
             if payload is None:
                 continue
 

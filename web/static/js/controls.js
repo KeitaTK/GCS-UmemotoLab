@@ -5,6 +5,48 @@
 
 document.addEventListener('DOMContentLoaded', function() {
 
+    // ===== Connect / Disconnect Backend =====
+    document.getElementById('btn-connect').addEventListener('click', function() {
+        var statusEl = document.getElementById('backend-status');
+        if (statusEl) { statusEl.textContent = 'Connecting...'; statusEl.className = 'value status-neutral'; }
+        fetch('/api/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'connected') {
+                if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'value status-ok'; }
+            } else {
+                if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'value status-error'; }
+            }
+        })
+        .catch(function(err) {
+            if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'value status-error'; }
+        });
+    });
+
+    document.getElementById('btn-disconnect').addEventListener('click', function() {
+        var statusEl = document.getElementById('backend-status');
+        if (statusEl) { statusEl.textContent = 'Disconnecting...'; statusEl.className = 'value status-neutral'; }
+        fetch('/api/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'disconnected') {
+                if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.className = 'value status-neutral'; }
+            } else {
+                if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'value status-error'; }
+            }
+        })
+        .catch(function(err) {
+            if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'value status-error'; }
+        });
+    });
+
     // ===== Select All / Clear Selection =====
     document.getElementById('btn-select-all').addEventListener('click', function() {
         document.querySelectorAll('#drone-list li').forEach(function(li) {

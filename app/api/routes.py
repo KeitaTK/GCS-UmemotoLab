@@ -1,45 +1,49 @@
-"""app/api/routes.py — REST API endpoints for command dispatch."""
+"""app/api/routes.py — REST API endpoints for command dispatch and connection management."""
 
-import logging, time
-from fastapi import APIRouter, HTTPException
+import asyncio
+import logging
+import threading
+import time
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("api.routes")
 router = APIRouter(prefix="/api", tags=["commands"])
 
-_telemetry_store = None
-_dispatcher = None
-_connection = None
-
+# ── Lazy backend references (always read from api.server module) ──────
 
 def _get_ts():
-    global _telemetry_store
-    if _telemetry_store is None:
-        from api.server import telemetry_store
-        _telemetry_store = telemetry_store
-    if _telemetry_store is None:
+    """Get telemetry_store from api.server, raise 503 if not initialized."""
+    import api.server as api_srv
+    ts = api_srv.telemetry_store
+    if ts is None:
         raise HTTPException(status_code=503, detail="Backend not initialized (telemetry_store)")
-    return _telemetry_store
+    return ts
 
 
 def _get_disp():
-    global _dispatcher
-    if _dispatcher is None:
-        from api.server import dispatcher
-        _dispatcher = dispatcher
-    if _dispatcher is None:
+    """Get dispatcher from api.server, raise 503 if not initialized."""
+    import api.server as api_srv
+    disp = api_srv.dispatcher
+    if disp is None:
         raise HTTPException(status_code=503, detail="Backend not initialized (dispatcher)")
-    return _dispatcher
+    return disp
 
 
 def _get_conn():
-    global _connection
-    if _connection is None:
-        from api.server import connection
-        _connection = connection
-    if _connection is None:
+    """Get connection from api.server, raise 503 if not initialized."""
+    import api.server as api_srv
+    conn = api_srv.connection
+    if conn is None:
         raise HTTPException(status_code=503, detail="Backend not initialized (connection)")
-    return _connection
+    return conn
+
+
+# ── Connection request model ─────────────────────────────────────────
+
+class ConnectRequest(BaseModel):
+    config_path: str | None = None
 
 
 # ==========================================================================
@@ -97,56 +101,140 @@ def _decode_mode(mode: int) -> str:
 
 
 # ==========================================================================
-# GET /api/drones
+# POST /api/connect — Initialize backend and connect to drone
 # ==========================================================================
 
-@router.get("/drones")
-async def get_drones():
-    ts = _get_ts()
-    drones = []
-    for sysid in ts.get_all_drone_ids():
-        hb = ts.get_heartbeat(sysid)
-        gps = ts.get_gps_raw(sysid)
-        gpos = ts.get_global_position(sysid)
-        ss = ts.get_sys_status(sysid)
-        info = {
-            "system_id": sysid, "armed": False, "mode": "UNKNOWN",
-            "gps_fix": -1, "gps_sats": 0,
-            "lat": None, "lon": None, "alt": None, "hdop": None,
-            "battery_voltage": None, "battery_remaining": None,
-        }
-        if hb is not None:
+@router.post("/connect")
+async def connect_to_drone(req: ConnectRequest, request: Request):
+    """Initialize all backend components and connect to drone."""
+    import api.server as api_srv
+
+    if api_srv.connection is not None:
+        logger.warning("Backend already connected.")
+        return JSONResponse(
+            {"status": "error", "detail": "Already connected. POST /api/disconnect first."},
+            status_code=409,
+        )
+
+    app = request.app
+    logger.info("=== Backend initialization via /api/connect ===")
+
+    try:
+        from rtk_tools.config_loader import resolve_config_path
+        from mavlink.connection import MavlinkConnection
+        from mavlink.message_router import MessageRouter
+        from rtk_tools.telemetry_store import TelemetryStore
+        from rtk_tools.command_dispatcher import CommandDispatcher
+        from rtk_tools.guided_control import GuidedControl
+        from rtk_tools.rtcm_reader import RtcmReader
+        from rtk_tools.rtcm_injector import RtcmInjector
+
+        config_path = req.config_path or resolve_config_path()
+        logger.info(f"Config: {config_path}")
+
+        telemetry_store = TelemetryStore()
+        mav_conn = MavlinkConnection(config_path)
+
+        dispatcher = CommandDispatcher(mav_conn)
+        dispatcher.guided = GuidedControl(mav_conn)
+
+        router = MessageRouter(mav_conn, telemetry_store, command_dispatcher=dispatcher)
+        router.start()
+
+        def _request_streams():
+            import time as _time
+            _time.sleep(2.0)
             try:
-                info["armed"] = (hb.base_mode & 0x80) != 0
-            except Exception:
-                pass
+                msg = mav_conn.mav.request_data_stream_encode(1, 0, 0, 5, 1)
+                frame = msg.pack(mav_conn.mav)
+                mav_conn.send(1, frame)
+                logger.info("Data stream request sent")
+            except Exception as e:
+                logger.error(f"Stream request failed: {e}")
+
+        threading.Thread(target=_request_streams, daemon=True).start()
+
+        rtcm_enabled = mav_conn.config.get("rtcm_enabled", True)
+        rtcm_host = mav_conn.config.get("rtcm_host", "127.0.0.1")
+        rtcm_port = mav_conn.config.get("rtcm_tcp_port", 15000)
+
+        rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
+        rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
+
+        def _send_rtcm_frame(frame_data):
             try:
-                info["mode"] = _decode_mode(int(hb.custom_mode))
-            except Exception:
-                pass
-        if gps is not None:
-            try:
-                info["gps_fix"] = int(gps.fix_type)
-                info["gps_sats"] = int(gps.satellites_visible)
-                if gps.eph < 65535:
-                    info["hdop"] = round(gps.eph / 100.0, 2)
-            except Exception:
-                pass
-        if gpos is not None:
-            try:
-                info["lat"] = round(gpos.lat / 1e7, 7)
-                info["lon"] = round(gpos.lon / 1e7, 7)
-                info["alt"] = round(gpos.relative_alt / 1000.0, 2)
-            except Exception:
-                pass
-        if ss is not None:
-            try:
-                info["battery_voltage"] = round(ss.voltage_battery / 1000.0, 2)
-                info["battery_remaining"] = int(ss.battery_remaining)
-            except Exception:
-                pass
-        drones.append(info)
-    return {"status": "ok", "count": len(drones), "drones": drones}
+                mav_conn.send_to_system(1, frame_data)
+                mav_conn.send_to_system(2, frame_data)
+            except Exception as e:
+                logger.error(f"RTCM send failed: {e}")
+
+        rtcm_injector.set_send_callback(_send_rtcm_frame)
+        rtcm_reader.register_callback(lambda data: rtcm_injector.inject(data))
+        rtcm_reader.start()
+
+        api_srv.init_api(telemetry_store, dispatcher, mav_conn, rtcm_reader)
+
+        app.state.mav_conn = mav_conn
+        app.state.router = router
+        app.state.rtcm_reader = rtcm_reader
+
+        conn_status = mav_conn.get_connection_status()
+        logger.info("=== Backend connected ===")
+        return {"status": "connected", "connection": conn_status, "config_path": config_path}
+
+    except Exception as e:
+        logger.error(f"Backend init failed: {e}", exc_info=True)
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
+
+
+# ==========================================================================
+# POST /api/disconnect — Safely disconnect backend
+# ==========================================================================
+
+@router.post("/disconnect")
+async def disconnect_from_drone(request: Request):
+    """Safely disconnect and tear down all backend components."""
+    import api.server as api_srv
+
+    if api_srv.connection is None:
+        return JSONResponse(
+            {"status": "error", "detail": "Backend not connected."},
+            status_code=400,
+        )
+
+    app = request.app
+    logger.info("=== Backend disconnection via /api/disconnect ===")
+
+    errors = []
+
+    if hasattr(app.state, "rtcm_reader") and app.state.rtcm_reader is not None:
+        try:
+            app.state.rtcm_reader.stop()
+        except Exception as e:
+            errors.append(f"rtcm_reader: {e}")
+        app.state.rtcm_reader = None
+
+    if hasattr(app.state, "router") and app.state.router is not None:
+        try:
+            app.state.router.stop()
+        except Exception as e:
+            errors.append(f"router: {e}")
+        app.state.router = None
+
+    if hasattr(app.state, "mav_conn") and app.state.mav_conn is not None:
+        try:
+            app.state.mav_conn.stop()
+        except Exception as e:
+            errors.append(f"mav_conn: {e}")
+        app.state.mav_conn = None
+
+    api_srv.telemetry_store = None
+    api_srv.dispatcher = None
+    api_srv.connection = None
+    api_srv.rtcm_reader = None
+
+    logger.info("=== Backend disconnected ===")
+    return {"status": "disconnected", "errors": errors if errors else None}
 
 
 # ==========================================================================
@@ -155,14 +243,24 @@ async def get_drones():
 
 @router.get("/status")
 async def get_status():
-    conn = _get_conn()
-    try:
-        conn_status = conn.get_connection_status()
-    except Exception as e:
-        logger.error("Failed to get connection status: %s", e)
-        conn_status = {"is_connected": False, "error": str(e)}
-    ts = _get_ts()
+    """Get connection status and drone info (works even when not connected)."""
+    import api.server as api_srv
+
+    # ── Connection status ────────────────────────────────────────────
+    conn = api_srv.connection
+    if conn is None:
+        conn_status = {"is_connected": False, "connection_type": "none"}
+    else:
+        try:
+            conn_status = conn.get_connection_status()
+        except Exception as e:
+            logger.error("Failed to get connection status: %s", e)
+            conn_status = {"is_connected": False, "error": str(e)}
+
+    # ── Drone info ───────────────────────────────────────────────────
+    ts = api_srv.telemetry_store
     drone_ids = ts.get_all_drone_ids() if ts else []
+
     return {
         "status": "ok",
         "server": {"uptime_seconds": round(time.monotonic(), 1)},

@@ -1,12 +1,12 @@
 """
 GCS-UmemotoLab FastAPI Server Entry Point.
 
-Startup:
-  1. Initialize MavlinkConnection (UDP or Serial)
-  2. Initialize MessageRouter + TelemetryStore + CommandDispatcher
-  3. Initialize RtcmReader + RtcmInjector
-  4. Request data streams from Pixhawk
-  5. Start WebSocket broadcast loop (1 Hz)
+Startup (lightweight):
+  1. Configure logging
+  2. Start WebSocket broadcast loops (no-op until backend connected)
+
+Backend components (MavlinkConnection, TelemetryStore, etc.) are initialized
+on-demand via POST /api/connect and torn down via POST /api/disconnect.
 
 Bind address: 100.95.30.60 (Tailscale)
 """
@@ -19,7 +19,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import asyncio
 import logging
-import threading
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -64,89 +63,19 @@ logger = logging.getLogger("server")
 
 @app.on_event("startup")
 async def on_startup():
-    """Initialize all backend components."""
+    """Lightweight startup: logging only. Backend initialized via /api/connect."""
     from logging_config import setup_logging
     setup_logging()
     global logger
     logger = logging.getLogger("server")
-    logger.info("=== GCS Web Server starting ===")
+    logger.info("=== GCS Web Server starting (lightweight) ===")
 
-    # ── Imports ────────────────────────────────────────────────────────
-    from rtk_tools.config_loader import resolve_config_path
-    from mavlink.connection import MavlinkConnection
-    from mavlink.message_router import MessageRouter
-    from rtk_tools.telemetry_store import TelemetryStore
-    from rtk_tools.command_dispatcher import CommandDispatcher
-    from rtk_tools.guided_control import GuidedControl
-    from rtk_tools.rtcm_reader import RtcmReader
-    from rtk_tools.rtcm_injector import RtcmInjector
-
-    # ── Config ─────────────────────────────────────────────────────────
-    config_path = resolve_config_path()
-    logger.info(f"Config: {config_path}")
-
-    # ── Core backend ───────────────────────────────────────────────────
-    telemetry_store = TelemetryStore()
-    mav_conn = MavlinkConnection(config_path)
-
-    dispatcher = CommandDispatcher(mav_conn)
-    dispatcher.guided = GuidedControl(mav_conn)
-
-    router = MessageRouter(mav_conn, telemetry_store, command_dispatcher=dispatcher)
-    router.start()
-
-    # ── Request data streams (after connection stabilizes) ─────────────
-    def _request_streams():
-        import time as _time
-        logger.info("Waiting for Pixhawk connection to stabilize...")
-        _time.sleep(2.0)
-        try:
-            msg = mav_conn.mav.request_data_stream_encode(
-                1, 0,  # target_system, target_component
-                0,     # req_stream_id (all)
-                5,     # req_message_rate (5 Hz)
-                1,     # start_stop (start)
-            )
-            frame = msg.pack(mav_conn.mav)
-            mav_conn.send(1, frame)
-            logger.info("Data stream request sent")
-        except Exception as e:
-            logger.error(f"Stream request failed: {e}")
-
-    threading.Thread(target=_request_streams, daemon=True).start()
-
-    # ── RTCM / RTK ─────────────────────────────────────────────────────
-    rtcm_enabled = mav_conn.config.get("rtcm_enabled", True)
-    rtcm_host = mav_conn.config.get("rtcm_host", "127.0.0.1")
-    rtcm_port = mav_conn.config.get("rtcm_tcp_port", 15000)
-
-    rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
-    rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
-
-    def _send_rtcm_frame(frame_data):
-        try:
-            mav_conn.send_to_system(1, frame_data)
-            mav_conn.send_to_system(2, frame_data)
-        except Exception as e:
-            logger.error(f"RTCM send failed: {e}")
-
-    rtcm_injector.set_send_callback(_send_rtcm_frame)
-    rtcm_reader.register_callback(lambda data: rtcm_injector.inject(data))
-    rtcm_reader.start()
-
-    # ── Wire API globals ───────────────────────────────────────────────
-    init_api(telemetry_store, dispatcher, mav_conn, rtcm_reader)
-
-    # ── Store references for shutdown ──────────────────────────────────
-    app.state.mav_conn = mav_conn
-    app.state.router = router
-    app.state.rtcm_reader = rtcm_reader
-
-    # ── Start telemetry broadcast loops ────────────────────────────────
+    # Start broadcast loops immediately (they no-op when backend is None)
     asyncio.create_task(broadcast_telemetry())   # existing 0.5s loop
     asyncio.create_task(broadcast_loop())         # enhanced 1s loop
 
-    logger.info("=== GCS Web Server started (100.95.30.60:8000) ===")
+    logger.info("=== GCS Web Server started (100.95.30.60:8000) ===\n"
+                "    Backend not connected. Use POST /api/connect to connect.")
 
 
 @app.on_event("shutdown")
@@ -155,11 +84,20 @@ async def on_shutdown():
     logger.info("Shutting down...")
 
     if hasattr(app.state, "router"):
-        app.state.router.stop()
+        try:
+            app.state.router.stop()
+        except Exception as e:
+            logger.warning(f"router.stop() failed: {e}")
     if hasattr(app.state, "mav_conn"):
-        app.state.mav_conn.stop()
+        try:
+            app.state.mav_conn.stop()
+        except Exception as e:
+            logger.warning(f"mav_conn.stop() failed: {e}")
     if hasattr(app.state, "rtcm_reader"):
-        app.state.rtcm_reader.stop()
+        try:
+            app.state.rtcm_reader.stop()
+        except Exception as e:
+            logger.warning(f"rtcm_reader.stop() failed: {e}")
 
     logger.info("=== Server shutdown complete ===")
 
