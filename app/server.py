@@ -30,6 +30,9 @@ from api.server import app, init_api, broadcast_telemetry
 # -- Import the enhanced WebSocket router --------------------------------
 from api.websocket import router as ws_router, broadcast_loop
 
+# -- Import the REST API command router ----------------------------------
+from api.routes import router as cmd_router
+
 # -- CORS middleware (allow Tailscale + local access) ---------------------
 app.add_middleware(
     CORSMiddleware,
@@ -47,6 +50,9 @@ except RuntimeError:
 
 # -- WebSocket router ----------------------------------------------------
 app.include_router(ws_router)
+
+# -- REST API command router ---------------------------------------------
+app.include_router(cmd_router)
 
 logger = logging.getLogger("server")
 
