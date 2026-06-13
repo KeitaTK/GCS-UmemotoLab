@@ -10,7 +10,12 @@
 <body>
     <!-- Sidebar -->
     <div id="sidebar">
-        <h2>🚁 Drones</h2>
+        <h2>🚁 GCS Cockpit</h2>
+        <div id="sidebar-conn-summary">
+            <span id="sidebar-conn-dot" class="disconnected"></span>
+            <span id="sidebar-conn-text">No Connection</span>
+        </div>
+        <div class="sidebar-section-label">DRONES</div>
         <ul id="drone-list">
             <li style="color:#888;text-align:center;padding:20px;">Waiting for telemetry...</li>
         </ul>
@@ -25,120 +30,174 @@
         <div id="ws-status-bar">
             <span id="ws-status-dot" class="disconnected"></span>
             <span id="ws-status-text" class="status-error">Disconnected</span>
-            <span style="margin-left:auto;color:#888;font-size:11px;">WebSocket Telemetry</span>
+            <span id="backend-status" class="backend-inline status-neutral">Backend: Not connected</span>
+            <span class="ws-telemetry-label">WebSocket Telemetry</span>
         </div>
         <div id="tab-bar">
             <button id="tab-dashboard" class="active" onclick="switchTab('dashboard')">📊 Dashboard</button>
             <button id="tab-graph" onclick="switchTab('graph')">📈 Graph</button>
             <button id="tab-raw" onclick="switchTab('raw')">📄 Raw Data</button>
+            <div id="tab-bar-buttons">
+                <button id="btn-connect" class="btn btn-connect">🟢 Connect</button>
+                <button id="btn-disconnect" class="btn btn-disconnect">🔴 Disconnect</button>
+            </div>
         </div>
         <div id="tab-content">
-            <div id="panel-dashboard" style="display:block;">
-                <!-- Backend Connection Management -->
-                <div class="section-card">
-                    <div class="section-title">🔌 Backend Connection</div>
-                    <div class="control-row">
-                        <button id="btn-connect" class="btn" style="background:#2ecc71;color:#fff;">🟢 Connect</button>
-                        <button id="btn-disconnect" class="btn" style="background:#e74c3c;color:#fff;">🔴 Disconnect</button>
-                        <span id="backend-status" class="value status-neutral">Not connected</span>
-                    </div>
-                </div>
-                <!-- Connection -->
-                <div class="section-card">
-                    <div class="section-title">🔌 Connection Status</div>
-                    <div class="data-grid-4">
-                        <div class="grid-item"><span class="label">Status</span><span id="conn-status" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Type</span><span id="conn-type" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Packets</span><span id="conn-packets" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Error</span><span id="conn-error" class="value status-neutral">N/A</span></div>
-                    </div>
-                </div>
-                <!-- System -->
-                <div class="section-card">
-                    <div class="section-title">⚙️ System Status</div>
-                    <div class="data-row"><span class="label">Armed</span><span id="sys-armed" class="value status-neutral">N/A</span></div>
-                    <div class="data-row"><span class="label">Mode</span><span id="sys-mode" class="value status-neutral">N/A</span></div>
-                </div>
-                <!-- Battery -->
-                <div class="section-card">
-                    <div class="section-title">🔋 Battery Status</div>
-                    <div class="data-grid-3">
-                        <div class="grid-item"><span class="label">Voltage</span><span id="batt-voltage" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Current</span><span id="batt-current" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Remaining</span><span id="batt-remaining" class="value status-neutral">N/A</span></div>
-                    </div>
-                </div>
-                <!-- GPS -->
-                <div class="section-card">
-                    <div class="section-title">🛰️ GPS Status</div>
-                    <div class="data-grid-5">
-                        <div class="grid-item"><span class="label">Fix</span><span id="gps-fix" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Satellites</span><span id="gps-sats" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Position</span><span id="gps-coords" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Altitude</span><span id="gps-alt" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">HDOP</span><span id="gps-hdop" class="value status-neutral">N/A</span></div>
-                    </div>
-                </div>
-                <!-- RTK -->
-                <div class="section-card">
-                    <div class="section-title">📡 RTK Status</div>
-                    <div class="data-row"><span class="label">Status</span><span id="rtk-status" class="value status-neutral">N/A</span></div>
-                </div>
-                <!-- Command -->
-                <div class="section-card">
-                    <div class="section-title">📋 Command Status</div>
-                    <div class="data-grid-4">
-                        <div class="grid-item"><span class="label">Last Command</span><span id="cmd-last" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">ACK</span><span id="cmd-ack" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Pending</span><span id="cmd-pending" class="value status-neutral">N/A</span></div>
-                        <div class="grid-item"><span class="label">Retries</span><span id="cmd-retries" class="value status-neutral">N/A</span></div>
-                    </div>
-                </div>
-                <!-- Flight Control -->
-                <div class="section-card">
-                    <div class="section-title">🎮 Flight Control</div>
-                    <div class="control-row">
-                        <button id="btn-arm" class="btn">🔓 Arm</button>
-                        <button id="btn-disarm" class="btn">🔒 Disarm</button>
-                        <button id="btn-force-arm" class="btn btn-warning">⚠️ Force Arm</button>
-                    </div>
-                    <div class="control-row">
-                        <div class="param-row">
-                            <label>Altitude:</label>
-                            <input type="number" id="takeoff-altitude" class="param-input" value="10" min="1" max="500" step="0.5">
-                            <span style="font-size:12px;color:#888;">m</span>
+            <div id="panel-dashboard" class="dashboard-grid" style="display:block;">
+                <!-- COLUMN LEFT -->
+                <div class="dashboard-left">
+                    <!-- Connection + System side-by-side -->
+                    <div class="card-row-top">
+                        <!-- Connection Status -->
+                        <div class="section-card card-conn">
+                            <div class="section-title">🔌 Connection</div>
+                            <div class="conn-lamp-row">
+                                <span class="conn-lamp" id="conn-lamp"></span>
+                                <span id="conn-status" class="conn-state-text status-neutral">N/A</span>
+                            </div>
+                            <div class="conn-details">
+                                <div class="conn-detail-item"><span class="label">Type</span><span id="conn-type" class="value status-neutral">N/A</span></div>
+                                <div class="conn-detail-item"><span class="label">Packets</span><span id="conn-packets" class="value-mono status-neutral">N/A</span></div>
+                                <div class="conn-detail-item"><span class="label">Error</span><span id="conn-error" class="value status-neutral">N/A</span></div>
+                            </div>
                         </div>
-                        <button id="btn-takeoff" class="btn">🚀 Takeoff</button>
-                    </div>
-                    <div class="control-row">
-                        <div class="param-row">
-                            <label>Descent:</label>
-                            <input type="number" id="land-descent-rate" class="param-input" value="1.5" min="0" max="20" step="0.5">
-                            <span style="font-size:12px;color:#888;">m/s</span>
+
+                        <!-- System Status -->
+                        <div class="section-card card-system">
+                            <div class="section-title">⚙️ System</div>
+                            <div class="armed-badge-wrap">
+                                <span id="sys-armed" class="armed-badge status-neutral">DISARMED</span>
+                            </div>
+                            <div class="mode-display">
+                                <span class="mode-label">FLIGHT MODE</span>
+                                <span id="sys-mode" class="mode-value status-neutral">N/A</span>
+                            </div>
                         </div>
-                        <button id="btn-land" class="btn">🛬 Land</button>
                     </div>
-                    <div class="guided-group">
-                        <div class="group-label">📍 Guided Position (NED)</div>
-                        <div class="control-row">
-                            <div class="param-row"><label>North:</label><input type="number" id="guided-north" class="param-input" value="0" min="-500" max="500" step="1"></div>
-                            <div class="param-row"><label>East:</label><input type="number" id="guided-east" class="param-input" value="0" min="-500" max="500" step="1"></div>
-                            <div class="param-row"><label>Down:</label><input type="number" id="guided-down" class="param-input" value="0" min="-500" max="500" step="1"></div>
-                            <div class="param-row"><label>Yaw:</label><input type="number" id="guided-yaw" class="param-input" value="0" min="-180" max="180" step="1"></div>
+
+                    <!-- Battery Status -->
+                    <div class="section-card card-battery">
+                        <div class="section-title">🔋 Battery</div>
+                        <div class="battery-gauge-wrapper">
+                            <div class="battery-gauge-track">
+                                <div class="battery-gauge-fill" id="battery-fill" style="width:0%;"></div>
+                            </div>
+                            <div class="battery-gauge-values">
+                                <span class="battery-voltage-text" id="batt-voltage-display">--.- V</span>
+                                <span class="battery-pct-text" id="batt-pct-display">--%</span>
+                            </div>
                         </div>
-                        <button id="btn-guided-position" class="btn">📤 Send Position</button>
-                    </div>
-                    <div class="guided-group">
-                        <div class="group-label">💨 Guided Velocity (m/s)</div>
-                        <div class="control-row">
-                            <div class="param-row"><label>Vx:</label><input type="number" id="guided-vx" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
-                            <div class="param-row"><label>Vy:</label><input type="number" id="guided-vy" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
-                            <div class="param-row"><label>Vz:</label><input type="number" id="guided-vz" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
-                            <div class="param-row"><label>Yaw:</label><input type="number" id="guided-yaw-vel" class="param-input" value="0" min="-180" max="180" step="1"></div>
+                        <div class="battery-details">
+                            <div class="grid-item"><span class="label">Voltage</span><span id="batt-voltage" class="value status-neutral">N/A</span></div>
+                            <div class="grid-item"><span class="label">Current</span><span id="batt-current" class="value status-neutral">N/A</span></div>
+                            <div class="grid-item"><span class="label">Remaining</span><span id="batt-remaining" class="value status-neutral">N/A</span></div>
                         </div>
-                        <button id="btn-guided-velocity" class="btn">📤 Send Velocity</button>
                     </div>
-                </div>
+
+                    <!-- GPS Status - LARGE -->
+                    <div class="section-card card-gps">
+                        <div class="section-title">🛰️ GPS</div>
+                        <div class="gps-main-row">
+                            <div class="gps-fix-badge-wrap">
+                                <span id="gps-fix" class="gps-fix-badge status-neutral">NO FIX</span>
+                            </div>
+                            <div class="gps-sats-info">
+                                <span class="gps-sats-icon">🛰️</span>
+                                <span id="gps-sats" class="value status-neutral">0 sats</span>
+                            </div>
+                        </div>
+                        <div class="gps-coords-display"><span id="gps-coords" class="status-neutral">--.------, --.------</span></div>
+                        <div class="gps-details">
+                            <div class="grid-item"><span class="label">Altitude</span><span id="gps-alt" class="value status-neutral">N/A</span></div>
+                            <div class="grid-item"><span class="label">HDOP</span><span id="gps-hdop" class="value status-neutral">N/A</span></div>
+                        </div>
+                    </div>
+                </div><!-- /dashboard-left -->
+
+                <!-- COLUMN RIGHT -->
+                <div class="dashboard-right">
+                    <!-- RTK Status -->
+                    <div class="section-card card-rtk">
+                        <div class="section-title">📡 RTK</div>
+                        <div class="rtk-status-display">
+                            <span id="rtk-status" class="value status-neutral">N/A</span>
+                        </div>
+                    </div>
+
+                    <!-- Command Status -->
+                    <div class="section-card card-cmd">
+                        <div class="section-title">📋 Commands</div>
+                        <div class="cmd-main-row">
+                            <span class="cmd-last-label">LAST:</span>
+                            <span id="cmd-last" class="cmd-last-value status-neutral">N/A</span>
+                        </div>
+                        <div class="cmd-ack-display">
+                            <span id="cmd-ack" class="cmd-ack-value status-neutral">N/A</span>
+                        </div>
+                        <div class="cmd-bottom-row">
+                            <div class="cmd-pending-wrap">
+                                <span class="label">PENDING</span>
+                                <span class="cmd-pending-badge" id="cmd-pending">0</span>
+                            </div>
+                            <div class="cmd-retries-wrap">
+                                <span class="label">RETRIES</span>
+                                <span id="cmd-retries" class="value status-neutral">N/A</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Flight Control -->
+                    <div class="section-card card-flight">
+                        <div class="section-title">🎮 Flight Control</div>
+                        <div class="flight-arm-row">
+                            <button id="btn-arm" class="btn btn-arm">🔓 ARM</button>
+                            <button id="btn-disarm" class="btn btn-disarm">🔒 DISARM</button>
+                            <button id="btn-force-arm" class="btn btn-force-arm">⚠️ FORCE</button>
+                        </div>
+                        <div class="flight-action-group">
+                            <div class="flight-action-label">TAKEOFF</div>
+                            <div class="flight-action-row">
+                                <div class="param-row">
+                                    <label>ALT</label>
+                                    <input type="number" id="takeoff-altitude" class="param-input" value="10" min="1" max="500" step="0.5">
+                                    <span class="param-unit">m</span>
+                                </div>
+                                <button id="btn-takeoff" class="btn btn-takeoff">🚀 GO</button>
+                            </div>
+                        </div>
+                        <div class="flight-action-group">
+                            <div class="flight-action-label">LAND</div>
+                            <div class="flight-action-row">
+                                <div class="param-row">
+                                    <label>DESC</label>
+                                    <input type="number" id="land-descent-rate" class="param-input" value="1.5" min="0" max="20" step="0.5">
+                                    <span class="param-unit">m/s</span>
+                                </div>
+                                <button id="btn-land" class="btn btn-land">🛬 GO</button>
+                            </div>
+                        </div>
+                        <div class="guided-group">
+                            <div class="guided-header">📍 GUIDED POSITION (NED)</div>
+                            <div class="guided-params">
+                                <div class="param-row"><label>N</label><input type="number" id="guided-north" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
+                                <div class="param-row"><label>E</label><input type="number" id="guided-east" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
+                                <div class="param-row"><label>D</label><input type="number" id="guided-down" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
+                                <div class="param-row"><label>YAW</label><input type="number" id="guided-yaw" class="param-input" value="0" min="-180" max="180" step="1"><span class="param-unit">°</span></div>
+                            </div>
+                            <button id="btn-guided-position" class="btn btn-guided">📤 SEND POSITION</button>
+                        </div>
+                        <div class="guided-group">
+                            <div class="guided-header">💨 GUIDED VELOCITY (m/s)</div>
+                            <div class="guided-params">
+                                <div class="param-row"><label>Vx</label><input type="number" id="guided-vx" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
+                                <div class="param-row"><label>Vy</label><input type="number" id="guided-vy" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
+                                <div class="param-row"><label>Vz</label><input type="number" id="guided-vz" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
+                                <div class="param-row"><label>YAW</label><input type="number" id="guided-yaw-vel" class="param-input" value="0" min="-180" max="180" step="1"><span class="param-unit">°</span></div>
+                            </div>
+                            <button id="btn-guided-velocity" class="btn btn-guided">📤 SEND VELOCITY</button>
+                        </div>
+                    </div>
+                </div><!-- /dashboard-right -->
             </div><!-- /panel-dashboard -->
             <div id="panel-graph" style="display:none;">
                 <div id="graph-container"></div>

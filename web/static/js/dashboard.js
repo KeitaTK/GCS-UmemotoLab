@@ -1,7 +1,31 @@
 /**
- * Dashboard update functions for GCS Dashboard.
+ * Dashboard update functions for GCS Cockpit Dashboard.
  * Reads from telemetryState and updates all UI sections.
  */
+
+/**
+ * Helper: set an element's text content and class.
+ */
+function setText(id, text, className) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (className) {
+        el.className = 'value ' + className;
+    }
+}
+
+/**
+ * Helper: set an element's inner HTML and class.
+ */
+function setHtml(id, html, className) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = html;
+    if (className) {
+        el.className = 'value ' + className;
+    }
+}
 
 /**
  * Get the currently selected drone's system_id.
@@ -28,6 +52,9 @@ function updateDashboard() {
     const sysid = getSelectedSystemId();
     updateDroneList();
 
+    // Update sidebar connection summary
+    updateSidebarConnection(telemetryState.connection);
+
     if (sysid === null) {
         clearDashboard();
         return;
@@ -49,6 +76,23 @@ function updateDashboard() {
 }
 
 /**
+ * Update sidebar connection summary dot and text.
+ */
+function updateSidebarConnection(conn) {
+    const dot = document.getElementById('sidebar-conn-dot');
+    const text = document.getElementById('sidebar-conn-text');
+    if (!dot || !text) return;
+
+    if (!conn || !conn.is_connected) {
+        dot.className = 'disconnected';
+        text.textContent = 'No Connection';
+    } else {
+        dot.className = 'connected';
+        text.textContent = conn.type ? conn.type.toUpperCase() + ' Connected' : 'Connected';
+    }
+}
+
+/**
  * Clear all dashboard values to N/A.
  */
 function clearDashboard() {
@@ -64,6 +108,18 @@ function clearDashboard() {
         const el = document.getElementById(id);
         if (el) el.textContent = 'N/A';
     });
+
+    // Reset battery gauge
+    const fill = document.getElementById('battery-fill');
+    if (fill) { fill.style.width = '0%'; fill.className = 'battery-gauge-fill'; }
+    const voltDisp = document.getElementById('batt-voltage-display');
+    if (voltDisp) voltDisp.textContent = '--.- V';
+    const pctDisp = document.getElementById('batt-pct-display');
+    if (pctDisp) pctDisp.textContent = '--%';
+
+    // Reset connection lamp
+    const lamp = document.getElementById('conn-lamp');
+    if (lamp) lamp.classList.remove('on');
 }
 
 /**
@@ -85,26 +141,48 @@ function updateDroneList() {
             li.classList.add('selected');
         }
 
-        li.addEventListener('click', (e) => {
+        li.addEventListener('click', function(e) {
             if (e.ctrlKey || e.metaKey) {
                 li.classList.toggle('selected');
             } else {
+                document.querySelectorAll('#drone-list li').forEach(function(item) {
+                    item.classList.remove('selected');
+                });
+                li.classList.add('selected');
+            }
+            updateDashboard();
+        });
+
+        list.appendChild(li);
+    });
+}
+
 /**
  * Update Connection Status section.
  */
 function updateConnectionStatus(conn) {
+    // Update connection lamp
+    const lamp = document.getElementById('conn-lamp');
+
     if (!conn) {
         setText('conn-status', 'N/A', 'status-neutral');
         setText('conn-type', 'N/A', 'status-neutral');
         setText('conn-packets', 'N/A', 'status-neutral');
         setText('conn-error', 'N/A', 'status-neutral');
+        if (lamp) lamp.classList.remove('on');
         return;
     }
+
     const connected = conn.is_connected;
+    if (lamp) {
+        if (connected) lamp.classList.add('on');
+        else lamp.classList.remove('on');
+    }
+
     setText('conn-status', connected ? 'Connected' : 'Disconnected',
         connected ? 'status-ok' : 'status-error');
     setText('conn-type', conn.type || 'unknown', 'status-neutral');
-    const pkts = `RX: ${conn.packets_received || 0} Loss: ${conn.packet_loss || 0}`;
+    const pkts = 'RX: ' + (conn.packets_received || 0) + ' Loss: ' + (conn.packet_loss || 0);
     setText('conn-packets', pkts, 'status-neutral');
     const err = conn.last_error || 'None';
     setText('conn-error', err, err === 'None' ? 'status-ok' : 'status-warn');
@@ -128,21 +206,46 @@ function updateSystemStatus(hb, sysState) {
 }
 
 /**
- * Update Battery Status section.
+ * Update Battery Status section with gauge bar.
  */
 function updateBatteryStatus(batt) {
+    const fillEl = document.getElementById('battery-fill');
+    const voltDisp = document.getElementById('batt-voltage-display');
+    const pctDisp = document.getElementById('batt-pct-display');
+
     if (!batt || batt.voltage === null) {
         setText('batt-voltage', 'N/A', 'status-neutral');
         setText('batt-current', 'N/A', 'status-neutral');
         setText('batt-remaining', 'N/A', 'status-neutral');
+        if (fillEl) { fillEl.style.width = '0%'; fillEl.className = 'battery-gauge-fill'; }
+        if (voltDisp) voltDisp.textContent = '--.- V';
+        if (pctDisp) pctDisp.textContent = '--%';
         return;
     }
-    setText('batt-voltage', `${batt.voltage} V`, 'status-ok');
+
+    setText('batt-voltage', batt.voltage.toFixed(2) + ' V', 'status-ok');
     setText('batt-current',
-        batt.current !== null ? `${batt.current} A` : 'N/A', 'status-neutral');
-    setText('batt-remaining',
-        batt.remaining !== null ? `${batt.remaining}%` : 'N/A',
-        batt.remaining !== null && batt.remaining < 20 ? 'status-error' : 'status-ok');
+        batt.current !== null ? batt.current.toFixed(1) + ' A' : 'N/A', 'status-neutral');
+
+    const remaining = batt.remaining !== null ? batt.remaining : 0;
+    setText('batt-remaining', remaining + '%',
+        remaining < 20 ? 'status-error' : 'status-ok');
+
+    // Update battery gauge bar
+    if (fillEl) {
+        fillEl.style.width = Math.max(0, Math.min(100, remaining)) + '%';
+        if (remaining > 50) {
+            fillEl.className = 'battery-gauge-fill green';
+        } else if (remaining > 25) {
+            fillEl.className = 'battery-gauge-fill yellow';
+        } else {
+            fillEl.className = 'battery-gauge-fill red';
+        }
+    }
+
+    // Update large battery display values
+    if (voltDisp) voltDisp.textContent = batt.voltage.toFixed(1) + ' V';
+    if (pctDisp) pctDisp.textContent = remaining + '%';
 }
 
 /**
@@ -159,18 +262,18 @@ function updateGpsStatus(gps) {
         return;
     }
     const fixType = gps.fix_type;
-    const fixName = gps.fix_name || `UNKNOWN(${fixType})`;
+    const fixName = gps.fix_name || 'UNKNOWN(' + fixType + ')';
     let fixClass = 'status-error';
     if (fixType >= 5) fixClass = 'status-ok';
     else if (fixType >= 3) fixClass = 'status-warn';
 
-    setHtml('gps-fix', `<span class="${fixClass}">${fixName}</span>`, '');
-    setText('gps-sats', `${gps.satellites || 0} sats`, 'status-neutral');
+    setHtml('gps-fix', '<span class="' + fixClass + '">' + fixName + '</span>', '');
+    setText('gps-sats', (gps.satellites || 0) + ' sats', 'status-neutral');
     const lat = gps.lat !== null && gps.lat !== undefined ? gps.lat.toFixed(6) : 'N/A';
     const lon = gps.lon !== null && gps.lon !== undefined ? gps.lon.toFixed(6) : 'N/A';
-    setText('gps-coords', `${lat}, ${lon}`, 'status-neutral');
-    setText('gps-alt', gps.alt !== null ? `${gps.alt} m` : 'N/A', 'status-neutral');
-    setText('gps-hdop', gps.hdop !== null ? `${gps.hdop} m` : 'N/A',
+    setText('gps-coords', lat + ', ' + lon, 'status-neutral');
+    setText('gps-alt', gps.alt !== null ? gps.alt.toFixed(1) + ' m' : 'N/A', 'status-neutral');
+    setText('gps-hdop', gps.hdop !== null ? gps.hdop.toFixed(2) + ' m' : 'N/A',
         gps.hdop !== null && gps.hdop < 1.0 ? 'status-ok' : 'status-warn');
 }
 
@@ -182,8 +285,10 @@ function updateRtkStatus(rtk) {
         setText('rtk-status', 'N/A', 'status-neutral');
         return;
     }
-    const msg = `enabled=${rtk.enabled || false} messages=${rtk.messages_received || 0} ` +
-                `connections=${rtk.connections || 0} reconnects=${rtk.reconnects || 0}`;
+    const msg = 'enabled=' + (rtk.enabled || false) +
+                ' messages=' + (rtk.messages_received || 0) +
+                ' connections=' + (rtk.connections || 0) +
+                ' reconnects=' + (rtk.reconnects || 0);
     setText('rtk-status', msg, rtk.enabled ? 'status-ok' : 'status-neutral');
 }
 
@@ -199,7 +304,7 @@ function updateCommandStatus(cmdState) {
         return;
     }
     const lastAck = cmdState.last_ack;
-    setText('cmd-last', lastAck ? lastAck.command || '-' : '-', 'status-neutral');
+    setText('cmd-last', lastAck ? (lastAck.command || '-') : '-', 'status-neutral');
 
     if (lastAck) {
         const ackClass = lastAck.status === 'acked' ? 'status-ok' :
@@ -210,41 +315,5 @@ function updateCommandStatus(cmdState) {
     }
 
     setText('cmd-pending', String(cmdState.pending_count || 0), 'status-neutral');
-    setText('cmd-retries', `0/3`, 'status-neutral');
-}
-
-/**
- * Helper: set an element's text content and class.
- */
-function setText(id, text, className) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
-    if (className) {
-        el.className = `value ${className}`;
-    }
-}
-
-/**
- * Helper: set an element's inner HTML and class.
- */
-function setHtml(id, html, className) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = html;
-    if (className) {
-        el.className = `value ${className}`;
-    }
-}
-
-                document.querySelectorAll('#drone-list li').forEach(item => {
-                    item.classList.remove('selected');
-                });
-                li.classList.add('selected');
-            }
-            updateDashboard();
-        });
-
-        list.appendChild(li);
-    });
+    setText('cmd-retries', '0/3', 'status-neutral');
 }
