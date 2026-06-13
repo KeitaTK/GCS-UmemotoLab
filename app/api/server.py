@@ -383,7 +383,11 @@ def _decode_flight_mode(mode: int) -> str:
 async def root():
     """GCS Web UI を提供"""
     try:
-        with open("app/web/index.html", "r") as f:
+        with open("web/static/index.html", "r") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(content="<h1>GCS-UmemotoLab API</h1><p>API is running. Web UI not found.</p>")
+        try:
+            with open("app/web/index.html", "r") as f:
+                return HTMLResponse(content=f.read())
+        except FileNotFoundError:
+            return HTMLResponse(content="<h1>GCS-UmemotoLab API</h1><p>API is running. Web UI not found.</p>")
