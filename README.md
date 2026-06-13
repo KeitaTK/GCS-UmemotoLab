@@ -78,14 +78,24 @@ macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
 
 ### インストール
 
+> **UV**（pipの10-100倍高速なPythonパッケージマネージャー）を使用します。
+> 未インストールの場合は以下で導入してください:
+> ```bash
+> curl -LsSf https://astral.sh/uv/install.sh | sh
+> ```
+> その他のインストール方法は [UV公式ドキュメント](https://docs.astral.sh/uv/getting-started/installation/) を参照。
+
 ```bash
 git clone https://github.com/KeitaTK/GCS-UmemotoLab.git
 cd GCS-UmemotoLab
 
-python -m venv .venv
+uv venv
 source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
+
+> **従来のpip互換**: `uv sync` の代わりに `uv pip install -r requirements.txt` を使用することも可能です。
+> **Raspi用**: `uv pip install -r requirements_raspi.txt` でRaspi向けの最小依存をインストールできます。
 
 ### クイック起動
 
