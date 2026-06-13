@@ -1,5 +1,5 @@
 import pytest
-from app.mavlink.telemetry_store import TelemetryStore
+from app.rtk_tools.telemetry_store import TelemetryStore
 
 def test_telemetry_store_initial_state():
     store = TelemetryStore()

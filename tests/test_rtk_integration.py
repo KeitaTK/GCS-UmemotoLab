@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 # Add app directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'app'))
 
-from mavlink.rtcm_reader import RtcmReader
-from mavlink.rtcm_injector import RtcmInjector
+from rtk_tools.rtcm_reader import RtcmReader
+from rtk_tools.rtcm_injector import RtcmInjector
 
 
 class DummyRtcmServer:

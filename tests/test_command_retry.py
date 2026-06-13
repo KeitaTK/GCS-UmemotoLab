@@ -11,7 +11,7 @@ from pathlib import Path
 app_dir = os.path.join(os.path.dirname(__file__), '..', 'app')
 sys.path.insert(0, app_dir)
 
-from mavlink.command_dispatcher import CommandDispatcher
+from rtk_tools.command_dispatcher import CommandDispatcher
 from unittest.mock import Mock, MagicMock, patch
 
 

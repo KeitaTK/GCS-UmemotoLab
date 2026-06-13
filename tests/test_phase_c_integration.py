@@ -12,9 +12,10 @@ import logging
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'app'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mavlink.connection import MavlinkConnection
-from config_loader import resolve_config_path
+from rtk_tools.config_loader import resolve_config_path
 import yaml
 
 # Setup logging
