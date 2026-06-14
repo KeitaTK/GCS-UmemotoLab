@@ -3,236 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GCS Dashboard - UmemotoLab</title>
+    <title>Multi-Drone Dashboard - UmemotoLab</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
 <body>
-    <!-- Sidebar -->
-    <div id="sidebar">
-        <h2>🚁 GCS Cockpit</h2>
-        <div id="sidebar-conn-summary">
-            <span id="sidebar-conn-dot" class="disconnected"></span>
-            <span id="sidebar-conn-text">No Connection</span>
-        </div>
-        <div class="sidebar-section-label">DRONES</div>
-        <ul id="drone-list">
-            <li style="color:#888;text-align:center;padding:20px;">Waiting for telemetry...</li>
-        </ul>
-        <div class="sidebar-buttons">
-            <button id="btn-select-all">Select All</button>
-            <button id="btn-clear-selection">Clear</button>
-        </div>
+
+<!-- ====== STATUS BAR ====== -->
+<div class="status-bar">
+    <span class="status-dot off" id="ws-dot"></span>
+    <span class="status-label">WebSocket</span>
+    <span class="status-value" id="ws-text">Disconnected</span>
+    <span class="status-sep">|</span>
+    <span class="status-label">Backend</span>
+    <span class="status-value" id="backend-status-text">Not connected</span>
+    <div class="status-bar-right">
+        <span class="nominal-text" id="all-nominal-text"></span>
+        <button class="btn-sm btn-connect-sm" id="btn-connect" onclick="connectBackend()">Connect</button>
+        <button class="btn-sm btn-disconnect-sm" id="btn-disconnect" onclick="disconnectBackend()">Disconnect</button>
     </div>
+</div>
 
-    <!-- Main -->
-    <div id="main">
-        <div id="ws-status-bar">
-            <span id="ws-status-dot" class="disconnected"></span>
-            <span id="ws-status-text" class="status-error">Disconnected</span>
-            <span id="backend-status" class="backend-inline status-neutral">Backend: Not connected</span>
-            <span class="ws-telemetry-label">WebSocket Telemetry</span>
-        </div>
-        <div id="tab-bar">
-            <button id="tab-dashboard" class="active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button id="tab-graph" onclick="switchTab('graph')">📈 Graph</button>
-            <button id="tab-raw" onclick="switchTab('raw')">📄 Raw Data</button>
-            <div id="tab-bar-buttons">
-                <button id="btn-connect" class="btn btn-connect">🟢 Connect</button>
-                <button id="btn-disconnect" class="btn btn-disconnect">🔴 Disconnect</button>
-            </div>
-        </div>
-        <div id="tab-content">
-            <div id="panel-dashboard" class="dashboard-grid" style="display:block;">
-                <!-- COLUMN LEFT -->
-                <div class="dashboard-left">
-                    <!-- Connection + System side-by-side -->
-                    <div class="card-row-top">
-                        <!-- Connection Status -->
-                        <div class="section-card card-conn">
-                            <div class="section-title">🔌 Connection</div>
-                            <div class="conn-lamp-row">
-                                <span class="conn-lamp" id="conn-lamp"></span>
-                                <span id="conn-status" class="conn-state-text status-neutral">N/A</span>
-                            </div>
-                            <div class="conn-details">
-                                <div class="conn-detail-item"><span class="label">Type</span><span id="conn-type" class="value status-neutral">N/A</span></div>
-                                <div class="conn-detail-item"><span class="label">Packets</span><span id="conn-packets" class="value-mono status-neutral">N/A</span></div>
-                                <div class="conn-detail-item"><span class="label">Error</span><span id="conn-error" class="value status-neutral">N/A</span></div>
-                            </div>
-                        </div>
+<!-- ====== ALERT BAR ====== -->
+<div class="alert-bar alert-ok" id="alert-bar">
+    <span id="alert-icon">&#10003;</span>
+    <span id="alert-text">All Systems Nominal</span>
+</div>
 
-                        <!-- System Status -->
-                        <div class="section-card card-system">
-                            <div class="section-title">⚙️ System</div>
-                            <div class="armed-badge-wrap">
-                                <span id="sys-armed" class="armed-badge status-neutral">DISARMED</span>
-                            </div>
-                            <div class="mode-display">
-                                <span class="mode-label">FLIGHT MODE</span>
-                                <span id="sys-mode" class="mode-value status-neutral">N/A</span>
-                            </div>
-                        </div>
-                    </div>
+<!-- ====== 4-COLUMN GRID ====== -->
+<div class="multi-drone-grid" id="multi-drone-grid">
+    <!-- Filled by renderAllCards() -->
+</div>
 
-                    <!-- Battery Status -->
-                    <div class="section-card card-battery">
-                        <div class="section-title">🔋 Battery</div>
-                        <div class="battery-gauge-wrapper">
-                            <div class="battery-gauge-track">
-                                <div class="battery-gauge-fill" id="battery-fill" style="width:0%;"></div>
-                            </div>
-                            <div class="battery-gauge-values">
-                                <span class="battery-voltage-text" id="batt-voltage-display">--.- V</span>
-                                <span class="battery-pct-text" id="batt-pct-display">--%</span>
-                            </div>
-                        </div>
-                        <div class="battery-details">
-                            <div class="grid-item"><span class="label">Voltage</span><span id="batt-voltage" class="value status-neutral">N/A</span></div>
-                            <div class="grid-item"><span class="label">Current</span><span id="batt-current" class="value status-neutral">N/A</span></div>
-                            <div class="grid-item"><span class="label">Remaining</span><span id="batt-remaining" class="value status-neutral">N/A</span></div>
-                        </div>
-                    </div>
+<!-- ====== RTK BASE STATION BAR ====== -->
+<div class="rtk-bar" id="rtk-bar">
+    <span class="rtk-label">&#128247; RTK Base</span>
+    <span>Status: <span class="rtk-val" id="rtk-status">Disabled</span></span>
+    <span>|</span>
+    <span>Messages: <span class="rtk-val" id="rtk-msgs">0</span></span>
+    <span>|</span>
+    <span>Reconnects: <span class="rtk-val" id="rtk-reconns">0</span></span>
+</div>
 
-                    <!-- GPS Status - LARGE -->
-                    <div class="section-card card-gps">
-                        <div class="section-title">🛰️ GPS</div>
-                        <div class="gps-main-row">
-                            <div class="gps-fix-badge-wrap">
-                                <span id="gps-fix" class="gps-fix-badge status-neutral">NO FIX</span>
-                            </div>
-                            <div class="gps-sats-info">
-                                <span class="gps-sats-icon">🛰️</span>
-                                <span id="gps-sats" class="value status-neutral">0 sats</span>
-                            </div>
-                        </div>
-                        <div class="gps-coords-display"><span id="gps-coords" class="status-neutral">--.------, --.------</span></div>
-                        <div class="gps-details">
-                            <div class="grid-item"><span class="label">Altitude</span><span id="gps-alt" class="value status-neutral">N/A</span></div>
-                            <div class="grid-item"><span class="label">HDOP</span><span id="gps-hdop" class="value status-neutral">N/A</span></div>
-                        </div>
-                    </div>
-                </div><!-- /dashboard-left -->
+<!-- ====== BROADCAST PANEL ====== -->
+<div class="broadcast-panel" id="broadcast-panel">
+    <span class="broadcast-label">&#128227; ALL DRONES</span>
+    <button id="btn-arm-all" onclick="broadcastArm()">ARM ALL</button>
+    <button id="btn-disarm-all" onclick="broadcastDisarm()">DISARM ALL</button>
+    <input type="number" class="takeoff-alt-input" id="takeoff-all-alt" value="10" min="0.5" max="500" step="0.5" title="Altitude (m)">
+    <button id="btn-takeoff-all" onclick="broadcastTakeoff()">TAKEOFF ALL</button>
+    <button id="btn-land-all" class="btn-land-all" onclick="broadcastLand()">LAND ALL</button>
+</div>
 
-                <!-- COLUMN RIGHT -->
-                <div class="dashboard-right">
-                    <!-- RTK Status -->
-                    <div class="section-card card-rtk">
-                        <div class="section-title">📡 RTK</div>
-                        <div class="rtk-status-display">
-                            <span id="rtk-status" class="value status-neutral">N/A</span>
-                        </div>
-                    </div>
-
-                    <!-- Command Status -->
-                    <div class="section-card card-cmd">
-                        <div class="section-title">📋 Commands</div>
-                        <div class="cmd-main-row">
-                            <span class="cmd-last-label">LAST:</span>
-                            <span id="cmd-last" class="cmd-last-value status-neutral">N/A</span>
-                        </div>
-                        <div class="cmd-ack-display">
-                            <span id="cmd-ack" class="cmd-ack-value status-neutral">N/A</span>
-                        </div>
-                        <div class="cmd-bottom-row">
-                            <div class="cmd-pending-wrap">
-                                <span class="label">PENDING</span>
-                                <span class="cmd-pending-badge" id="cmd-pending">0</span>
-                            </div>
-                            <div class="cmd-retries-wrap">
-                                <span class="label">RETRIES</span>
-                                <span id="cmd-retries" class="value status-neutral">N/A</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Flight Control -->
-                    <div class="section-card card-flight">
-                        <div class="section-title">🎮 Flight Control</div>
-                        <div class="flight-arm-row">
-                            <button id="btn-arm" class="btn btn-arm">🔓 ARM</button>
-                            <button id="btn-disarm" class="btn btn-disarm">🔒 DISARM</button>
-                            <button id="btn-force-arm" class="btn btn-force-arm">⚠️ FORCE</button>
-                        </div>
-                        <div class="flight-action-group">
-                            <div class="flight-action-label">TAKEOFF</div>
-                            <div class="flight-action-row">
-                                <div class="param-row">
-                                    <label>ALT</label>
-                                    <input type="number" id="takeoff-altitude" class="param-input" value="10" min="1" max="500" step="0.5">
-                                    <span class="param-unit">m</span>
-                                </div>
-                                <button id="btn-takeoff" class="btn btn-takeoff">🚀 GO</button>
-                            </div>
-                        </div>
-                        <div class="flight-action-group">
-                            <div class="flight-action-label">LAND</div>
-                            <div class="flight-action-row">
-                                <div class="param-row">
-                                    <label>DESC</label>
-                                    <input type="number" id="land-descent-rate" class="param-input" value="1.5" min="0" max="20" step="0.5">
-                                    <span class="param-unit">m/s</span>
-                                </div>
-                                <button id="btn-land" class="btn btn-land">🛬 GO</button>
-                            </div>
-                        </div>
-                        <div class="guided-group">
-                            <div class="guided-header">📍 GUIDED POSITION (NED)</div>
-                            <div class="guided-params">
-                                <div class="param-row"><label>N</label><input type="number" id="guided-north" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
-                                <div class="param-row"><label>E</label><input type="number" id="guided-east" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
-                                <div class="param-row"><label>D</label><input type="number" id="guided-down" class="param-input" value="0" min="-500" max="500" step="1"><span class="param-unit">m</span></div>
-                                <div class="param-row"><label>YAW</label><input type="number" id="guided-yaw" class="param-input" value="0" min="-180" max="180" step="1"><span class="param-unit">°</span></div>
-                            </div>
-                            <button id="btn-guided-position" class="btn btn-guided">📤 SEND POSITION</button>
-                        </div>
-                        <div class="guided-group">
-                            <div class="guided-header">💨 GUIDED VELOCITY (m/s)</div>
-                            <div class="guided-params">
-                                <div class="param-row"><label>Vx</label><input type="number" id="guided-vx" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
-                                <div class="param-row"><label>Vy</label><input type="number" id="guided-vy" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
-                                <div class="param-row"><label>Vz</label><input type="number" id="guided-vz" class="param-input" value="0" min="-20" max="20" step="0.5"><span class="param-unit">m/s</span></div>
-                                <div class="param-row"><label>YAW</label><input type="number" id="guided-yaw-vel" class="param-input" value="0" min="-180" max="180" step="1"><span class="param-unit">°</span></div>
-                            </div>
-                            <button id="btn-guided-velocity" class="btn btn-guided">📤 SEND VELOCITY</button>
-                        </div>
-                    </div>
-                </div><!-- /dashboard-right -->
-            </div><!-- /panel-dashboard -->
-            <div id="panel-graph" style="display:none;">
-                <div id="graph-container"></div>
-                <div id="graph-altitude-container"></div>
-            </div>
-            <div id="panel-raw" style="display:none;">
-                <pre id="raw-data-content">No drone selected</pre>
-            </div>
-        </div><!-- /tab-content -->
-    </div><!-- /main -->
-
-    <script src="/static/js/websocket.js"></script>
-    <script src="/static/js/dashboard.js"></script>
-    <script src="/static/js/controls.js"></script>
-    <script src="/static/js/graph.js"></script>
-    <script src="/static/js/rawdata.js"></script>
-    <script>
-        function switchTab(tabName) {
-            document.querySelectorAll('#tab-bar button').forEach(function(btn) {
-                btn.classList.remove('active');
-            });
-            var tabBtn = document.getElementById('tab-' + tabName);
-            if (tabBtn) tabBtn.classList.add('active');
-            var panels = { dashboard: 'panel-dashboard', graph: 'panel-graph', raw: 'panel-raw' };
-            for (var key in panels) {
-                var panel = document.getElementById(panels[key]);
-                if (panel) panel.style.display = (key === tabName) ? 'block' : 'none';
-            }
-            if (tabName === 'graph' && typeof updateGraphs === 'function') updateGraphs();
-            if (tabName === 'raw' && typeof updateRawData === 'function') updateRawData();
-        }
-        setInterval(function() {
-            if (typeof updateGraphs === 'function') updateGraphs();
-            if (typeof updateRawData === 'function') updateRawData();
-        }, 1000);
-    </script>
+<script src="/static/js/websocket.js"></script>
+<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/controls.js"></script>
 </body>
 </html>

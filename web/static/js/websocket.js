@@ -1,12 +1,16 @@
 /**
- * WebSocket connection manager for GCS Dashboard.
- * Connects to /ws/telemetry and maintains telemetryState.
+ * WebSocket connection manager for Multi-Drone Dashboard.
+ * Connects to /ws/telemetry, maintains telemetryState + per-drone heartbeat tracking.
  */
 
-let telemetryState = {};
+var telemetryState = {};
 let ws = null;
 let wsRetryCount = 0;
 const MAX_RETRIES = 10;
+const HEARTBEAT_TIMEOUT_SEC = 5;
+
+// Per-drone last-seen timestamps for offline detection
+var droneLastSeen = {};
 
 /**
  * Connect to the telemetry WebSocket endpoint.
@@ -30,10 +34,20 @@ function connectWebSocket() {
         try {
             const payload = JSON.parse(event.data);
             if (payload.type === 'telemetry') {
-                // Store connection info at top level
                 telemetryState = payload;
 
-                // Dispatch event so dashboard/graph/rawdata can update
+                // Update per-drone last-seen timestamps
+                const now = Date.now() / 1000;
+                if (payload.drones) {
+                    for (const sysid of Object.keys(payload.drones)) {
+                        const drone = payload.drones[sysid];
+                        if (drone.heartbeat && drone.heartbeat.mode !== 'N/A') {
+                            droneLastSeen[sysid] = now;
+                        }
+                    }
+                }
+
+                // Dispatch to dashboard update
                 if (typeof updateDashboard === 'function') {
                     updateDashboard();
                 }
@@ -79,34 +93,51 @@ function scheduleReconnect() {
  * Update the WS status indicator in the UI.
  */
 function updateWsStatus(status) {
-    const dot = document.getElementById('ws-status-dot');
-    const text = document.getElementById('ws-status-text');
+    const dot = document.getElementById('ws-dot');
+    const text = document.getElementById('ws-text');
     if (!dot || !text) return;
 
-    dot.className = ''; // reset
+    dot.className = 'status-dot';
     switch (status) {
         case 'connected':
-            dot.classList.add('connected');
+            dot.classList.add('on');
             text.textContent = 'Connected';
-            text.className = 'status-ok';
             break;
         case 'disconnected':
-            dot.classList.add('disconnected');
+            dot.classList.add('off');
             text.textContent = 'Disconnected';
-            text.className = 'status-error';
             break;
         case 'reconnecting':
-            dot.classList.add('reconnecting');
+            dot.classList.add('off');
             text.textContent = `Reconnecting... (${wsRetryCount}/${MAX_RETRIES})`;
-            text.className = 'status-warn';
             break;
     }
 }
 
 /**
- * Expose telemetryState getter globally.
+ * Check if a drone is considered online (has heartbeat within timeout).
  */
+function isDroneOnline(sysid) {
+    const lastSeen = droneLastSeen[String(sysid)] || 0;
+    return (Date.now() / 1000 - lastSeen) < HEARTBEAT_TIMEOUT_SEC;
+}
+
+/**
+ * Get all currently online drone IDs.
+ */
+function getOnlineDroneIds() {
+    const drones = telemetryState.drones || {};
+    return Object.keys(drones).filter(id => {
+        const drone = drones[id];
+        return drone && drone.heartbeat && drone.heartbeat.mode !== 'N/A';
+    }).map(Number);
+}
+
+// Expose getters globally
 window.getTelemetryState = () => telemetryState;
+window.isDroneOnline = isDroneOnline;
+window.getOnlineDroneIds = getOnlineDroneIds;
+window.droneLastSeen = droneLastSeen;
 
 // Auto-connect when script loads
 connectWebSocket();

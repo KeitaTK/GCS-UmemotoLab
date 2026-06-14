@@ -1,319 +1,304 @@
 /**
- * Dashboard update functions for GCS Cockpit Dashboard.
- * Reads from telemetryState and updates all UI sections.
+ * Multi-Drone Dashboard - Card rendering, alert bar, RTK bar, status updates.
+ * Called from websocket.js onmessage every ~1 second.
  */
 
-/**
- * Helper: set an element's text content and class.
- */
-function setText(id, text, className) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.textContent = text;
-    if (className) {
-        el.className = 'value ' + className;
-    }
-}
-
-/**
- * Helper: set an element's inner HTML and class.
- */
-function setHtml(id, html, className) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = html;
-    if (className) {
-        el.className = 'value ' + className;
-    }
-}
-
-/**
- * Get the currently selected drone's system_id.
- * Returns the first selected ID, or null if none selected.
- */
-function getSelectedSystemId() {
-    const items = document.querySelectorAll('#drone-list li.selected');
-    if (items.length === 0) return null;
-    return parseInt(items[0].textContent, 10);
-}
-
-/**
- * Get all selected system_ids.
- */
-function getSelectedSystemIds() {
-    const items = document.querySelectorAll('#drone-list li.selected');
-    return Array.from(items).map(li => parseInt(li.textContent, 10));
-}
+const MAX_SLOTS = 4;
 
 /**
  * Main update function - called from websocket onmessage.
  */
 function updateDashboard() {
-    const sysid = getSelectedSystemId();
-    updateDroneList();
-
-    // Update sidebar connection summary
-    updateSidebarConnection(telemetryState.connection);
-
-    if (sysid === null) {
-        clearDashboard();
-        return;
-    }
-
+    const conn = telemetryState.connection || null;
     const drones = telemetryState.drones || {};
-    const drone = drones[String(sysid)];
-    if (!drone) {
-        clearDashboard();
-        return;
-    }
+    const rtk = telemetryState.rtk || null;
 
-    updateConnectionStatus(telemetryState.connection);
-    updateSystemStatus(drone.heartbeat, drone.system_state);
-    updateBatteryStatus(drone.battery);
-    updateGpsStatus(drone.gps);
-    updateRtkStatus(telemetryState.rtk);
-    updateCommandStatus(drone.command_state);
+    updateBackendStatus(conn);
+    updateAlertBar(drones, conn);
+    renderAllCards(drones, conn);
+    updateRtkBar(rtk);
+    updateAllNominal(drones, conn);
 }
 
 /**
- * Update sidebar connection summary dot and text.
+ * Update backend status text in status bar.
  */
-function updateSidebarConnection(conn) {
-    const dot = document.getElementById('sidebar-conn-dot');
-    const text = document.getElementById('sidebar-conn-text');
-    if (!dot || !text) return;
-
-    if (!conn || !conn.is_connected) {
-        dot.className = 'disconnected';
-        text.textContent = 'No Connection';
-    } else {
-        dot.className = 'connected';
-        text.textContent = conn.type ? conn.type.toUpperCase() + ' Connected' : 'Connected';
-    }
-}
-
-/**
- * Clear all dashboard values to N/A.
- */
-function clearDashboard() {
-    const ids = [
-        'conn-status', 'conn-type', 'conn-packets', 'conn-error',
-        'sys-armed', 'sys-mode',
-        'batt-voltage', 'batt-current', 'batt-remaining',
-        'gps-fix', 'gps-sats', 'gps-coords', 'gps-alt', 'gps-hdop',
-        'rtk-status',
-        'cmd-last', 'cmd-ack', 'cmd-pending', 'cmd-retries'
-    ];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = 'N/A';
-    });
-
-    // Reset battery gauge
-    const fill = document.getElementById('battery-fill');
-    if (fill) { fill.style.width = '0%'; fill.className = 'battery-gauge-fill'; }
-    const voltDisp = document.getElementById('batt-voltage-display');
-    if (voltDisp) voltDisp.textContent = '--.- V';
-    const pctDisp = document.getElementById('batt-pct-display');
-    if (pctDisp) pctDisp.textContent = '--%';
-
-    // Reset connection lamp
-    const lamp = document.getElementById('conn-lamp');
-    if (lamp) lamp.classList.remove('on');
-}
-
-/**
- * Dynamically update the drone list from telemetryState keys.
- */
-function updateDroneList() {
-    const list = document.getElementById('drone-list');
-    if (!list) return;
-
-    const drones = telemetryState.drones || {};
-    const currentSelected = new Set(getSelectedSystemIds().map(String));
-
-    list.innerHTML = '';
-    Object.keys(drones).sort((a, b) => parseInt(a) - parseInt(b)).forEach(sysid => {
-        const li = document.createElement('li');
-        li.textContent = sysid;
-        li.dataset.sysid = sysid;
-        if (currentSelected.has(sysid)) {
-            li.classList.add('selected');
-        }
-
-        li.addEventListener('click', function(e) {
-            if (e.ctrlKey || e.metaKey) {
-                li.classList.toggle('selected');
-            } else {
-                document.querySelectorAll('#drone-list li').forEach(function(item) {
-                    item.classList.remove('selected');
-                });
-                li.classList.add('selected');
-            }
-            updateDashboard();
-        });
-
-        list.appendChild(li);
-    });
-}
-
-/**
- * Update Connection Status section.
- */
-function updateConnectionStatus(conn) {
-    // Update connection lamp
-    const lamp = document.getElementById('conn-lamp');
+function updateBackendStatus(conn) {
+    const el = document.getElementById('backend-status-text');
+    if (!el) return;
 
     if (!conn) {
-        setText('conn-status', 'N/A', 'status-neutral');
-        setText('conn-type', 'N/A', 'status-neutral');
-        setText('conn-packets', 'N/A', 'status-neutral');
-        setText('conn-error', 'N/A', 'status-neutral');
-        if (lamp) lamp.classList.remove('on');
-        return;
+        el.textContent = 'Not connected';
+        el.className = 'status-value status-warn';
+    } else if (conn.is_connected) {
+        el.textContent = 'Connected';
+        el.className = 'status-value status-ok';
+    } else {
+        el.textContent = 'Disconnected';
+        el.className = 'status-value status-error';
     }
-
-    const connected = conn.is_connected;
-    if (lamp) {
-        if (connected) lamp.classList.add('on');
-        else lamp.classList.remove('on');
-    }
-
-    setText('conn-status', connected ? 'Connected' : 'Disconnected',
-        connected ? 'status-ok' : 'status-error');
-    setText('conn-type', conn.type || 'unknown', 'status-neutral');
-    const pkts = 'RX: ' + (conn.packets_received || 0) + ' Loss: ' + (conn.packet_loss || 0);
-    setText('conn-packets', pkts, 'status-neutral');
-    const err = conn.last_error || 'None';
-    setText('conn-error', err, err === 'None' ? 'status-ok' : 'status-warn');
 }
 
 /**
- * Update System Status section.
+ * Update "All Systems Nominal" display and alert bar.
  */
-function updateSystemStatus(hb, sysState) {
-    const heartbeat = hb || sysState;
-    if (!heartbeat) {
-        setHtml('sys-armed', '🔴 DISARMED', 'status-neutral');
-        setText('sys-mode', 'N/A', 'status-neutral');
+function updateAllNominal(drones, conn) {
+    const el = document.getElementById('all-nominal-text');
+    if (!el) return;
+
+    const backendOk = conn && conn.is_connected;
+    if (!backendOk) {
+        el.textContent = '';
         return;
     }
-    const armed = heartbeat.armed;
-    setHtml('sys-armed',
-        armed ? '<span class="status-ok">🟢 ARMED</span>' : '<span class="status-error">🔴 DISARMED</span>',
-        '');
-    setText('sys-mode', heartbeat.mode || 'N/A', armed ? 'status-ok' : 'status-neutral');
+
+    // Count online drones
+    let onlineCount = 0;
+    for (const sysid of Object.keys(drones)) {
+        if (isDroneOnline(parseInt(sysid))) onlineCount++;
+    }
+    el.textContent = onlineCount + ' drone(s) online';
 }
 
 /**
- * Update Battery Status section with gauge bar.
+ * Update alert bar with aggregated warnings.
  */
-function updateBatteryStatus(batt) {
-    const fillEl = document.getElementById('battery-fill');
-    const voltDisp = document.getElementById('batt-voltage-display');
-    const pctDisp = document.getElementById('batt-pct-display');
+function updateAlertBar(drones, conn) {
+    const bar = document.getElementById('alert-bar');
+    const icon = document.getElementById('alert-icon');
+    const text = document.getElementById('alert-text');
+    if (!bar || !icon || !text) return;
 
-    if (!batt || batt.voltage === null) {
-        setText('batt-voltage', 'N/A', 'status-neutral');
-        setText('batt-current', 'N/A', 'status-neutral');
-        setText('batt-remaining', 'N/A', 'status-neutral');
-        if (fillEl) { fillEl.style.width = '0%'; fillEl.className = 'battery-gauge-fill'; }
-        if (voltDisp) voltDisp.textContent = '--.- V';
-        if (pctDisp) pctDisp.textContent = '--%';
+    // Backend not connected
+    if (!conn || !conn.is_connected) {
+        bar.className = 'alert-bar alert-warn';
+        icon.textContent = '\u26A0';
+        text.textContent = 'Backend offline';
         return;
     }
 
-    setText('batt-voltage', batt.voltage.toFixed(2) + ' V', 'status-ok');
-    setText('batt-current',
-        batt.current !== null ? batt.current.toFixed(1) + ' A' : 'N/A', 'status-neutral');
+    const alerts = [];
 
-    const remaining = batt.remaining !== null ? batt.remaining : 0;
-    setText('batt-remaining', remaining + '%',
-        remaining < 20 ? 'status-error' : 'status-ok');
+    for (const sysid of Object.keys(drones)) {
+        const drone = drones[sysid];
+        const online = isDroneOnline(parseInt(sysid));
+        const hb = drone.heartbeat;
+        const bat = drone.battery;
+        const gps = drone.gps;
+        const cmd = drone.command_state;
 
-    // Update battery gauge bar
-    if (fillEl) {
-        fillEl.style.width = Math.max(0, Math.min(100, remaining)) + '%';
-        if (remaining > 50) {
-            fillEl.className = 'battery-gauge-fill green';
-        } else if (remaining > 25) {
-            fillEl.className = 'battery-gauge-fill yellow';
-        } else {
-            fillEl.className = 'battery-gauge-fill red';
+        if (!online || !hb || hb.mode === 'N/A') {
+            alerts.push({ level: 'critical', msg: 'Drone-' + sysid + ' NO SIGNAL' });
+            continue;
+        }
+
+        if (bat && bat.remaining !== null && bat.remaining < 25) {
+            alerts.push({ level: 'warning', msg: 'Drone-' + sysid + ' Battery ' + bat.remaining + '%' });
+        }
+
+        if (gps && gps.fix_type >= 0 && gps.fix_type <= 2) {
+            alerts.push({ level: 'warning', msg: 'Drone-' + sysid + ' GPS ' + (gps.fix_name || 'NO_FIX') });
+        }
+
+        if (gps && gps.hdop !== null && gps.hdop >= 2.0) {
+            alerts.push({ level: 'caution', msg: 'Drone-' + sysid + ' HDOP=' + gps.hdop.toFixed(1) });
+        }
+
+        if (cmd && cmd.last_ack && (cmd.last_ack.status === 'failed' || cmd.last_ack.status === 'timeout')) {
+            alerts.push({ level: 'caution', msg: 'Drone-' + sysid + ' ' + cmd.last_ack.command + ' ' + cmd.last_ack.status });
         }
     }
 
-    // Update large battery display values
-    if (voltDisp) voltDisp.textContent = batt.voltage.toFixed(1) + ' V';
-    if (pctDisp) pctDisp.textContent = remaining + '%';
-}
-
-/**
- * Update GPS Status section.
- * Color logic: RTK (fix_type >= 5) = green, 3D/DGPS (3-4) = orange, else red.
- */
-function updateGpsStatus(gps) {
-    if (!gps || gps.fix_type < 0) {
-        setHtml('gps-fix', 'N/A', 'status-neutral');
-        setText('gps-sats', 'N/A', 'status-neutral');
-        setText('gps-coords', 'N/A', 'status-neutral');
-        setText('gps-alt', 'N/A', 'status-neutral');
-        setText('gps-hdop', 'N/A', 'status-neutral');
-        return;
-    }
-    const fixType = gps.fix_type;
-    const fixName = gps.fix_name || 'UNKNOWN(' + fixType + ')';
-    let fixClass = 'status-error';
-    if (fixType >= 5) fixClass = 'status-ok';
-    else if (fixType >= 3) fixClass = 'status-warn';
-
-    setHtml('gps-fix', '<span class="' + fixClass + '">' + fixName + '</span>', '');
-    setText('gps-sats', (gps.satellites || 0) + ' sats', 'status-neutral');
-    const lat = gps.lat !== null && gps.lat !== undefined ? gps.lat.toFixed(6) : 'N/A';
-    const lon = gps.lon !== null && gps.lon !== undefined ? gps.lon.toFixed(6) : 'N/A';
-    setText('gps-coords', lat + ', ' + lon, 'status-neutral');
-    setText('gps-alt', gps.alt !== null ? gps.alt.toFixed(1) + ' m' : 'N/A', 'status-neutral');
-    setText('gps-hdop', gps.hdop !== null ? gps.hdop.toFixed(2) + ' m' : 'N/A',
-        gps.hdop !== null && gps.hdop < 1.0 ? 'status-ok' : 'status-warn');
-}
-
-/**
- * Update RTK Status section.
- */
-function updateRtkStatus(rtk) {
-    if (!rtk) {
-        setText('rtk-status', 'N/A', 'status-neutral');
-        return;
-    }
-    const msg = 'enabled=' + (rtk.enabled || false) +
-                ' messages=' + (rtk.messages_received || 0) +
-                ' connections=' + (rtk.connections || 0) +
-                ' reconnects=' + (rtk.reconnects || 0);
-    setText('rtk-status', msg, rtk.enabled ? 'status-ok' : 'status-neutral');
-}
-
-/**
- * Update Command Status section.
- */
-function updateCommandStatus(cmdState) {
-    if (!cmdState) {
-        setText('cmd-last', 'N/A', 'status-neutral');
-        setText('cmd-ack', 'N/A', 'status-neutral');
-        setText('cmd-pending', 'N/A', 'status-neutral');
-        setText('cmd-retries', 'N/A', 'status-neutral');
-        return;
-    }
-    const lastAck = cmdState.last_ack;
-    setText('cmd-last', lastAck ? (lastAck.command || '-') : '-', 'status-neutral');
-
-    if (lastAck) {
-        const ackClass = lastAck.status === 'acked' ? 'status-ok' :
-                         (lastAck.status === 'failed' || lastAck.status === 'timeout') ? 'status-error' : 'status-warn';
-        setText('cmd-ack', lastAck.status, ackClass);
+    if (alerts.length === 0) {
+        bar.className = 'alert-bar alert-ok';
+        icon.textContent = '\u2713';
+        text.textContent = 'All Systems Nominal';
     } else {
-        setText('cmd-ack', 'Waiting...', 'status-warn');
+        const hasCritical = alerts.some(function(a) { return a.level === 'critical'; });
+        const hasWarning = alerts.some(function(a) { return a.level === 'warning'; });
+        const level = hasCritical ? 'critical' : (hasWarning ? 'warn' : 'warn');
+        bar.className = 'alert-bar alert-' + level;
+        icon.textContent = hasCritical ? '\u26D4' : '\u26A0';
+        text.textContent = alerts.map(function(a) { return a.msg; }).join(' | ');
+    }
+}
+
+/**
+ * Render all 4 drone cards into the grid.
+ */
+function renderAllCards(drones, conn) {
+    const grid = document.getElementById('multi-drone-grid');
+    if (!grid) return;
+
+    const backendOnline = conn && conn.is_connected;
+    let html = '';
+
+    for (let i = 1; i <= MAX_SLOTS; i++) {
+        const sysidStr = String(i);
+        const drone = drones[sysidStr] || null;
+
+        if (!backendOnline) {
+            // Backend offline: placeholder card
+            html += renderPlaceholderCard(i);
+        } else if (!drone) {
+            // Drone never seen: empty placeholder
+            html += renderEmptyCard(i);
+        } else {
+            html += renderDroneCard(i, drone);
+        }
     }
 
-    setText('cmd-pending', String(cmdState.pending_count || 0), 'status-neutral');
-    setText('cmd-retries', '0/3', 'status-neutral');
+    grid.innerHTML = html;
 }
+
+/**
+ * Render a single drone card.
+ */
+function renderDroneCard(sysid, drone) {
+    const online = isDroneOnline(sysid);
+    const hb = drone.heartbeat || {};
+    const bat = drone.battery || {};
+    const gps = drone.gps || {};
+
+    const armed = online && hb.armed;
+    const cardClass = !online ? 'drone-card offline' : (armed ? 'drone-card armed' : 'drone-card');
+    const connDotClass = online ? 'on' : 'off';
+
+    // Armed badge
+    let armedBadgeClass, armedBadgeText;
+    if (!online) {
+        armedBadgeClass = 'offline';
+        armedBadgeText = 'NO SIGNAL';
+    } else if (armed) {
+        armedBadgeClass = 'armed';
+        armedBadgeText = 'ARMED';
+    } else {
+        armedBadgeClass = 'disarmed';
+        armedBadgeText = 'DISARMED';
+    }
+
+    // Flight mode
+    const modeText = online ? (hb.mode || '--') : '--';
+
+    // Battery row
+    let batteryHtml;
+    if (!online || bat.voltage === null) {
+        batteryHtml = '<div class="battery-row"><span class="battery-voltage">--.-V</span><div class="battery-gauge"><div class="battery-fill" style="width:0%"></div></div><span class="battery-pct">--</span></div>';
+    } else {
+        const voltage = bat.voltage.toFixed(1) + 'V';
+        const remaining = bat.remaining !== null ? bat.remaining : 0;
+        let fillClass = 'green';
+        if (remaining <= 25) fillClass = 'red';
+        else if (remaining <= 50) fillClass = 'yellow';
+        const pctClass = remaining < 25 ? 'battery-pct low' : 'battery-pct';
+        const pct = remaining + '%';
+        batteryHtml = '<div class="battery-row">' +
+            '<span class="battery-voltage">' + voltage + '</span>' +
+            '<div class="battery-gauge"><div class="battery-fill ' + fillClass + '" style="width:' + remaining + '%"></div></div>' +
+            '<span class="' + pctClass + '">' + pct + '</span></div>';
+    }
+
+    // GPS row
+    let gpsHtml;
+    if (!online || gps.fix_type < 0) {
+        gpsHtml = '<div class="gps-row"><span class="gps-fix-badge fix-bad">--</span><span class="gps-altitude">--</span></div>' +
+                  '<div class="gps-supplement"><span>0 sats</span><span>HDOP --</span></div>';
+    } else {
+        const fixName = gps.fix_name || 'UNKNOWN';
+        let fixClass = 'fix-bad';
+        if (gps.fix_type >= 5) fixClass = 'fix-ok';
+        else if (gps.fix_type >= 3) fixClass = 'fix-warn';
+
+        const alt = gps.alt !== null ? gps.alt.toFixed(1) + 'm' : '--';
+        const sats = gps.satellites || 0;
+        const satsClass = sats === 0 ? 'gps-sats-low' : '';
+        const hdop = gps.hdop !== null ? gps.hdop.toFixed(2) : '--';
+
+        gpsHtml = '<div class="gps-row">' +
+            '<span class="gps-fix-badge ' + fixClass + '">' + fixName + '</span>' +
+            '<span class="gps-altitude">' + alt + '</span></div>' +
+            '<div class="gps-supplement">' +
+            '<span class="' + satsClass + '">' + sats + ' sats</span>' +
+            '<span>HDOP ' + hdop + '</span></div>';
+    }
+
+    // Debug box (empty for now - STATUSTEXT placeholder)
+    const debugHtml = '<div class="debug-box"></div>';
+
+    // STOP + Force Arm buttons
+    const stopDisabled = !online || !armed ? ' disabled' : '';
+    const stopText = !online ? '--' : (armed ? 'STOP' : 'DISARMED');
+    const forceDisabled = !online ? ' disabled' : '';
+
+    const buttonsHtml = '<div class="card-buttons">' +
+        '<button class="btn-stop" onclick="stopDrone(' + sysid + ')"' + stopDisabled + '>' + stopText + '</button>' +
+        '<button class="btn-force-arm-sm" onclick="forceArmDrone(' + sysid + ')"' + forceDisabled + '>Force</button>' +
+        '</div>';
+
+    return '<div class="' + cardClass + '">' +
+        '<div class="card-header">' +
+            '<span class="drone-label">DRONE ' + sysid + '</span>' +
+            '<span class="conn-dot ' + connDotClass + '"></span>' +
+        '</div>' +
+        '<div style="text-align:center;"><span class="armed-badge-mini ' + armedBadgeClass + '">' + armedBadgeText + '</span></div>' +
+        '<div class="mode-value">' + modeText + '</div>' +
+        batteryHtml +
+        gpsHtml +
+        debugHtml +
+        buttonsHtml +
+        '</div>';
+}
+
+/**
+ * Render an empty card for a drone slot that has never been seen.
+ */
+function renderEmptyCard(sysid) {
+    return '<div class="drone-card placeholder">' +
+        '<div class="card-header">' +
+            '<span class="drone-label">DRONE ' + sysid + '</span>' +
+            '<span class="conn-dot off"></span>' +
+        '</div>' +
+        '<div style="text-align:center;padding-top:40px;">No drone</div>' +
+        '</div>';
+}
+
+/**
+ * Render a placeholder card when backend is offline.
+ */
+function renderPlaceholderCard(sysid) {
+    return '<div class="drone-card placeholder">' +
+        '<div class="card-header">' +
+            '<span class="drone-label">DRONE ' + sysid + '</span>' +
+            '<span class="conn-dot off"></span>' +
+        '</div>' +
+        '<div style="text-align:center;padding-top:40px;">Backend offline</div>' +
+        '</div>';
+}
+
+/**
+ * Update RTK base station bar.
+ */
+function updateRtkBar(rtk) {
+    const statusEl = document.getElementById('rtk-status');
+    const msgsEl = document.getElementById('rtk-msgs');
+    const reconnsEl = document.getElementById('rtk-reconns');
+
+    if (!rtk) {
+        if (statusEl) { statusEl.textContent = 'N/A'; statusEl.className = 'rtk-disabled'; }
+        if (msgsEl) msgsEl.textContent = '0';
+        if (reconnsEl) reconnsEl.textContent = '0';
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = rtk.enabled ? 'Connected' : 'Disabled';
+        statusEl.className = rtk.enabled ? 'rtk-enabled' : 'rtk-disabled';
+    }
+    if (msgsEl) msgsEl.textContent = String(rtk.messages_received || 0);
+    if (reconnsEl) reconnsEl.textContent = String(rtk.reconnects || 0);
+}
+
+// Initial render on page load
+window.addEventListener('DOMContentLoaded', function() {
+    renderAllCards({}, null);
+});
