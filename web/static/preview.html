@@ -10,7 +10,7 @@
 html, body { height: 100%; overflow: hidden; }
 body {
     font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-    background: #f5f5f5; color: #333;
+    background: #f5f5f5; color: #222;
     display: flex; flex-direction: column; height: 100vh;
 }
 /* ---- Status bar ---- */
@@ -23,8 +23,8 @@ body {
 .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .status-dot.on  { background: #2ecc71; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .status-dot.off { background: #e74c3c; }
-.status-label { color: #888; }
-.status-value { color: #2ecc71; }
+.status-label { color: #666; }
+.status-value { color: #666; }
 /* ---- Alert bar ---- */
 .alert-bar {
     display: flex; align-items: center; gap: 10px;
@@ -46,7 +46,7 @@ body {
     display: flex; flex-direction: column; gap: 6px;
     transition: border-color 0.3s, opacity 0.3s;
 }
-.drone-card.armed { border-color: #2ecc71; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.drone-card.armed { border-color: #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .drone-card.offline { opacity: 0.4; filter: grayscale(50%); border-color: #ddd; }
 /* Card header */
 .card-header {
@@ -54,7 +54,7 @@ body {
     border-bottom: 1px solid #ddd; padding-bottom: 6px;
 }
 .drone-label { font-size: 18px; font-weight: 900; letter-spacing: 1px;
-               color: #e67e22; text-transform: uppercase; }
+               color: #222; text-transform: uppercase; }
 .conn-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .conn-dot.on  { background: #2ecc71; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .conn-dot.off { background: #e74c3c; }
@@ -66,26 +66,26 @@ body {
     text-transform: uppercase; transition: all 0.3s;
 }
 .armed-badge-large.status-ok {
-    background: rgba(46,204,113,0.2); border: 3px solid #2ecc71;
-    color: #2ecc71; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    background: #27ae60; border: none;
+    color: #fff;
 }
 .armed-badge-large.status-warn {
-    background: rgba(243,156,18,0.2); border: 3px solid #f39c12; color: #f39c12;
+    background: #c0392b; border: none; color: #fff;
 }
 .armed-badge-large.status-neutral {
-    background: rgba(100,100,100,0.15); border: 3px solid #555; color: #777;
+    background: #e0e0e0; border: none; color: #333;
 }
 /* Flight mode */
 .mode-display {
     text-align: center; font-size: 18px; font-weight: 700;
-    color: #555; text-transform: uppercase; letter-spacing: 1px; padding: 2px 0;
+    color: #333; text-transform: uppercase; letter-spacing: 1px; padding: 2px 0;
 }
 /* ---- Battery gauge ---- */
 .battery-compact {
     display: flex; align-items: center; gap: 8px;
     padding: 6px 10px; background: #f0f0f0; border-radius: 6px; font-size: 13px;
 }
-.battery-voltage { font-weight: 700; min-width: 48px; color: #333; }
+.battery-voltage { font-weight: 700; min-width: 48px; color: #222; }
 .battery-gauge-mini {
     flex: 1; height: 14px; background: #ddd;
     border-radius: 7px; overflow: hidden; border: 1px solid #ddd;
@@ -104,10 +104,10 @@ body {
     display: inline-block; padding: 3px 10px; border-radius: 4px;
     font-weight: 800; font-size: 12px; letter-spacing: 1px;
 }
-.gps-fix-badge.status-ok   { background: rgba(46,204,113,0.15); border: 1px solid #2ecc71; color: #2ecc71; }
-.gps-fix-badge.status-warn { background: rgba(243,156,18,0.15); border: 1px solid #f39c12; color: #f39c12; }
-.gps-fix-badge.status-bad  { background: rgba(231,76,60,0.15);  border: 1px solid #e74c3c;  color: #e74c3c; }
-.gps-altitude { font-weight: 700; color: #555; }
+.gps-fix-badge.status-ok   { background: none; border: none; color: #27ae60; }
+.gps-fix-badge.status-warn { background: none; border: none; color: #e67e22; }
+.gps-fix-badge.status-bad  { background: none; border: none; color: #c0392b; }
+.gps-altitude { font-weight: 700; color: #222; }
 .gps-supplement {
     display: flex; justify-content: space-between; align-items: center;
     padding: 2px 10px; font-size: 11px; color: #666;
@@ -145,26 +145,26 @@ body {
     padding: 5px 16px; background: #ffffff; border-top: 1px solid #ddd;
     font-size: 11px; color: #666; flex-shrink: 0;
 }
-.rtk-label { color: #e67e22; font-weight: bold; }
-.rtk-val   { color: #2ecc71; font-weight: 600; }
+.rtk-label { color: #666; font-weight: bold; }
+.rtk-val   { color: #666; font-weight: 600; }
 /* ---- Broadcast panel ---- */
 .broadcast-panel {
     background: #ffffff; border-radius: 10px; padding: 10px 16px;
     border: 2px solid #ddd; display: flex; align-items: center;
     gap: 10px; flex-shrink: 0; margin: 0 16px 8px; flex-wrap: wrap;
 }
-.broadcast-label { color: #e67e22; font-weight: 900; font-size: 14px; margin-right: 6px; }
+.broadcast-label { color: #666; font-weight: 900; font-size: 14px; margin-right: 6px; }
 .broadcast-panel button {
     padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 12px;
-    border: none; color: #fff; white-space: nowrap;
+    border: none; color: #333; white-space: nowrap;
 }
 .broadcast-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-arm      { background: #27ae60; }
-.btn-disarm   { background: #c0392b; }
-.btn-takeoff  { background: #2e86c1; }
-.btn-land     { background: #e67e22; }
-.btn-connect  { background: #2ecc71; color: #333; }
-.btn-disconnect { background: #e74c3c; }
+.btn-arm      { background: #e0e0e0; }
+.btn-disarm   { background: #e0e0e0; }
+.btn-takeoff  { background: #e0e0e0; }
+.btn-land     { background: #e0e0e0; }
+.btn-connect  { background: #e0e0e0; }
+.btn-disconnect { background: #e0e0e0; }
 .takeoff-alt-input {
     width: 52px; padding: 6px 4px; border-radius: 4px;
     background: #ffffff; border: 1px solid #ddd; color: #333;
@@ -185,7 +185,7 @@ body {
     <span style="color:#ddd;margin:0 6px;">|</span>
     <span class="status-label">Backend</span>
     <span class="status-value">Connected</span>
-    <span style="margin-left:auto;color:#2ecc71;">All Systems Nominal</span>
+    <span style="margin-left:auto;color:#666;">All Systems Nominal</span>
 </div>
 
 <!-- ====== ALERT BAR (dummy: 1 anomaly) ====== -->
