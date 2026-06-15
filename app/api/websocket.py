@@ -136,6 +136,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
             "gps": _build_gps(telemetry_store, sysid),
             "system_state": _build_system_state(telemetry_store, sysid),
             "command_state": _build_command_state(dispatcher, sysid),
+            "status_texts": _build_status_texts(telemetry_store, sysid),
         }
         payload["drones"][str(sysid)] = drone
 
@@ -255,6 +256,33 @@ def _build_command_state(dispatcher, sysid: int) -> dict:
         "pending_count": len(pending),
         "last_ack": last_ack,
     }
+
+
+_SEVERITY_NAMES = {
+    0: "EMERGENCY",
+    1: "ALERT",
+    2: "CRITICAL",
+    3: "ERROR",
+    4: "WARNING",
+    5: "NOTICE",
+    6: "INFO",
+    7: "DEBUG",
+}
+
+
+def _build_status_texts(store, sysid: int) -> list:
+    """Return the latest 5 STATUSTEXT entries with severity as a named string."""
+    entries = store.get_status_texts(sysid, count=5)
+    result = []
+    for e in entries:
+        result.append({
+            "text": e["text"],
+            "severity": e["severity"],
+            "severity_name": _SEVERITY_NAMES.get(e["severity"], "UNKNOWN"),
+            "name": e.get("name", ""),
+            "time": e["time"],
+        })
+    return result
 
 
 def _build_rtk_status(rtcm_reader) -> dict:

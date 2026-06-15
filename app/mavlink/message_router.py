@@ -105,7 +105,11 @@ class MessageRouter:
                 # Handle COMMAND_ACK
                 if msg_type == 'COMMAND_ACK':
                     self._handle_command_ack(system_id, msg)
-                
+
+                # Handle STATUSTEXT -> ring buffer in telemetry store
+                if msg_type == 'STATUSTEXT':
+                    self._handle_status_text(system_id, msg)
+
                 # Store telemetry data
                 self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
             
@@ -133,6 +137,26 @@ class MessageRouter:
             self.logger.info(f"COMMAND_ACK processed: system_id={system_id}, cmd={command_id}, result={result}")
         except Exception as e:
             self.logger.error(f"Error handling COMMAND_ACK: {e}")
+
+    def _handle_status_text(self, system_id: int, msg):
+        """Handle STATUSTEXT message: push to ring buffer in telemetry store."""
+        try:
+            text = getattr(msg, 'text', '')
+            if isinstance(text, bytes):
+                text = text.decode('utf-8', errors='ignore').rstrip('\x00')
+            text = str(text)
+            severity = getattr(msg, 'severity', 7)  # default DEBUG
+            name = getattr(msg, 'name', '')
+            if isinstance(name, bytes):
+                name = name.decode('utf-8', errors='ignore').rstrip('\x00')
+            name = str(name)
+
+            self.telemetry_store.add_status_text(system_id, text, severity, name)
+            self.logger.debug(
+                f"STATUSTEXT from sys={system_id}: sev={severity}, text={text!r}"
+            )
+        except Exception as e:
+            self.logger.error(f"Error handling STATUSTEXT: {e}")
 
     @staticmethod
     def _gps_fix_type_name(fix_type: int) -> str:

@@ -94,3 +94,46 @@ class TelemetryStore:
                 return dict(latest)
             return {}
 
+    def add_status_text(self, system_id: int, text: str, severity: int, name: str = ""):
+        """Store a STATUSTEXT message in a ring buffer (max 20 entries per drone).
+
+        Args:
+            system_id: MAVLink system ID of the drone.
+            text: The status text message.
+            severity: MAVLink severity level (0=EMERGENCY .. 7=DEBUG).
+            name: Optional source component name.
+        """
+        with self._lock:
+            if system_id not in self._data:
+                self._data[system_id] = {}
+            ring = self._data[system_id].setdefault('STATUSTEXT', [])
+
+            entry = {
+                'text': text,
+                'severity': severity,
+                'name': name,
+                'time': time.time(),
+            }
+            ring.append(entry)
+            # Ring buffer: keep at most 20
+            if len(ring) > 20:
+                del ring[0 : len(ring) - 20]
+
+    def get_status_texts(self, system_id: int, count: int = None):
+        """Return the most recent STATUSTEXT entries for a drone.
+
+        Args:
+            system_id: MAVLink system ID.
+            count: Number of latest entries to return (None = all).
+
+        Returns:
+            List of dicts [{text, severity, name, time}, ...], newest last.
+        """
+        with self._lock:
+            if system_id not in self._data:
+                return []
+            ring = self._data[system_id].get('STATUSTEXT', [])
+            if count is not None and count > 0:
+                return ring[-count:]
+            return list(ring)
+

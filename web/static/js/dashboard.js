@@ -6,6 +6,19 @@
 const MAX_SLOTS = 4;
 
 /**
+ * Escape HTML special characters to prevent XSS.
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
  * Main update function - called from websocket onmessage.
  */
 function updateDashboard() {
@@ -222,8 +235,29 @@ function renderDroneCard(sysid, drone) {
             '<span>HDOP ' + hdop + '</span></div>';
     }
 
-    // Debug box (empty for now - STATUSTEXT placeholder)
-    const debugHtml = '<div class="debug-box"></div>';
+    // Debug box: render STATUSTEXT (latest 5, color-coded by severity)
+    const statusTexts = drone.status_texts || [];
+    let debugHtml = '<div class="debug-box">';
+    if (statusTexts.length === 0) {
+        debugHtml += '</div>';
+    } else {
+        for (let i = 0; i < statusTexts.length; i++) {
+            const st = statusTexts[i];
+            const sev = st.severity;
+            // Color: 0-2=red(error), 3-4=orange(warn), 5-7=green(info)
+            let cssClass;
+            if (sev <= 2) {
+                cssClass = 'error';
+            } else if (sev <= 4) {
+                cssClass = 'warn';
+            } else {
+                cssClass = 'info';
+            }
+            debugHtml += '<div class="debug-msg ' + cssClass + '">' +
+                escapeHtml(st.text) + '</div>';
+        }
+        debugHtml += '</div>';
+    }
 
     // STOP + Force Arm buttons
     const stopDisabled = !online || !armed ? ' disabled' : '';
