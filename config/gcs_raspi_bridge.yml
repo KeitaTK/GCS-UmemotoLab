@@ -1,0 +1,8 @@
+# GCS Configuration - Raspi Bridge UDP Mode
+connection_type: udp
+udp_listen_port: 14551
+drones:
+  drone1:
+    system_id: 1
+    endpoint: "192.168.11.19:14550"
+rtcm_enabled: false
