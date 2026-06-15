@@ -64,8 +64,5 @@ config/gcs.user.local.yml
 
 # Memory bank (separate repository)
 memory-bank/
-logs/gcs.log.1
-logs/gcs.log.2
-logs/gcs.log.3
-logs/gcs.log.4
-logs/gcs.log.1
+# GCS log files (all rotated logs)
+logs/
