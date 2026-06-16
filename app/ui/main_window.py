@@ -243,10 +243,12 @@ class MainWindow(QMainWindow):
         control_panel = QHBoxLayout()
         self.btn_arm = QPushButton("Arm")
         self.btn_disarm = QPushButton("Disarm")
-        self.chk_indoor_mode = QCheckBox("GPS不要(ALT_HOLD)")
+        self.chk_indoor_mode = QCheckBox("屋内モード(GPS不要)")
         self.chk_indoor_mode.setToolTip(
-            "屋内テスト用。ALT_HOLDモードでアームするためGPS不要。\n"
-            "安定化＋気圧高度維持のみ。位置保持はしない。"
+            "屋内テスト用。以下を実行してからアーム:\n"
+            "• ARMING_CHECK=0 (全プリチェック無効)\n"
+            "• ALT_HOLDモード切替 (GPS不要、気圧高度維持)\n"
+            "⚠ 実飛行では絶対にOFFにしてください"
         )
         self.btn_select_all = QPushButton("Select All")
         self.btn_clear_selection = QPushButton("Clear Selection")

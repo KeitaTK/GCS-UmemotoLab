@@ -121,8 +121,12 @@ class CommandDispatcher:
         if mode is not None:
             mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
             mode_name = mode_names.get(mode, f"MODE_{mode}")
-            self.logger.info(f"Setting mode {mode_name} before ARM for system_id={system_id}")
-            print(f"[Arm] Setting mode: {mode_name} before ARM for system_id={system_id}")
+            self.logger.info(f"Indoor ARM: setting {mode_name} + disabling pre-arm checks for system_id={system_id}")
+            print(f"[Arm] Indoor: {mode_name} mode + ARMING_CHECK=0 for system_id={system_id}")
+            
+            # プリチェック無効化 (RC非接続/GPS未Fix/EKF未初期化対策)
+            self._set_param(system_id, component_id, "ARMING_CHECK", 0.0)
+            
             # MAV_CMD_DO_SET_MODE: param1=1(custom), param2=mode_number
             self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
         else:
