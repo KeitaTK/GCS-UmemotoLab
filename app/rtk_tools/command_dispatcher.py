@@ -126,7 +126,7 @@ class CommandDispatcher:
 
     def disarm(self, system_id: int, component_id: int):
         self.logger.info(f"Sending DISARM command to system_id={system_id}, component_id={component_id}")
-        self._send_command(system_id, component_id, 400, param1=0)
+        self._send_command(system_id, component_id, 400, confirmation=1, param1=0)
         self._track_command(system_id, command_id=400, description="DISARM", component_id=component_id, params={'param1': 0})
         print(f"[LOG] DISARM command sent: system_id={system_id}, component_id={component_id}")
 
