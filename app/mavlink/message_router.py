@@ -99,6 +99,15 @@ class MessageRouter:
                         f"sats={num_sats}, lat={lat:.6f}, lon={lon:.6f}, "
                         f"alt={alt:.2f}m, hdop={hdop:.2f}"
                     )
+                elif msg_type == 'STATUSTEXT':
+                    text = getattr(msg, 'text', '').rstrip('\x00')
+                    severity = getattr(msg, 'severity', 0)
+                    sev_names = {0:'EMERGENCY',1:'ALERT',2:'CRITICAL',3:'ERROR',
+                                 4:'WARNING',5:'NOTICE',6:'INFO',7:'DEBUG'}
+                    sev = sev_names.get(severity, str(severity))
+                    self.logger.info(f"STATUSTEXT from sys={system_id} [{sev}]: {text}")
+                elif msg_type == 'HEARTBEAT':
+                    pass  # too verbose, skip
                 else:
                     self.logger.debug(f"Received {msg_type} from system {system_id}")
                 
