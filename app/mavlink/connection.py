@@ -52,8 +52,8 @@ class MavlinkConnection:
             self.udp_timeout_count = 0
             self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
         
-        # MAVLink encode/decode object using a dummy file
-        self.mav = mavutil.mavlink.MAVLink(None)
+        # MAVLink encode/decode object using a bytearray buffer
+        self.mav = mavutil.mavlink.MAVLink(bytearray())
         
         self.running = False
         self.recv_thread = None

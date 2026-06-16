@@ -1,15 +1,18 @@
-# GCS Configuration - New Aircraft via Raspberry Pi Bridge (WiFi / Tailscale)
-# Pixhawk TELEM1 → Raspberry Pi (UART) → UDP WiFi → MacBook GCS
+# GCS Configuration - SSH Tunnel Mode (Recommended)
+# Pixhawk TELEM1 → Raspberry Pi (UART) → mavlink-router → SSH Tunnel → MacBook GCS
+#
+# 事前にSSHトンネルを確立すること:
+#   ssh -f -N -L 14550:localhost:14550 -L 5760:localhost:5760 raspi
+#   (または: .venv/bin/python3 scripts/setup_ssh_tunnel.py)
+#
 connection_type: udp
+udp_listen_port: 14551  # SSHトンネルが14550を使うため別ポート
 
-# UDP settings: connect to Raspberry Pi
-udp_listen_port: 14550
 drones:
   drone1:
     system_id: 1
-    # Tailscale IP (常時接続可能・テザリングでもOK)
-    endpoint: "100.123.158.105:14550"
-    # 研究室Wi-Fi直結の場合はこちら: "192.168.11.51:14550"
+    endpoint: "127.0.0.1:14550"  # SSHトンネル経由
+    name: "Pixhawk6C Main"
 
 # RTCM/RTK settings (disabled for now)
 rtcm_enabled: false
