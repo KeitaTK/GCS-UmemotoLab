@@ -108,17 +108,30 @@ class CommandDispatcher:
         ]:
             self._set_param(system_id, component_id, param_id, val)
 
-    def arm(self, system_id: int, component_id: int):
-        self.logger.info(f"Sending ARM command to system_id={system_id}, component_id={component_id}")
-        print(f"DEBUG: [Arm] Attempting Force-Arm sequence for system_id={system_id}")
+    def arm(self, system_id: int, component_id: int, mode: int = None):
+        """Arm the drone, optionally with a specific flight mode.
 
-        # 1. モードセット(176)を即時送信（GUIDEDモードに設定）
-        self._send_command(system_id, component_id, 176, param1=0)
+        Args:
+            mode: ArduPilot flight mode number.
+                  None  → GUIDED (4, requires GPS)
+                  0     → STABILIZE (no GPS)
+                  2     → ALT_HOLD (barometer, no GPS, recommended for indoor)
+        """
+        if mode is None:
+            mode = 4  # GUIDED (default, requires GPS)
 
-        # 2. 0.3秒後にアーム送信(400)  — threading.TimerでUIスレッドをブロックしない
+        mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
+        mode_name = mode_names.get(mode, f"MODE_{mode}")
+        self.logger.info(f"Sending ARM command to system_id={system_id} (mode={mode}:{mode_name})")
+        print(f"[Arm] Setting mode: {mode_name} then arming system_id={system_id}")
+
+        # 1. モードセット(176): base_mode=1(CUSTOM_MODE), custom_mode=mode
+        self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
+
+        # 2. 0.3秒後にアーム送信(400)
         def _delayed_arm():
             self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
-            self._track_command(system_id, command_id=400, description="ARM", component_id=component_id, params={'param1': 1})
+            self._track_command(system_id, command_id=400, description=f"ARM({mode_name})", component_id=component_id, params={'param1': 1})
             self.logger.info(f"ARM command sent to system_id={system_id}")
             print(f"[LOG] ARM command sent: system_id={system_id}")
 
