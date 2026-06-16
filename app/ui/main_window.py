@@ -236,15 +236,6 @@ class MainWindow(QMainWindow):
         flight_layout.addWidget(self.btn_guided_position, 5, 0, 1, 2)
         flight_layout.addWidget(self.btn_guided_velocity, 6, 0, 1, 2)
 
-        # Indoor flight buttons (STABILIZE mode, no GPS)
-        self.btn_indoor_takeoff = QPushButton("↑ 屋内離陸")
-        self.btn_indoor_takeoff.setToolTip("STABILIZEモードでスロットル65%上昇")
-        self.btn_indoor_land = QPushButton("↓ 屋内着陸")
-        self.btn_indoor_land.setToolTip("STABILIZEモードでスロットル最小→降下")
-        flight_layout.addWidget(QLabel("屋内:"), 7, 0)
-        flight_layout.addWidget(self.btn_indoor_takeoff, 7, 1)
-        flight_layout.addWidget(self.btn_indoor_land, 7, 2)
-
         flight_group.setLayout(flight_layout)
         layout.addWidget(flight_group)
 
@@ -280,8 +271,6 @@ class MainWindow(QMainWindow):
         self.btn_land.clicked.connect(self.cmd_land)
         self.btn_guided_position.clicked.connect(self.cmd_guided_position)
         self.btn_guided_velocity.clicked.connect(self.cmd_guided_velocity)
-        self.btn_indoor_takeoff.clicked.connect(self.cmd_indoor_takeoff)
-        self.btn_indoor_land.clicked.connect(self.cmd_indoor_land)
         self.btn_select_all.clicked.connect(self.select_all_drones)
         self.btn_clear_selection.clicked.connect(self.clear_drone_selection)
 
@@ -367,37 +356,6 @@ class MainWindow(QMainWindow):
             for sysid in system_ids:
                 logger.info(f"DISARM command sent to drone {sysid}")
                 self.dispatcher.disarm(sysid, component_id=1)
-
-    def cmd_indoor_takeoff(self):
-        """室内離陸: RC_CHANNELS_OVERRIDE でスロットル上昇"""
-        system_ids = self.get_selected_system_ids()
-        if not system_ids:
-            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
-            return
-        guided = getattr(self.dispatcher, 'guided', None)
-        if not guided:
-            QMessageBox.warning(self, "Warning", "Guided control is not available.")
-            return
-        for sysid in system_ids:
-            if not self._is_armed(sysid):
-                QMessageBox.warning(self, "Warning", f"Drone {sysid} is not armed.")
-                continue
-            logger.info(f"Indoor takeoff for drone {sysid}")
-            guided.indoor_takeoff(sysid, component_id=1, throttle_pct=65)
-
-    def cmd_indoor_land(self):
-        """室内着陸: RC_CHANNELS_OVERRIDE でスロットル最小"""
-        system_ids = self.get_selected_system_ids()
-        if not system_ids:
-            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
-            return
-        guided = getattr(self.dispatcher, 'guided', None)
-        if not guided:
-            QMessageBox.warning(self, "Warning", "Guided control is not available.")
-            return
-        for sysid in system_ids:
-            logger.info(f"Indoor land for drone {sysid}")
-            guided.indoor_land(sysid, component_id=1)
 
     def cmd_restore_params(self):
         """屋内モードで変更したパラメータを安全なデフォルトに戻す"""
