@@ -67,13 +67,15 @@ def _setup_tailscale_tunnel(config: dict, logger: logging.Logger):
     try:
         subprocess.run(
             ["ssh", "-o", "ConnectTimeout=10", ssh_host,
-             f"pkill socat 2>/dev/null; "
+             f"ss -tlnp | grep -q ':{raspi_tcp_port}' || "
              f"socat TCP-LISTEN:{raspi_tcp_port},fork,reuseaddr UDP:localhost:14550 &"],
-            timeout=15, capture_output=True
+            timeout=12, capture_output=True
         )
         logger.info("  → Raspi socat 起動完了")
+    except subprocess.TimeoutExpired:
+        logger.warning("  → Raspi socat SSH タイムアウト（モバイル回線遅延、既存 socat を利用）")
     except Exception as e:
-        logger.warning(f"  → Raspi socat 起動失敗（既に起動中ならOK）: {e}")
+        logger.warning(f"  → Raspi socat 起動失敗: {e}")
 
     # 2) SSH トンネル確立 (Mac:14551 → Raspi:14551)
     logger.info(f"[2/3] SSHトンネル確立: localhost:{local_tcp_port}→{ssh_host}:{raspi_tcp_port}")
