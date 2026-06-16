@@ -245,6 +245,10 @@ class MainWindow(QMainWindow):
         flight_layout.addWidget(self.btn_indoor_takeoff, 7, 1)
         flight_layout.addWidget(self.btn_indoor_land, 7, 2)
 
+        self.btn_indoor_auto = QPushButton("▶ 自動テスト(離陸→1m→5秒→着陸)")
+        self.btn_indoor_auto.setToolTip("自動: 65%→1.5秒上昇→50%で5秒ホバリング→着陸")
+        flight_layout.addWidget(self.btn_indoor_auto, 8, 0, 1, 3)
+
         flight_group.setLayout(flight_layout)
         layout.addWidget(flight_group)
 
@@ -282,6 +286,7 @@ class MainWindow(QMainWindow):
         self.btn_guided_velocity.clicked.connect(self.cmd_guided_velocity)
         self.btn_indoor_takeoff.clicked.connect(self.cmd_indoor_takeoff)
         self.btn_indoor_land.clicked.connect(self.cmd_indoor_land)
+        self.btn_indoor_auto.clicked.connect(self.cmd_indoor_auto)
         self.btn_select_all.clicked.connect(self.select_all_drones)
         self.btn_clear_selection.clicked.connect(self.clear_drone_selection)
 
@@ -398,6 +403,23 @@ class MainWindow(QMainWindow):
         for sysid in system_ids:
             logger.info(f"Indoor land for drone {sysid}")
             guided.indoor_land(sysid, component_id=1)
+
+    def cmd_indoor_auto(self):
+        """自動屋内テスト: 離陸→1m→5秒ホバリング→着陸"""
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
+            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
+            return
+        guided = getattr(self.dispatcher, 'guided', None)
+        if not guided:
+            QMessageBox.warning(self, "Warning", "Guided control is not available.")
+            return
+        for sysid in system_ids:
+            if not self._is_armed(sysid):
+                QMessageBox.warning(self, "Warning", f"Drone {sysid} is not armed.")
+                continue
+            logger.info(f"Starting indoor auto test for drone {sysid}")
+            guided.indoor_test_sequence(sysid, component_id=1)
 
     def cmd_restore_params(self):
         """屋内モードで変更したパラメータを安全なデフォルトに戻す"""
