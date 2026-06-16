@@ -249,17 +249,24 @@ class MainWindow(QMainWindow):
             "• ARMING_CHECK=0, AHRS_EKF_TYPE=0\n"
             "• STABILIZEモード (GPS/EKF/高度不要)"
         )
+        self.btn_restore_params = QPushButton("パラメータ復元")
+        self.btn_restore_params.setToolTip(
+            "ARMING_CHECK=1, AHRS_EKF_TYPE=3 に戻す\n"
+            "屋外フライト前に必ず実行してください"
+        )
         self.btn_select_all = QPushButton("Select All")
         self.btn_clear_selection = QPushButton("Clear Selection")
 
         control_panel.addWidget(self.btn_arm)
         control_panel.addWidget(self.btn_disarm)
         control_panel.addWidget(self.chk_indoor_mode)
+        control_panel.addWidget(self.btn_restore_params)
         control_panel.addWidget(self.btn_select_all)
         control_panel.addWidget(self.btn_clear_selection)
 
         self.btn_arm.clicked.connect(self.cmd_arm)
         self.btn_disarm.clicked.connect(self.cmd_disarm)
+        self.btn_restore_params.clicked.connect(self.cmd_restore_params)
         self.btn_takeoff.clicked.connect(self.cmd_takeoff)
         self.btn_land.clicked.connect(self.cmd_land)
         self.btn_guided_position.clicked.connect(self.cmd_guided_position)
@@ -349,6 +356,20 @@ class MainWindow(QMainWindow):
             for sysid in system_ids:
                 logger.info(f"DISARM command sent to drone {sysid}")
                 self.dispatcher.disarm(sysid, component_id=1)
+
+    def cmd_restore_params(self):
+        """屋内モードで変更したパラメータを安全なデフォルトに戻す"""
+        system_ids = self.get_selected_system_ids()
+        if not system_ids:
+            QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
+            return
+        if not self.dispatcher:
+            return
+        for sysid in system_ids:
+            logger.info(f"Restoring arm params for drone {sysid}")
+            self.dispatcher.restore_arm_params(sysid, component_id=1)
+        QMessageBox.information(self, "パラメータ復元",
+            f"ARMING_CHECK=1, AHRS_EKF_TYPE=3, FS_THR_ENABLE=1 に戻しました")
 
     def _is_armed(self, system_id):
         hb = self.telemetry_store.get_heartbeat(system_id)
