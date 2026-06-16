@@ -122,10 +122,11 @@ class CommandDispatcher:
             mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
             mode_name = mode_names.get(mode, f"MODE_{mode}")
             self.logger.info(f"Indoor ARM: disabling pre-arm checks for system_id={system_id}")
-            print(f"[Arm] Indoor: ARMING_CHECK=0 for system_id={system_id}")
+            print(f"[Arm] Indoor: ARMING_CHECK=0, AHRS_EKF_TYPE=0 for system_id={system_id}")
             
-            # Step 1: プリチェック無効化 → 0.5秒待ってから次のステップ
+            # Step 1: プリチェック＋EKF無効化 → 0.5秒待ってから次のステップ
             self._set_param(system_id, component_id, "ARMING_CHECK", 0.0)
+            self._set_param(system_id, component_id, "AHRS_EKF_TYPE", 0.0)
             
             def _step2_set_mode():
                 self.logger.info(f"Indoor ARM: setting {mode_name} mode for system_id={system_id}")
