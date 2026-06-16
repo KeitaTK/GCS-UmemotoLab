@@ -1,10 +1,18 @@
 connection_type: udp
 udp_listen_port: 14550
 
+# Tailscale SSH tunnel auto-setup (main.py 起動時に自動実行)
+tailscale_tunnel:
+  enabled: true
+  ssh_host: raspi
+  raspi_tcp_port: 14551
+  local_tcp_port: 14551
+  bridge_udp_port: 14552
+
 drones:
   drone1:
     system_id: 1
-    endpoint: "127.0.0.1:14552"
+    endpoint: "127.0.0.1:14552"  # Bridge UDP port
     name: "Pixhawk6C Main"
 
 rtcm_enabled: false

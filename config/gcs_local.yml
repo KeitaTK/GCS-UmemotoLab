@@ -1,13 +1,18 @@
 # GCS Configuration - SSH Tunnel Mode via Tailscale
 # 
-# 事前にSSHトンネルを確立すること:
-#   ./scripts/launch_gcs_tailscale.sh  (自動)
-#   または手動で:
-#     ssh -f -N -L 14551:localhost:14551 raspi
-#     python3 scripts/udp_tcp_bridge.py &
+# main.py 起動時に自動で SSHトンネル + socat + ブリッジ をセットアップします。
+# 手動でセットアップする場合は:
+#   ./scripts/launch_gcs_tailscale.sh
 #
 connection_type: udp
 udp_listen_port: 14550
+
+tailscale_tunnel:
+  enabled: true
+  ssh_host: raspi
+  raspi_tcp_port: 14551
+  local_tcp_port: 14551
+  bridge_udp_port: 14552
 
 drones:
   drone1:

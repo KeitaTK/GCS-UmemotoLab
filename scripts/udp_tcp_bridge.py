@@ -1,20 +1,28 @@
-"""MAVLink Bridge: GCS(UDP) <-> SSH Tunnel(TCP) <-> Raspi"""
+"""MAVLink Bridge: GCS(UDP) <-> SSH Tunnel(TCP) <-> Raspi
+
+Usage: python udp_tcp_bridge.py [bridge_udp_port] [tunnel_tcp_port]
+  Default: bridge_udp_port=14552, tunnel_tcp_port=14551
+  GCS listens on UDP 14550 and sends to bridge_udp_port.
+"""
 import socket, threading, sys
 
 def main():
-    # Listen for GCS outbound on UDP 14552
+    bridge_udp_port = int(sys.argv[1]) if len(sys.argv) > 1 else 14552
+    tunnel_tcp_port = int(sys.argv[2]) if len(sys.argv) > 2 else 14551
+
+    # Listen for GCS outbound on UDP
     udp_in = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_in.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    udp_in.bind(("127.0.0.1", 14552))
-    
+    udp_in.bind(("127.0.0.1", bridge_udp_port))
+
     # Connect to SSH tunnel
     tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp.connect(("127.0.0.1", 14551))
-    
+    tcp.connect(("127.0.0.1", tunnel_tcp_port))
+
     # For forwarding back to GCS
     udp_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    
-    print("Bridge: UDP:14552 <-> TCP:14551 <-> Raspi", flush=True)
+
+    print(f"Bridge: UDP:{bridge_udp_port} <-> TCP:{tunnel_tcp_port} <-> Raspi", flush=True)
     
     def udp_to_tcp():
         while True:
