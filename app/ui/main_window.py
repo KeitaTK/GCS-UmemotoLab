@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QLabel, QVBoxLayout, QWidget, QHBoxLayout, 
     QListWidget, QPushButton, QMessageBox, QGroupBox, QGridLayout,
-    QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView
+    QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView, QCheckBox
 )
 from PySide6.QtCore import QTimer, Signal, QObject
 import logging
@@ -243,11 +243,17 @@ class MainWindow(QMainWindow):
         control_panel = QHBoxLayout()
         self.btn_arm = QPushButton("Arm")
         self.btn_disarm = QPushButton("Disarm")
+        self.chk_indoor_mode = QCheckBox("GPS不要(ALT_HOLD)")
+        self.chk_indoor_mode.setToolTip(
+            "屋内テスト用。ALT_HOLDモードでアームするためGPS不要。\n"
+            "安定化＋気圧高度維持のみ。位置保持はしない。"
+        )
         self.btn_select_all = QPushButton("Select All")
         self.btn_clear_selection = QPushButton("Clear Selection")
 
         control_panel.addWidget(self.btn_arm)
         control_panel.addWidget(self.btn_disarm)
+        control_panel.addWidget(self.chk_indoor_mode)
         control_panel.addWidget(self.btn_select_all)
         control_panel.addWidget(self.btn_clear_selection)
 
@@ -327,9 +333,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
+            # GPS不要モードがチェックされていれば ALT_HOLD(2)、通常は GUIDED(4)
+            mode = 2 if self.chk_indoor_mode.isChecked() else None
             for sysid in system_ids:
                 logger.info(f"ARM command sent to drone {sysid}")
-                self.dispatcher.arm(sysid, component_id=1)
+                self.dispatcher.arm(sysid, component_id=1, mode=mode)
 
     def cmd_disarm(self):
         system_ids = self.get_selected_system_ids()
