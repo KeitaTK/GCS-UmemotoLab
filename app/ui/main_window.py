@@ -246,9 +246,8 @@ class MainWindow(QMainWindow):
         self.chk_indoor_mode = QCheckBox("屋内モード(GPS不要)")
         self.chk_indoor_mode.setToolTip(
             "屋内テスト用。以下を実行してからアーム:\n"
-            "• ARMING_CHECK=0 (全プリチェック無効)\n"
-            "• ALT_HOLDモード切替 (GPS不要、気圧高度維持)\n"
-            "⚠ 実飛行では絶対にOFFにしてください"
+            "• ARMING_CHECK=0, AHRS_EKF_TYPE=0\n"
+            "• STABILIZEモード (GPS/EKF/高度不要)"
         )
         self.btn_select_all = QPushButton("Select All")
         self.btn_clear_selection = QPushButton("Clear Selection")
@@ -335,8 +334,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
-            # GPS不要モードがチェックされていれば ALT_HOLD(2)、通常は GUIDED(4)
-            mode = 2 if self.chk_indoor_mode.isChecked() else None
+            # GPS不要モードがチェックされていれば STABILIZE(0)
+            mode = 0 if self.chk_indoor_mode.isChecked() else None
             for sysid in system_ids:
                 logger.info(f"ARM command sent to drone {sysid}")
                 self.dispatcher.arm(sysid, component_id=1, mode=mode)
