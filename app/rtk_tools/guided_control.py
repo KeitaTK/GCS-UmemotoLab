@@ -16,6 +16,32 @@ class GuidedControl:
         self.connection.send_set_position_target_local_ned(system_id, component_id, 0, 0, 0, vx, vy, vz, yaw=yaw, type_mask=0b0000110111000111)
         print(f"[LOG] Velocity target sent: system_id={system_id}, component_id={component_id}, vel=({vx},{vy},{vz}), yaw={yaw}")
 
+    def indoor_takeoff(self, system_id: int, component_id: int, throttle_pct: float = 65):
+        """Indoor takeoff via RC_CHANNELS_OVERRIDE throttle (STABILIZE mode).
+        
+        Sends centered roll/pitch/yaw with throttle at throttle_pct%.
+        Drone will climb. Send indoor_land() or disarm to stop.
+        """
+        throttle_raw = int(1100 + (throttle_pct / 100.0) * 800)  # 1100-1900
+        self.connection.send_rc_channels_override(
+            system_id, chan3_raw=throttle_raw,
+            chan1_raw=1500, chan2_raw=1500, chan4_raw=1500
+        )
+        self.logger.info(f"Indoor takeoff: throttle={throttle_pct}% ({throttle_raw})")
+        print(f"[Indoor] Takeoff: throttle {throttle_pct}%")
+
+    def indoor_land(self, system_id: int, component_id: int):
+        """Indoor landing via RC_CHANNELS_OVERRIDE throttle min (STABILIZE mode).
+        
+        Sets throttle to minimum (1100). Drone will descend. Disarm after landing.
+        """
+        self.connection.send_rc_channels_override(
+            system_id, chan3_raw=1100,
+            chan1_raw=1500, chan2_raw=1500, chan4_raw=1500
+        )
+        self.logger.info(f"Indoor land: throttle=min")
+        print(f"[Indoor] Land: throttle min")
+
     def handle_response(self, response):
         self.logger.info(f"GuidedControl response: {response}")
         if response is None:

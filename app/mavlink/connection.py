@@ -318,6 +318,29 @@ class MavlinkConnection:
         frame.append((crc >> 8) & 0xFF)
         return bytes(frame)
 
+    def send_rc_channels_override(self, system_id, chan1_raw=1500, chan2_raw=1500,
+                                    chan3_raw=1100, chan4_raw=1500,
+                                    chan5_raw=0, chan6_raw=0, chan7_raw=0, chan8_raw=0):
+        """Send RC_CHANNELS_OVERRIDE (msgid=70) to simulate RC input.
+        
+        Channel values: 1000-2000 (PWM), 0=ignore, UINT16_MAX=release.
+        Defaults set all to center except throttle at minimum.
+        """
+        payload = struct.pack(
+            '<HHHHHHHHHHHHHHHH',
+            0,  # target_system (0=all)
+            0,  # target_component (0=all)
+            int(chan1_raw), int(chan2_raw), int(chan3_raw), int(chan4_raw),
+            int(chan5_raw), int(chan6_raw), int(chan7_raw), int(chan8_raw),
+            0, 0, 0, 0, 0, 0  # chan9-16 = 0
+        )
+        frame = self._build_mavlink_v2_frame(70, payload)
+        self.send(system_id, frame)
+        self.logger.debug(
+            f"RC_CHANNELS_OVERRIDE sent: system_id={system_id}, "
+            f"ch1={chan1_raw}, ch2={chan2_raw}, ch3={chan3_raw}, ch4={chan4_raw}"
+        )
+
     def _send_encoded_frame(self, system_id, frame: bytes):
         self.send(system_id, frame)
 
