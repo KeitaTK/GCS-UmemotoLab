@@ -1,0 +1,10 @@
+connection_type: udp
+udp_listen_port: 14550
+
+drones:
+  drone1:
+    system_id: 1
+    endpoint: "127.0.0.1:14552"
+    name: "Pixhawk6C Main"
+
+rtcm_enabled: false
