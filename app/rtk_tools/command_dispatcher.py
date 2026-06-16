@@ -121,19 +121,34 @@ class CommandDispatcher:
         if mode is not None:
             mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
             mode_name = mode_names.get(mode, f"MODE_{mode}")
-            self.logger.info(f"Indoor ARM: setting {mode_name} + disabling pre-arm checks for system_id={system_id}")
-            print(f"[Arm] Indoor: {mode_name} mode + ARMING_CHECK=0 for system_id={system_id}")
+            self.logger.info(f"Indoor ARM: disabling pre-arm checks for system_id={system_id}")
+            print(f"[Arm] Indoor: ARMING_CHECK=0 for system_id={system_id}")
             
-            # プリチェック無効化 (RC非接続/GPS未Fix/EKF未初期化対策)
+            # Step 1: プリチェック無効化 → 0.5秒待ってから次のステップ
             self._set_param(system_id, component_id, "ARMING_CHECK", 0.0)
             
-            # MAV_CMD_DO_SET_MODE: param1=1(custom), param2=mode_number
-            self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
-        else:
-            mode_name = "current"
-            self.logger.info(f"Sending ARM command to system_id={system_id} (keep current mode)")
+            def _step2_set_mode():
+                self.logger.info(f"Indoor ARM: setting {mode_name} mode for system_id={system_id}")
+                print(f"[Arm] Indoor: {mode_name} mode for system_id={system_id}")
+                # MAV_CMD_DO_SET_MODE: param1=1(custom), param2=mode_number
+                self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
+                
+                # Step 3: さらに0.5秒後にアーム
+                def _step3_arm():
+                    self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
+                    self._track_command(system_id, command_id=400, description=f"ARM({mode_name})", component_id=component_id, params={'param1': 1})
+                    self.logger.info(f"ARM command sent to system_id={system_id}")
+                    print(f"[LOG] ARM command sent: system_id={system_id}")
+                
+                threading.Timer(0.5, _step3_arm).start()
+            
+            threading.Timer(0.5, _step2_set_mode).start()
+            return
+        
+        # 通常アーム: モード変更なし、0.3秒後にアーム
+        mode_name = "current"
+        self.logger.info(f"Sending ARM command to system_id={system_id} (keep current mode)")
 
-        # 0.3秒後にアーム送信(400)
         def _delayed_arm():
             self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
             self._track_command(system_id, command_id=400, description=f"ARM({mode_name})", component_id=component_id, params={'param1': 1})
