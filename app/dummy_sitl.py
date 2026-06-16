@@ -14,6 +14,9 @@ def run_dummy_drone(system_id: int, port: int):
         print(f"Error creating connection for drone {system_id}: {e}", flush=True)
         return
     
+    # Track drone state: start DISARMED
+    drone_state = {'armed': False}
+    
     def listen_commands():
         """Listen for incoming commands (non-blocking)"""
         master.port.settimeout(0.1)  # Non-blocking
@@ -28,7 +31,15 @@ def run_dummy_drone(system_id: int, port: int):
                 print(f"[Drone {system_id}] Received {msg_type}", flush=True)
                 
                 if msg_type == 'COMMAND_LONG':
-                    print(f"[Drone {system_id}] Command: {msg.command}", flush=True)
+                    cmd = msg.command
+                    print(f"[Drone {system_id}] Command: {cmd}", flush=True)
+                    
+                    # Handle ARM/DISARM (MAV_CMD_COMPONENT_ARM_DISARM = 400)
+                    if cmd == 400:
+                        param1 = msg.param1
+                        drone_state['armed'] = (param1 == 1)
+                        print(f"[Drone {system_id}] → {'🟢 ARM' if drone_state['armed'] else '🔴 DISARM'} command", flush=True)
+                    
                     # Send ACK
                     master.mav.command_ack_send(
                         msg.command,
@@ -53,11 +64,14 @@ def run_dummy_drone(system_id: int, port: int):
     sequence = 0
     while True:
         try:
+            # Choose base_mode based on current arm state
+            base_mode = mavutil.mavlink.MAV_MODE_GUIDED_ARMED if drone_state['armed'] else mavutil.mavlink.MAV_MODE_GUIDED_DISARMED
+            
             # Send heartbeat with all required parameters
             master.mav.heartbeat_send(
                 type=mavutil.mavlink.MAV_TYPE_QUADROTOR,
                 autopilot=mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA,
-                base_mode=mavutil.mavlink.MAV_MODE_GUIDED_ARMED,
+                base_mode=base_mode,
                 custom_mode=0,
                 system_status=mavutil.mavlink.MAV_STATE_ACTIVE,
                 mavlink_version=3
