@@ -113,22 +113,23 @@ class CommandDispatcher:
 
         Args:
             mode: ArduPilot flight mode number.
-                  None  → GUIDED (4, requires GPS)
-                  0     → STABILIZE (no GPS)
+                  None  → don't change mode (drone stays in current mode)
+                  0     → STABILIZE (no GPS, self-leveling only)
                   2     → ALT_HOLD (barometer, no GPS, recommended for indoor)
+                  4     → GUIDED (requires GPS)
         """
-        if mode is None:
-            mode = 4  # GUIDED (default, requires GPS)
+        if mode is not None:
+            mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
+            mode_name = mode_names.get(mode, f"MODE_{mode}")
+            self.logger.info(f"Setting mode {mode_name} before ARM for system_id={system_id}")
+            print(f"[Arm] Setting mode: {mode_name} before ARM for system_id={system_id}")
+            # MAV_CMD_DO_SET_MODE: param1=1(custom), param2=mode_number
+            self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
+        else:
+            mode_name = "current"
+            self.logger.info(f"Sending ARM command to system_id={system_id} (keep current mode)")
 
-        mode_names = {0: "STABILIZE", 2: "ALT_HOLD", 4: "GUIDED"}
-        mode_name = mode_names.get(mode, f"MODE_{mode}")
-        self.logger.info(f"Sending ARM command to system_id={system_id} (mode={mode}:{mode_name})")
-        print(f"[Arm] Setting mode: {mode_name} then arming system_id={system_id}")
-
-        # 1. モードセット(176): base_mode=1(CUSTOM_MODE), custom_mode=mode
-        self._send_command(system_id, component_id, 176, param1=1, param2=float(mode))
-
-        # 2. 0.3秒後にアーム送信(400)
+        # 0.3秒後にアーム送信(400)
         def _delayed_arm():
             self._send_command(system_id, component_id, 400, confirmation=1, param1=1)
             self._track_command(system_id, command_id=400, description=f"ARM({mode_name})", component_id=component_id, params={'param1': 1})
