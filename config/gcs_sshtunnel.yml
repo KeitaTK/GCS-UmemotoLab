@@ -1,12 +1,7 @@
-# GCS Configuration - SSH Tunnel Mode via Tailscale
-# 
-# main.py 起動時に自動で SSHトンネル + socat + ブリッジ をセットアップします。
-# 手動でセットアップする場合は:
-#   ./scripts/launch_gcs_tailscale.sh
-#
 connection_type: udp
 udp_listen_port: 14550
 
+# Tailscale SSH tunnel auto-setup (main.py 起動時に自動実行)
 tailscale_tunnel:
   enabled: true
   ssh_host: raspi

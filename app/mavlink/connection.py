@@ -52,8 +52,8 @@ class MavlinkConnection:
             self.udp_timeout_count = 0
             self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
         
-        # MAVLink encode/decode object using a dummy file
-        self.mav = mavutil.mavlink.MAVLink(None)
+        # MAVLink encode/decode object using a bytearray buffer
+        self.mav = mavutil.mavlink.MAVLink(bytearray())
         
         self.running = False
         self.recv_thread = None
@@ -232,17 +232,34 @@ class MavlinkConnection:
 
 
     def send(self, system_id, data):
-        """Send MAVLink data to the appropriate destination"""
+        """Send MAVLink data to the appropriate destination.
+        
+        Returns:
+            bool: True if data was sent successfully, False otherwise.
+        """
         if self.connection_type == 'serial':
             # For serial mode, send back to Pixhawk
-            if self.serial_conn and self.serial_conn.is_open:
-                try:
-                    self.serial_conn.write(data)
-                    self.logger.debug(f"Serial送信: {len(data)} bytes")
-                except Exception as e:
-                    self.logger.error(f"Serial送信エラー: {e}")
+            if not self.serial_conn or not self.serial_conn.is_open:
+                self.logger.error(
+                    f"Serial送信失敗: シリアルポートが開いていません (system_id={system_id}, "
+                    f"port={self.serial_port}). Pixhawkが接続されているか確認してください。"
+                )
+                self._trigger_error_callback(
+                    'SERIAL_SEND_FAILED',
+                    f'Serial port {self.serial_port} is not open. Is Pixhawk connected?'
+                )
+                return False
+            try:
+                self.serial_conn.write(data)
+                self.logger.debug(f"Serial送信: {len(data)} bytes")
+                return True
+            except Exception as e:
+                self.logger.error(f"Serial送信エラー: {e}")
+                self._trigger_error_callback('SERIAL_SEND_ERROR', str(e))
+                return False
         else:
             # UDP mode: send to configured endpoint
+            sent = False
             for drone_name, drone_info in self.drones.items():
                 if drone_info.get('system_id') == system_id:
                     endpoint = drone_info.get('endpoint')
@@ -250,7 +267,14 @@ class MavlinkConnection:
                         ip, port = endpoint.split(":")
                         self.sock.sendto(data, (ip, int(port)))
                         self.logger.debug(f"送信: {ip}:{port} (system_id={system_id})")
+                        sent = True
                     break
+            if not sent:
+                self.logger.error(
+                    f"UDP送信失敗: system_id={system_id} に一致するドローンが設定ファイルにありません。"
+                    f" 設定済みドローン: {list(self.drones.keys())}"
+                )
+            return sent
 
     def send_to_system(self, system_id, data):
         """
@@ -293,6 +317,29 @@ class MavlinkConnection:
         frame.append(crc & 0xFF)
         frame.append((crc >> 8) & 0xFF)
         return bytes(frame)
+
+    def send_rc_channels_override(self, system_id, chan1_raw=1500, chan2_raw=1500,
+                                    chan3_raw=1100, chan4_raw=1500,
+                                    chan5_raw=0, chan6_raw=0, chan7_raw=0, chan8_raw=0):
+        """Send RC_CHANNELS_OVERRIDE (msgid=70) to simulate RC input.
+        
+        Channel values: 1000-2000 (PWM), 0=ignore, UINT16_MAX=release.
+        Defaults set all to center except throttle at minimum.
+        """
+        payload = struct.pack(
+            '<HHHHHHHHHHHHHHHH',
+            0,  # target_system (0=all)
+            0,  # target_component (0=all)
+            int(chan1_raw), int(chan2_raw), int(chan3_raw), int(chan4_raw),
+            int(chan5_raw), int(chan6_raw), int(chan7_raw), int(chan8_raw),
+            0, 0, 0, 0, 0, 0  # chan9-16 = 0
+        )
+        frame = self._build_mavlink_v2_frame(70, payload)
+        self.send(system_id, frame)
+        self.logger.debug(
+            f"RC_CHANNELS_OVERRIDE sent: system_id={system_id}, "
+            f"ch1={chan1_raw}, ch2={chan2_raw}, ch3={chan3_raw}, ch4={chan4_raw}"
+        )
 
     def _send_encoded_frame(self, system_id, frame: bytes):
         self.send(system_id, frame)

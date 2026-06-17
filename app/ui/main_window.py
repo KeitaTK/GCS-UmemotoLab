@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QLabel, QVBoxLayout, QWidget, QHBoxLayout, 
     QListWidget, QPushButton, QMessageBox, QGroupBox, QGridLayout,
-    QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView
+    QTabWidget, QScrollArea, QDoubleSpinBox, QAbstractItemView, QCheckBox
 )
 from PySide6.QtCore import QTimer, Signal, QObject
 import logging
@@ -243,22 +243,30 @@ class MainWindow(QMainWindow):
         control_panel = QHBoxLayout()
         self.btn_arm = QPushButton("Arm")
         self.btn_disarm = QPushButton("Disarm")
-        self.btn_force_arm = QPushButton("Force Arm")
+        self.chk_indoor_mode = QCheckBox("屋内モード(GPS不要)")
+        self.chk_indoor_mode.setToolTip(
+            "屋内テスト用。以下を実行してからアーム:\n"
+            "• ARMING_CHECK=0, AHRS_EKF_TYPE=0\n"
+            "• STABILIZEモード (GPS/EKF/高度不要)"
+        )
+        self.btn_restore_params = QPushButton("パラメータ復元")
+        self.btn_restore_params.setToolTip(
+            "ARMING_CHECK=1, AHRS_EKF_TYPE=3 に戻す\n"
+            "屋外フライト前に必ず実行してください"
+        )
         self.btn_select_all = QPushButton("Select All")
         self.btn_clear_selection = QPushButton("Clear Selection")
 
-        # Force Arm ボタンのスタイル（警告色）
-        self.btn_force_arm.setStyleSheet("QPushButton { background-color: #e67e22; color: white; font-weight: bold; } QPushButton:hover { background-color: #d35400; }")
-
         control_panel.addWidget(self.btn_arm)
         control_panel.addWidget(self.btn_disarm)
-        control_panel.addWidget(self.btn_force_arm)
+        control_panel.addWidget(self.chk_indoor_mode)
+        control_panel.addWidget(self.btn_restore_params)
         control_panel.addWidget(self.btn_select_all)
         control_panel.addWidget(self.btn_clear_selection)
 
         self.btn_arm.clicked.connect(self.cmd_arm)
         self.btn_disarm.clicked.connect(self.cmd_disarm)
-        self.btn_force_arm.clicked.connect(self.cmd_force_arm)
+        self.btn_restore_params.clicked.connect(self.cmd_restore_params)
         self.btn_takeoff.clicked.connect(self.cmd_takeoff)
         self.btn_land.clicked.connect(self.cmd_land)
         self.btn_guided_position.clicked.connect(self.cmd_guided_position)
@@ -333,9 +341,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
         if self.dispatcher:
+            # GPS不要モードがチェックされていれば STABILIZE(0)
+            mode = 0 if self.chk_indoor_mode.isChecked() else None
             for sysid in system_ids:
                 logger.info(f"ARM command sent to drone {sysid}")
-                self.dispatcher.arm(sysid, component_id=1)
+                self.dispatcher.arm(sysid, component_id=1, mode=mode)
 
     def cmd_disarm(self):
         system_ids = self.get_selected_system_ids()
@@ -347,26 +357,19 @@ class MainWindow(QMainWindow):
                 logger.info(f"DISARM command sent to drone {sysid}")
                 self.dispatcher.disarm(sysid, component_id=1)
 
-    def cmd_force_arm(self):
-        """Force arm: プリチェック (RC/GPS/EKF) を無効化してアームする。屋内テスト用。"""
+    def cmd_restore_params(self):
+        """屋内モードで変更したパラメータを安全なデフォルトに戻す"""
         system_ids = self.get_selected_system_ids()
         if not system_ids:
             QMessageBox.warning(self, "Warning", "Please select a drone from the list first.")
             return
-        # 警告ダイアログ
-        reply = QMessageBox.question(
-            self, "Force Arm Confirmation",
-            "⚠️ Force Arm はARMING_CHECK, FS_THR_ENABLE, AHRS_EKF_TYPE を無効化します。\n\n"
-            "これは屋内テスト専用です。実飛行では絶対に使用しないでください。\n\n"
-            "続行しますか？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
+        if not self.dispatcher:
             return
-        if self.dispatcher:
-            for sysid in system_ids:
-                logger.info(f"Force ARM command sent to drone {sysid}")
-                self.dispatcher.force_arm(sysid, component_id=1)
+        for sysid in system_ids:
+            logger.info(f"Restoring arm params for drone {sysid}")
+            self.dispatcher.restore_arm_params(sysid, component_id=1)
+        QMessageBox.information(self, "パラメータ復元",
+            f"ARMING_CHECK=1, AHRS_EKF_TYPE=3, FS_THR_ENABLE=1 に戻しました")
 
     def _is_armed(self, system_id):
         hb = self.telemetry_store.get_heartbeat(system_id)

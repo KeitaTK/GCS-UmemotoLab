@@ -36,7 +36,7 @@ macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
 │  │  (PySide6 + MAVLink)│  │
 │  └─────────┬──────────┘  │
 └────────────┼─────────────┘
-             │ SSH Tunnel / Tailscale
+             │ SSH Tunnel (推奨)
       (UDP/TCP MAVLink)
              │
 ┌────────────┼─────────────┐
@@ -124,11 +124,10 @@ sudo apt install mavlink-router
 
 ```ini
 [General]
-ReportStats=false
-MavlinkVersion=2.0
+ReportStats=true    # デバッグ用に統計出力を有効化
 
 [UartEndpoint pixhawk]
-Device = /dev/ttyAMA0
+Device = /dev/ttyAMA0    # Pi 5: ttyAMA10 でなく ttyAMA0 を指定
 Baud = 115200
 
 [UdpEndpoint gcs]
@@ -147,13 +146,13 @@ sudo systemctl status mavlink-router  # 確認
 
 ### 4. UART有効化（`/boot/firmware/config.txt`）
 
+> **⚠️ Pi 5 注意**: `dtoverlay=uart0-pi5` はハードウェアフロー制御(CTS/RTS)が必要で、
+> `/dev/serial0→ttyAMA10` にマッピングされる。Pixhawk TELEM1 接続では
+> `/dev/ttyAMA0` を直接指定する方が安定する。
+
 ```
 enable_uart=1
 dtoverlay=uart0
-dtoverlay=uart2
-dtoverlay=uart3
-dtoverlay=uart4
-dtoverlay=uart5
 ```
 
 ---
@@ -163,26 +162,28 @@ dtoverlay=uart5
 ### 方法 A: SSHトンネル経由（推奨）
 
 GCSのPC/MacとRaspiが別ネットワークでも接続可能。
+**Tailscale の UDP 転送に制限があるため、SSH トンネル（TCP）を推奨します。**
 
 ```bash
-# 別ターミナルでSSHトンネルを確立
-ssh -L 14550:localhost:14550 taki@raspi5.local
+# 別ターミナルでSSHトンネルを確立（バックグラウンド常駐）
+ssh -f -N -L 14550:localhost:14550 raspi
 
-# Tailscale経由の場合
-ssh -L 14550:localhost:14550 \
+# または明示的に（Tailscale IP直指定）
+ssh -f -N -L 14550:localhost:14550 \
     -o ProxyCommand="tailscale nc %h %p" \
     taki@100.123.158.105
 ```
 
 設定ファイル:
 ```yaml
-# config/gcs_production.yml
+# config/gcs_local.yml
 connection_type: udp
-udp_listen_port: 14551
+udp_listen_port: 14551   # SSHトンネルが14550を使うため
 drones:
   drone1:
     system_id: 1
-    endpoint: "127.0.0.1:14550"
+    endpoint: "127.0.0.1:14550"  # SSHトンネル経由
+    name: "Pixhawk6C Main"
 ```
 
 ### 方法 B: 同一ネットワーク（直接UDP）
@@ -316,8 +317,12 @@ GCS-UmemotoLab/
 | 現象 | 確認項目 |
 |------|----------|
 | ハートビートが来ない | Pixhawk電源ON? TELEM1配線? `dmesg \| grep tty` |
+| ハートビートが来ない (Pi 5) | `/dev/ttyAMA0` にデータ有? `sudo systemctl stop mavlink-router; cat /dev/ttyAMA0 \| od -A x -t x1 \| head` |
+| mavlink-router 受信0 | ポート衝突? `sudo ss -ulnp \| grep 14550` |
 | アームが拒否される | Force Armボタンを使用、もしくは`ARMING_CHECK=0`を設定 |
-| SSH接続不可 | Tailscale起動確認: `tailscale status` |
+| SSH接続不可 | `ssh raspi` で接続確認。Tailscale: `tailscale status` |
+| UDPパケットが届かない (Tailscale) | SSHトンネル方式に切替: `ssh -f -N -L 14550:localhost:14550 raspi` |
+| `bytes.append` エラー | pymavlink バグ。`.venv/.../ardupilotmega.py` の `crcbuf = bytearray(msgbuf[...])` を確認 |
 
 ---
 
