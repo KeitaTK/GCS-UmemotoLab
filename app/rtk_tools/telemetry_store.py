@@ -133,7 +133,15 @@ class TelemetryStore:
             if system_id not in self._data:
                 return []
             ring = self._data[system_id].get('STATUSTEXT', [])
+            if not ring:
+                return []
             if count is not None and count > 0:
-                return ring[-count:]
-            return list(ring)
+                try:
+                    return list(ring)[-count:]
+                except Exception:
+                    return []
+            try:
+                return list(ring)
+            except Exception:
+                return []
 

@@ -136,7 +136,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
             "gps": _build_gps(telemetry_store, sysid),
             "system_state": _build_system_state(telemetry_store, sysid),
             "command_state": _build_command_state(dispatcher, sysid),
-            "status_texts": _build_status_texts(telemetry_store, sysid),
+            "status_texts": [],
         }
         payload["drones"][str(sysid)] = drone
 
