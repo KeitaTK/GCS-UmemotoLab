@@ -29,6 +29,136 @@
     <span id="alert-text">All Systems Nominal</span>
 </div>
 
+    <!-- Main -->
+    <div id="main">
+        <div id="ws-status-bar">
+            <span id="ws-status-dot" class="disconnected"></span>
+            <span id="ws-status-text" class="status-error">Disconnected</span>
+            <span style="margin-left:auto;color:#888;font-size:11px;">WebSocket Telemetry</span>
+        </div>
+        <div id="tab-bar">
+            <button id="tab-dashboard" class="active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            <button id="tab-graph" onclick="switchTab('graph')">📈 Graph</button>
+            <button id="tab-raw" onclick="switchTab('raw')">📄 Raw Data</button>
+        </div>
+        <div id="tab-content">
+            <div id="panel-dashboard" style="display:block;">
+                <!-- Backend Connection Management -->
+                <div class="section-card">
+                    <div class="section-title">🔌 Backend Connection</div>
+                    <div class="control-row">
+                        <button id="btn-connect" class="btn" style="background:#2ecc71;color:#fff;">🟢 Connect</button>
+                        <button id="btn-disconnect" class="btn" style="background:#e74c3c;color:#fff;">🔴 Disconnect</button>
+                        <span id="backend-status" class="value status-neutral">Not connected</span>
+                    </div>
+                </div>
+                <!-- Connection -->
+                <div class="section-card">
+                    <div class="section-title">🔌 Connection Status</div>
+                    <div class="data-grid-4">
+                        <div class="grid-item"><span class="label">Status</span><span id="conn-status" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Type</span><span id="conn-type" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Packets</span><span id="conn-packets" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Error</span><span id="conn-error" class="value status-neutral">N/A</span></div>
+                    </div>
+                </div>
+                <!-- System -->
+                <div class="section-card">
+                    <div class="section-title">⚙️ System Status</div>
+                    <div class="data-row"><span class="label">Armed</span><span id="sys-armed" class="value status-neutral">N/A</span></div>
+                    <div class="data-row"><span class="label">Mode</span><span id="sys-mode" class="value status-neutral">N/A</span></div>
+                </div>
+                <!-- Battery -->
+                <div class="section-card">
+                    <div class="section-title">🔋 Battery Status</div>
+                    <div class="data-grid-3">
+                        <div class="grid-item"><span class="label">Voltage</span><span id="batt-voltage" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Current</span><span id="batt-current" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Remaining</span><span id="batt-remaining" class="value status-neutral">N/A</span></div>
+                    </div>
+                </div>
+                <!-- GPS -->
+                <div class="section-card">
+                    <div class="section-title">🛰️ GPS Status</div>
+                    <div class="data-grid-5">
+                        <div class="grid-item"><span class="label">Fix</span><span id="gps-fix" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Satellites</span><span id="gps-sats" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Position</span><span id="gps-coords" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Altitude</span><span id="gps-alt" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">HDOP</span><span id="gps-hdop" class="value status-neutral">N/A</span></div>
+                    </div>
+                </div>
+                <!-- RTK -->
+                <div class="section-card">
+                    <div class="section-title">📡 RTK Status</div>
+                    <div class="data-row"><span class="label">Status</span><span id="rtk-status" class="value status-neutral">N/A</span></div>
+                </div>
+                <!-- Command -->
+                <div class="section-card">
+                    <div class="section-title">📋 Command Status</div>
+                    <div class="data-grid-4">
+                        <div class="grid-item"><span class="label">Last Command</span><span id="cmd-last" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">ACK</span><span id="cmd-ack" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Pending</span><span id="cmd-pending" class="value status-neutral">N/A</span></div>
+                        <div class="grid-item"><span class="label">Retries</span><span id="cmd-retries" class="value status-neutral">N/A</span></div>
+                    </div>
+                </div>
+                <!-- Flight Control -->
+                <div class="section-card">
+                    <div class="section-title">🎮 Flight Control</div>
+                    <div class="control-row">
+                        <button id="btn-arm" class="btn">🔓 Arm</button>
+                        <button id="btn-disarm" class="btn">🔒 Disarm</button>
+                        <button id="btn-force-arm" class="btn btn-warning">⚠️ Force Arm</button>
+                    </div>
+                    <div class="control-row">
+                        <div class="param-row">
+                            <label>Altitude:</label>
+                            <input type="number" id="takeoff-altitude" class="param-input" value="10" min="1" max="500" step="0.5">
+                            <span style="font-size:12px;color:#888;">m</span>
+                        </div>
+                        <button id="btn-takeoff" class="btn">🚀 Takeoff</button>
+                    </div>
+                    <div class="control-row">
+                        <div class="param-row">
+                            <label>Descent:</label>
+                            <input type="number" id="land-descent-rate" class="param-input" value="1.5" min="0" max="20" step="0.5">
+                            <span style="font-size:12px;color:#888;">m/s</span>
+                        </div>
+                        <button id="btn-land" class="btn">🛬 Land</button>
+                    </div>
+                    <div class="guided-group">
+                        <div class="group-label">📍 Guided Position (NED)</div>
+                        <div class="control-row">
+                            <div class="param-row"><label>North:</label><input type="number" id="guided-north" class="param-input" value="0" min="-500" max="500" step="1"></div>
+                            <div class="param-row"><label>East:</label><input type="number" id="guided-east" class="param-input" value="0" min="-500" max="500" step="1"></div>
+                            <div class="param-row"><label>Down:</label><input type="number" id="guided-down" class="param-input" value="0" min="-500" max="500" step="1"></div>
+                            <div class="param-row"><label>Yaw:</label><input type="number" id="guided-yaw" class="param-input" value="0" min="-180" max="180" step="1"></div>
+                        </div>
+                        <button id="btn-guided-position" class="btn">📤 Send Position</button>
+                    </div>
+                    <div class="guided-group">
+                        <div class="group-label">💨 Guided Velocity (m/s)</div>
+                        <div class="control-row">
+                            <div class="param-row"><label>Vx:</label><input type="number" id="guided-vx" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
+                            <div class="param-row"><label>Vy:</label><input type="number" id="guided-vy" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
+                            <div class="param-row"><label>Vz:</label><input type="number" id="guided-vz" class="param-input" value="0" min="-20" max="20" step="0.5"></div>
+                            <div class="param-row"><label>Yaw:</label><input type="number" id="guided-yaw-vel" class="param-input" value="0" min="-180" max="180" step="1"></div>
+                        </div>
+                        <button id="btn-guided-velocity" class="btn">📤 Send Velocity</button>
+                    </div>
+                </div>
+            </div><!-- /panel-dashboard -->
+            <div id="panel-graph" style="display:none;">
+                <div id="graph-container"></div>
+                <div id="graph-altitude-container"></div>
+            </div>
+            <div id="panel-raw" style="display:none;">
+                <pre id="raw-data-content">No drone selected</pre>
+            </div>
+        </div><!-- /tab-content -->
+    </div><!-- /main -->
+
 <!-- ====== 4-COLUMN GRID ====== -->
 <div class="multi-drone-grid" id="multi-drone-grid">
     <!-- Filled by renderAllCards() -->
