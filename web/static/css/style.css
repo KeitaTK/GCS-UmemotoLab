@@ -418,6 +418,22 @@ body {
 .btn-stop:hover { background: #c0392b; }
 .btn-stop:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.mode-select {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #0f0f23;
+    color: #e0e0e0;
+    border: 1px solid #0f3460;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    min-width: 70px;
+}
+.mode-select:focus {
+    outline: none;
+    border-color: #e67e22;
+}
+
 .btn-force-arm-sm {
     padding: 6px 12px;
     border-radius: 6px;

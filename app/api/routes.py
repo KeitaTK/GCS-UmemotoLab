@@ -405,6 +405,40 @@ async def cmd_guided_position(req: GuidedPositionRequest):
 
 
 # ==========================================================================
+# POST /api/set_mode — Set flight mode for a single drone
+# ==========================================================================
+
+class SetModeRequest(BaseModel):
+    system_id: int = Field(..., ge=1)
+    mode: str = Field(..., min_length=1)
+
+
+# ArduPilot Copter custom mode number lookup
+_COPTER_MODE_NUMBERS = {v: k for k, v in _COPTER_MODES.items()}
+
+
+@router.post("/set_mode")
+async def cmd_set_mode(req: SetModeRequest):
+    disp = _get_disp()
+    mode_num = _COPTER_MODE_NUMBERS.get(req.mode.upper())
+    if mode_num is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown mode '{req.mode}'. Available: {', '.join(sorted(_COPTER_MODE_NUMBERS.keys()))}",
+        )
+    logger.info("SET_MODE → drone %d → %s (%d)", req.system_id, req.mode, mode_num)
+    # MAV_CMD_DO_SET_MODE (176): param1=1 (custom mode), param2=mode_number
+    disp._send_command(req.system_id, 1, 176, param1=1, param2=float(mode_num))
+    return {
+        "status": "ok",
+        "command": "set_mode",
+        "system_id": req.system_id,
+        "mode": req.mode.upper(),
+        "mode_number": mode_num,
+    }
+
+
+# ==========================================================================
 # POST /api/guided/velocity
 # ==========================================================================
 

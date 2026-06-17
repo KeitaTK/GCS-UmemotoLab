@@ -279,9 +279,19 @@ function renderDroneCard(sysid, drone) {
     const stopText = !online ? '--' : (armed ? 'STOP' : 'DISARMED');
     const forceDisabled = !online ? ' disabled' : '';
 
+    // Mode selector dropdown
+    var modeOptions = ['STABILIZE','ALT_HOLD','GUIDED','LOITER','RTL','LAND','AUTO'];
+    var modeSelectHtml = '<select class="mode-select" onchange="changeMode(' + sysid + ', this.value)">';
+    modeSelectHtml += '<option value="" disabled selected>Mode</option>';
+    for (var mi = 0; mi < modeOptions.length; mi++) {
+        modeSelectHtml += '<option value="' + modeOptions[mi] + '">' + modeOptions[mi] + '</option>';
+    }
+    modeSelectHtml += '</select>';
+
     const buttonsHtml = '<div class="card-buttons">' +
         '<button class="btn-stop" onclick="stopDrone(' + sysid + ')"' + stopDisabled + '>' + stopText + '</button>' +
         '<button class="btn-force-arm-sm" onclick="forceArmDrone(' + sysid + ')"' + forceDisabled + '>Force</button>' +
+        modeSelectHtml +
         '</div>';
 
     return '<div class="' + cardClass + '" data-system-id="' + sysid + '" onclick="selectCard(event, ' + sysid + ')">' +

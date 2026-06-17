@@ -358,6 +358,21 @@ function stopDrone(sysid) {
 /**
  * Force Arm a single drone (double confirm for safety).
  */
+/**
+ * Set flight mode for a single drone via dropdown.
+ */
+function changeMode(sysid, mode) {
+    if (!mode) return;
+    fetch('/api/set_mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system_id: sysid, mode: mode })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { updateCmdAck(data, 'Mode ' + mode); })
+    .catch(function(err) { updateCmdAckError('Mode ' + mode, err); });
+}
+
 function forceArmDrone(sysid) {
     if (!confirm('\u26A0\uFE0F Force Arm Drone ' + sysid + '?\n(ARMING_CHECK bypass - 屋内テスト専用)')) return;
     if (!confirm('本当にForce Armしますか？\nDrone ' + sysid)) return;
