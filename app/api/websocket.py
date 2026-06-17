@@ -136,7 +136,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
             "gps": _build_gps(telemetry_store, sysid),
             "system_state": _build_system_state(telemetry_store, sysid),
             "command_state": _build_command_state(dispatcher, sysid),
-            "status_texts": [],
+            "status_texts": _build_status_texts(telemetry_store, sysid),
         }
         payload["drones"][str(sysid)] = drone
 
@@ -272,17 +272,24 @@ _SEVERITY_NAMES = {
 
 def _build_status_texts(store, sysid: int) -> list:
     """Return the latest 5 STATUSTEXT entries with severity as a named string."""
-    entries = store.get_status_texts(sysid, count=5)
-    result = []
-    for e in entries:
-        result.append({
-            "text": e["text"],
-            "severity": e["severity"],
-            "severity_name": _SEVERITY_NAMES.get(e["severity"], "UNKNOWN"),
-            "name": e.get("name", ""),
-            "time": e["time"],
-        })
-    return result
+    try:
+        entries = store.get_status_texts(sysid, count=5)
+        if not entries:
+            return []
+        result = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            result.append({
+                "text": e.get("text", ""),
+                "severity": e.get("severity", 7),
+                "severity_name": _SEVERITY_NAMES.get(e.get("severity", 7), "UNKNOWN"),
+                "name": e.get("name", ""),
+                "time": e.get("time", 0),
+            })
+        return result
+    except Exception:
+        return []
 
 
 def _build_rtk_status(rtcm_reader) -> dict:

@@ -149,9 +149,10 @@ body {
 
 /* Debug Box */
 .debug-box {
-    max-height: 50px; overflow-y: auto; font-size: 9px;
+    max-height: 130px; overflow-y: auto; font-size: 9px;
     background: #f0f0f0; border-radius: 4px; padding: 4px;
     border: 1px solid #ddd; min-height: 24px;
+    margin: 4px 0;
 }
 .debug-box::-webkit-scrollbar { width: 3px; }
 .debug-box::-webkit-scrollbar-track { background: transparent; }

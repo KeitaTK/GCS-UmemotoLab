@@ -119,8 +119,9 @@ class MessageRouter:
                 if msg_type == 'STATUSTEXT':
                     self._handle_status_text(system_id, msg)
 
-                # Store telemetry data
-                self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
+                # Store telemetry data (skip STATUSTEXT as it's stored separately in ring buffer)
+                if msg_type != 'STATUSTEXT':
+                    self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
             
         except Exception as e:
             self.logger.debug(f"MAVLink parse error: {e}")
