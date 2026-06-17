@@ -143,6 +143,9 @@ function renderAllCards(drones, conn) {
     const grid = document.getElementById('multi-drone-grid');
     if (!grid) return;
 
+    // Save currently selected sysid before re-rendering
+    const selectedSysid = getSelectedSystemId();
+
     const backendOnline = conn && conn.is_connected;
     let html = '';
 
@@ -162,6 +165,14 @@ function renderAllCards(drones, conn) {
     }
 
     grid.innerHTML = html;
+
+    // Restore selection if the same drone still has a card
+    if (selectedSysid !== null) {
+        const card = grid.querySelector('.drone-card[data-sysid="' + selectedSysid + '"]');
+        if (card) {
+            card.classList.add('selected');
+        }
+    }
 }
 
 /**
@@ -269,7 +280,7 @@ function renderDroneCard(sysid, drone) {
         '<button class="btn-force-arm-sm" onclick="forceArmDrone(' + sysid + ')"' + forceDisabled + '>Force</button>' +
         '</div>';
 
-    return '<div class="' + cardClass + '">' +
+    return '<div class="' + cardClass + '" data-sysid="' + sysid + '" onclick="toggleCardSelection(this)">' +
         '<div class="card-header">' +
             '<span class="drone-label">DRONE ' + sysid + '</span>' +
             '<span class="conn-dot ' + connDotClass + '"></span>' +
@@ -308,6 +319,41 @@ function renderPlaceholderCard(sysid) {
         '<div style="text-align:center;padding-top:40px;">Backend offline</div>' +
         '</div>';
 }
+
+/**
+ * Toggle card selection on click (single-select mode).
+ * @param {HTMLElement} cardEl - The card div element that was clicked.
+ */
+function toggleCardSelection(cardEl) {
+    if (!cardEl) return;
+
+    const alreadySelected = cardEl.classList.contains('selected');
+
+    // Deselect all cards first
+    document.querySelectorAll('.drone-card.selected').forEach(function(c) {
+        c.classList.remove('selected');
+    });
+
+    // Toggle: if it was already selected, leave it deselected; otherwise select it
+    if (!alreadySelected) {
+        cardEl.classList.add('selected');
+    }
+}
+
+/**
+ * Get the system ID of the currently selected drone card.
+ * @returns {number|null} The selected sysid, or null if no card is selected.
+ */
+function getSelectedSystemId() {
+    const selected = document.querySelector('.drone-card.selected');
+    if (!selected) return null;
+    const sid = selected.getAttribute('data-sysid');
+    return sid ? parseInt(sid, 10) : null;
+}
+
+// Expose globally for graph.js / rawdata.js / controls.js
+window.toggleCardSelection = toggleCardSelection;
+window.getSelectedSystemId = getSelectedSystemId;
 
 /**
  * Update RTK base station bar.

@@ -48,19 +48,25 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ===== Select All / Clear Selection =====
-    document.getElementById('btn-select-all').addEventListener('click', function() {
-        document.querySelectorAll('#drone-list li').forEach(function(li) {
-            li.classList.add('selected');
+    var selectAllBtn = document.getElementById('btn-select-all');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('.drone-card').forEach(function(card) {
+                card.classList.add('selected');
+            });
+            if (typeof updateDashboard === 'function') updateDashboard();
         });
-        if (typeof updateDashboard === 'function') updateDashboard();
-    });
+    }
 
-    document.getElementById('btn-clear-selection').addEventListener('click', function() {
-        document.querySelectorAll('#drone-list li').forEach(function(li) {
-            li.classList.remove('selected');
+    var clearSelBtn = document.getElementById('btn-clear-selection');
+    if (clearSelBtn) {
+        clearSelBtn.addEventListener('click', function() {
+            document.querySelectorAll('.drone-card.selected').forEach(function(card) {
+                card.classList.remove('selected');
+            });
+            if (typeof updateDashboard === 'function') updateDashboard();
         });
-        if (typeof updateDashboard === 'function') updateDashboard();
-    });
+    }
 
     // ===== Arm =====
     document.getElementById('btn-arm').addEventListener('click', function() {
@@ -198,13 +204,13 @@ function updateCmdAckError(label, err) {
 // ===== Broadcast / Per-Drone Control Functions =====
 
 /**
- * Get selected drone system IDs from #drone-list items with .selected class.
+ * Get selected drone system IDs from .drone-card.selected elements.
  */
 function getSelectedSystemIds() {
     var ids = [];
-    var items = document.querySelectorAll('#drone-list li.selected');
-    items.forEach(function(li) {
-        var sid = li.getAttribute('data-system-id');
+    var cards = document.querySelectorAll('.drone-card.selected');
+    cards.forEach(function(card) {
+        var sid = card.getAttribute('data-sysid');
         if (sid) ids.push(parseInt(sid, 10));
     });
     return ids;

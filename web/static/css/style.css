@@ -393,3 +393,17 @@ input[type="number"].param-input:focus {
 .status-error { color: #e74c3c !important; }
 .status-neutral { color: #888 !important; }
 
+/* ==========================================================================
+ * Drone Card Selection
+ * ========================================================================== */
+.drone-card {
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.drone-card.selected {
+    border-color: #e67e22 !important;
+    box-shadow: 0 0 16px rgba(230, 126, 34, 0.5);
+    outline: 2px solid #e67e22;
+}
+
