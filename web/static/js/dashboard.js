@@ -250,11 +250,11 @@ function renderDroneCard(sysid, drone) {
             '<span>HDOP ' + hdop + '</span></div>';
     }
 
-    // Debug box: render STATUSTEXT (latest 5, color-coded by severity)
+    // Debug box: render STATUSTEXT (all available, scrollable, color-coded by severity)
     const statusTexts = drone.status_texts || [];
     let debugHtml = '<div class="debug-box">';
     if (statusTexts.length === 0) {
-        debugHtml += '</div>';
+        debugHtml += '<div class="debug-msg info">No status messages</div></div>';
     } else {
         for (let i = 0; i < statusTexts.length; i++) {
             const st = statusTexts[i];

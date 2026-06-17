@@ -46,7 +46,8 @@ async def telemetry_websocket(ws: WebSocket):
                 data = await asyncio.wait_for(ws.receive_text(), timeout=1.0)
                 logger.debug(f"WS message: {data}")
             except asyncio.TimeoutError:
-                pass  # Normal polling timeout
+                # Normal polling timeout - no action needed
+                pass
     except WebSocketDisconnect:
         logger.info("WS client disconnected (telemetry)")
     except Exception as e:
@@ -304,7 +305,7 @@ _SEVERITY_NAMES = {
 def _build_status_texts(store, sysid: int) -> list:
     """Return the latest 5 STATUSTEXT entries with severity as a named string."""
     try:
-        entries = store.get_status_texts(sysid, count=5)
+        entries = store.get_status_texts(sysid, count=20)
         if not entries:
             return []
         result = []

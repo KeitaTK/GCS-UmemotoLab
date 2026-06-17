@@ -127,9 +127,9 @@ class TelemetryStore:
                 'time': time.time(),
             }
             ring.append(entry)
-            # Ring buffer: keep at most 20
-            if len(ring) > 20:
-                del ring[0 : len(ring) - 20]
+            # Ring buffer: keep at most 50
+            if len(ring) > 50:
+                del ring[0 : len(ring) - 50]
 
     def get_status_texts(self, system_id: int, count: int = None):
         """Return the most recent STATUSTEXT entries for a drone.

@@ -370,12 +370,12 @@ body {
 
 /* ---- Debug / STATUSTEXT scroll box ---- */
 .debug-box {
-    max-height: 48px;
+    max-height: 120px;
     overflow-y: auto;
-    font-size: 9px;
+    font-size: 11px;
     background: #0f0f23;
     border-radius: 4px;
-    padding: 4px;
+    padding: 4px 6px;
     margin: 2px 0;
     border: 1px solid #0f3460;
 }
