@@ -118,6 +118,13 @@ function updateWsStatus(status) {
  * Check if a drone is considered online (has heartbeat within timeout).
  */
 function isDroneOnline(sysid) {
+    // Backend online flag takes priority when available
+    const drones = telemetryState.drones || {};
+    const drone = drones[String(sysid)];
+    if (drone && drone.online !== undefined) {
+        if (!drone.online) return false;
+    }
+    // Fallback: WebSocket-side heartbeat timeout detection
     const lastSeen = droneLastSeen[String(sysid)] || 0;
     return (Date.now() / 1000 - lastSeen) < HEARTBEAT_TIMEOUT_SEC;
 }

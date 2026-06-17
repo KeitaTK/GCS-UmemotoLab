@@ -114,8 +114,16 @@ _COPTER_MODES = {
 }
 
 
+OFFLINE_TIMEOUT = 8.0  # seconds without telemetry → consider drone offline
+
+
 def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict | None:
-    """Build the complete telemetry payload for broadcast."""
+    """Build the complete telemetry payload for broadcast.
+
+    Drones that haven't sent any telemetry in OFFLINE_TIMEOUT seconds
+    are flagged with ``online: false`` so the frontend can immediately
+    show them as offline.
+    """
     if telemetry_store is None:
         return None
 
@@ -129,15 +137,38 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
         "rtk": _build_rtk_status(rtcm_reader),
     }
 
+    last_seen_all = {}
+    if hasattr(telemetry_store, "get_last_seen_all"):
+        try:
+            last_seen_all = telemetry_store.get_last_seen_all()
+        except Exception:
+            pass
+
     for sysid in sorted(telemetry_store.get_all_drone_ids()):
-        drone: dict = {
-            "heartbeat": _build_heartbeat(telemetry_store, sysid),
-            "battery": _build_battery(telemetry_store, sysid),
-            "gps": _build_gps(telemetry_store, sysid),
-            "system_state": _build_system_state(telemetry_store, sysid),
-            "command_state": _build_command_state(dispatcher, sysid),
-            "status_texts": _build_status_texts(telemetry_store, sysid),
-        }
+        last_seen = last_seen_all.get(sysid, 0)
+        is_online = (t_now - last_seen) < OFFLINE_TIMEOUT if last_seen else False
+
+        if is_online:
+            drone: dict = {
+                "online": True,
+                "heartbeat": _build_heartbeat(telemetry_store, sysid),
+                "battery": _build_battery(telemetry_store, sysid),
+                "gps": _build_gps(telemetry_store, sysid),
+                "system_state": _build_system_state(telemetry_store, sysid),
+                "command_state": _build_command_state(dispatcher, sysid),
+                "status_texts": _build_status_texts(telemetry_store, sysid),
+            }
+        else:
+            drone: dict = {
+                "online": False,
+                "heartbeat": {"armed": False, "mode": "N/A", "base_mode": 0, "custom_mode": -1},
+                "battery": {"voltage": None, "current": None, "remaining": None},
+                "gps": {"fix_type": -1, "fix_name": "OFFLINE", "satellites": 0, "lat": None, "lon": None, "alt": None, "hdop": None},
+                "system_state": {"armed": False, "mode": "NO SIGNAL"},
+                "command_state": {"pending_count": 0, "last_ack": None},
+                "status_texts": [],
+            }
+
         payload["drones"][str(sysid)] = drone
 
     return payload

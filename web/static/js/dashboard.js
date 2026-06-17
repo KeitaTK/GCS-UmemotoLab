@@ -183,7 +183,7 @@ function renderAllCards(drones, conn) {
  * Render a single drone card.
  */
 function renderDroneCard(sysid, drone) {
-    const online = isDroneOnline(sysid);
+    const online = drone.online !== undefined ? drone.online : isDroneOnline(sysid);
     const hb = drone.heartbeat || {};
     const bat = drone.battery || {};
     const gps = drone.gps || {};

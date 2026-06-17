@@ -6,12 +6,24 @@ class TelemetryStore:
     def __init__(self):
         self._lock = threading.Lock()
         self._data = {}
+        self._last_seen = {}  # {system_id: timestamp}
 
     def update(self, system_id, message_type, payload):
         with self._lock:
             if system_id not in self._data:
                 self._data[system_id] = {}
             self._data[system_id][message_type] = payload
+            self._last_seen[system_id] = time.time()
+
+    def get_last_seen(self, system_id):
+        """Get the last update timestamp for a system_id. Returns None if never seen."""
+        with self._lock:
+            return self._last_seen.get(system_id)
+
+    def get_last_seen_all(self):
+        """Get dict of {system_id: timestamp} for all known drones."""
+        with self._lock:
+            return dict(self._last_seen)
 
             if message_type == 'NAMED_VALUE_FLOAT':
                 field_name = getattr(payload, 'name', 'unknown')
