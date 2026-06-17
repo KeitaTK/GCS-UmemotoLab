@@ -114,7 +114,7 @@ _COPTER_MODES = {
 }
 
 
-OFFLINE_TIMEOUT = 8.0  # seconds without telemetry → consider drone offline
+OFFLINE_TIMEOUT = 2.0  # seconds without telemetry → consider drone offline
 
 
 def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict | None:
