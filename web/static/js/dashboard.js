@@ -147,9 +147,7 @@ function renderAllCards(drones, conn) {
     const grid = document.getElementById('multi-drone-grid');
     if (!grid) return;
 
-    // Save currently selected sysid before re-rendering
-    const selectedSysid = getSelectedSystemId();
-
+    // Build new HTML but compare before replacing to avoid resetting dropdowns
     const backendOnline = conn && conn.is_connected;
     let html = '';
 
@@ -158,23 +156,26 @@ function renderAllCards(drones, conn) {
         const drone = drones[sysidStr] || null;
 
         if (!backendOnline) {
-            // Backend offline: placeholder card
             html += renderPlaceholderCard(i);
         } else if (!drone) {
-            // Drone never seen: empty placeholder
             html += renderEmptyCard(i);
         } else {
             html += renderDroneCard(i, drone);
         }
     }
 
-    grid.innerHTML = html;
+    // Only replace DOM if content actually changed (prevents closing <select> dropdown)
+    if (grid.innerHTML !== html) {
+        // Save currently selected sysid before re-rendering
+        const selectedSysid = getSelectedSystemId();
+        grid.innerHTML = html;
 
-    // Restore selection if the same drone still has a card
-    if (selectedSysid !== null) {
-        const card = grid.querySelector('.drone-card[data-sysid="' + selectedSysid + '"]');
-        if (card) {
-            card.classList.add('selected');
+        // Restore selection if the same drone still has a card
+        if (selectedSysid !== null) {
+            const card = grid.querySelector('.drone-card[data-system-id="' + selectedSysid + '"]');
+            if (card) {
+                card.classList.add('selected');
+            }
         }
     }
 }
