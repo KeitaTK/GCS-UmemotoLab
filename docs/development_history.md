@@ -3,6 +3,17 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-06-17 16:00: [Web UI: カード方式に統一]
+- 問題: index.html に PySide6風タブ構造（#panel-dashboard）とカードグリッド（#multi-drone-grid）が混在し、レイアウトが崩れていた。drone-list がHTMLに存在せず、選択ロジックが機能していなかった。
+- 調査: #sidebar（CSS定義のみでHTMLに非存在）、#ws-status-bar（status-barと重複）、#drone-list無し、getSelectedSystemIds()が常に空を返すことを確認。
+- 試行:
+  - index.html から #panel-dashboard（旧PySide6風UI）を削除し、#multi-drone-grid をメインコンテンツに。タブは Graph / Raw Data のみに。
+  - style.css を flex-direction: column に統一し、#sidebar 関連CSSを削除。.multi-drone-grid は repeat(4, 1fr) のCSS Gridに。
+  - dashboard.js に selectCard() / getSelectedSystemId() を追加。カードクリックで選択（Ctrl+Clickで複数選択）、.selected クラスで管理。
+  - controls.js の getSelectedSystemIds() を #drone-list 依存から .drone-card.selected から取得するよう変更。
+- 結果: Web UIがカード方式に統一され、ドローン選択が正常に機能するようになった。
+- 備考: 個別制御ボタン（Arm/Disarm/Takeoff/Land/Guided）はカード内に未実装。現状はカード内の STOP/Force のみ動作。broadcast-panel は全機一括操作に対応。
+
 ### 2026-06-14 00:00: [webUI ブランチのリモート統合]
 - 問題: `webUI` ブランチが `origin/webUI` に対して先行・遅行しており、ローカルとリモートの差分を統合して完了させる必要があった。
 - 調査: `git log --left-right --cherry-pick` と `git diff --name-status` で双方の独自コミットと変更ファイルを確認し、`git merge-tree` で衝突箇所を事前に把握した。

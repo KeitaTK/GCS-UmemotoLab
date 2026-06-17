@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-06-17: Web UI カード方式採用
+
+- **決定内容**: Web UIのレイアウトをPySide6風のタブ構造から、ドローンカードグリッド方式に統一した。
+- **理由**:
+  - マルチドローン対応GCSでは、全機の状態を俯瞰できるカード表示が適切
+  - PySide6風タブ（Dashboard/Graph/Raw Data）はWeb版では冗長
+  - カードクリックによる直感的なドローン選択
+- **影響**:
+  - index.html から #panel-dashboard 削除、#multi-drone-grid をメインに
+  - style.css は flex column に再構築、#sidebar 関連CSS削除
+  - dashboard.js に selectCard() / getSelectedSystemId() 追加
+  - controls.js の選択ロジックを #drone-list → .drone-card.selected に変更
+  - 個別制御（Arm/Disarm/Takeoff/Land/Guided）は未実装（今後の課題）
+- **代替案**: 旧タブ構造の維持（却下：レイアウト崩れの抜本的解決が必要）
+
+---
+
 ## 2026-06: UV 移行（pip → UV）
 
 - **決定内容**: Python パッケージマネージャーを pip から UV に移行。`pyproject.toml` を導入し、`uv venv && uv sync` を標準のセットアップ手順とする。

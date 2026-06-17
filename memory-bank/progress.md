@@ -26,6 +26,18 @@
 | コマンド状態・リトライ表示 | `app/ui/main_window.py` | ✅ | 色分け表示 |
 | RTK統計表示 | `app/ui/main_window.py` | ✅ | RTK Fix状態 |
 
+### UI（Web）
+
+| 機能 | ファイル | 状態 | 備考 |
+|------|----------|------|------|
+| カード方式ダッシュボード | `web/static/index.html` + `dashboard.js` | ✅ | 4スロットグリッド |
+| ドローン選択（カードクリック） | `web/static/dashboard.js` | ✅ | 単一/複数選択対応 |
+| WebSocketテレメトリ配信 | `web/static/websocket.js` | ✅ | FastAPI + 全クライアントブロードキャスト |
+| Plotly.jsグラフ | `web/static/graph.js` | ✅ | バッテリー電圧・高度 |
+| Raw Data表示 | `web/static/rawdata.js` | ✅ | JSON整形表示 |
+| 全機一括制御（Broadcast） | `web/static/controls.js` | ✅ | Arm/Disarm/Takeoff/Land |
+| カード単位制御（STOP/Force） | `web/static/controls.js` | ✅ | カード内ボタン |
+
 ### 機体制御
 
 | 機能 | ファイル | 状態 | 備考 |
