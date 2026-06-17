@@ -31,6 +31,10 @@ function updateDashboard() {
     renderAllCards(drones, conn);
     updateRtkBar(rtk);
     updateAllNominal(drones, conn);
+
+    // Also update graph and raw data panels
+    if (typeof updateGraphs === 'function') updateGraphs();
+    if (typeof updateRawData === 'function') updateRawData();
 }
 
 /**
@@ -280,7 +284,7 @@ function renderDroneCard(sysid, drone) {
         '<button class="btn-force-arm-sm" onclick="forceArmDrone(' + sysid + ')"' + forceDisabled + '>Force</button>' +
         '</div>';
 
-    return '<div class="' + cardClass + '" data-sysid="' + sysid + '" onclick="toggleCardSelection(this)">' +
+    return '<div class="' + cardClass + '" data-system-id="' + sysid + '" onclick="selectCard(event, ' + sysid + ')">' +
         '<div class="card-header">' +
             '<span class="drone-label">DRONE ' + sysid + '</span>' +
             '<span class="conn-dot ' + connDotClass + '"></span>' +
@@ -321,41 +325,6 @@ function renderPlaceholderCard(sysid) {
 }
 
 /**
- * Toggle card selection on click (single-select mode).
- * @param {HTMLElement} cardEl - The card div element that was clicked.
- */
-function toggleCardSelection(cardEl) {
-    if (!cardEl) return;
-
-    const alreadySelected = cardEl.classList.contains('selected');
-
-    // Deselect all cards first
-    document.querySelectorAll('.drone-card.selected').forEach(function(c) {
-        c.classList.remove('selected');
-    });
-
-    // Toggle: if it was already selected, leave it deselected; otherwise select it
-    if (!alreadySelected) {
-        cardEl.classList.add('selected');
-    }
-}
-
-/**
- * Get the system ID of the currently selected drone card.
- * @returns {number|null} The selected sysid, or null if no card is selected.
- */
-function getSelectedSystemId() {
-    const selected = document.querySelector('.drone-card.selected');
-    if (!selected) return null;
-    const sid = selected.getAttribute('data-sysid');
-    return sid ? parseInt(sid, 10) : null;
-}
-
-// Expose globally for graph.js / rawdata.js / controls.js
-window.toggleCardSelection = toggleCardSelection;
-window.getSelectedSystemId = getSelectedSystemId;
-
-/**
  * Update RTK base station bar.
  */
 function updateRtkBar(rtk) {
@@ -382,3 +351,72 @@ function updateRtkBar(rtk) {
 window.addEventListener('DOMContentLoaded', function() {
     renderAllCards({}, null);
 });
+
+/**
+ * Toggle selection of a drone card by clicking it.
+ * Ctrl/Cmd+click for multi-select, plain click replaces selection.
+ */
+function selectCard(event, sysid) {
+    // Don't select if clicking a button inside the card
+    if (event.target.tagName === 'BUTTON') return;
+
+    const card = document.querySelector('.drone-card[data-system-id="' + sysid + '"]');
+    if (!card) return;
+
+    const multi = event.ctrlKey || event.metaKey;
+
+    if (!multi) {
+        // Deselect all, then select this one
+        document.querySelectorAll('.drone-card.selected').forEach(function(c) {
+            c.classList.remove('selected');
+        });
+    }
+
+    card.classList.toggle('selected');
+}
+
+/**
+ * Get the system ID of the first selected card, or the first online drone as fallback.
+ */
+function getSelectedSystemId() {
+    const sel = document.querySelector('.drone-card.selected');
+    if (sel) {
+        const sid = sel.getAttribute('data-system-id');
+        if (sid) return parseInt(sid, 10);
+    }
+    // Fallback: first online drone
+    const onlineIds = typeof getOnlineDroneIds === 'function' ? getOnlineDroneIds() : [];
+    if (onlineIds.length > 0) return onlineIds[0];
+    // Last resort: first card
+    const first = document.querySelector('.drone-card[data-system-id]');
+    if (first) return parseInt(first.getAttribute('data-system-id'), 10);
+    return null;
+}
+
+/**
+ * Switch between Graph and Raw Data tabs.
+ */
+function switchTab(tabName) {
+    // Update tab button active states
+    document.querySelectorAll('#tab-bar button').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    const tabBtn = document.getElementById('tab-' + tabName);
+    if (tabBtn) tabBtn.classList.add('active');
+
+    // Show/hide panels
+    const panelGraph = document.getElementById('panel-graph');
+    const panelRaw = document.getElementById('panel-raw');
+    if (panelGraph) panelGraph.style.display = (tabName === 'graph') ? 'block' : 'none';
+    if (panelRaw)   panelRaw.style.display   = (tabName === 'raw')   ? 'block' : 'none';
+
+    // If switching to graph, ensure graphs are initialized
+    if (tabName === 'graph' && typeof initGraphs === 'function') {
+        initGraphs();
+    }
+}
+
+// Expose globally
+window.selectCard = selectCard;
+window.getSelectedSystemId = getSelectedSystemId;
+window.switchTab = switchTab;

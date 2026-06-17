@@ -5,52 +5,61 @@
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // ===== Connect / Disconnect Backend =====
-    document.getElementById('btn-connect').addEventListener('click', function() {
-        var statusEl = document.getElementById('backend-status');
-        if (statusEl) { statusEl.textContent = 'Connecting...'; statusEl.className = 'value status-neutral'; }
-        fetch('/api/connect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.status === 'connected') {
-                if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'value status-ok'; }
-            } else {
-                if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'value status-error'; }
-            }
-        })
-        .catch(function(err) {
-            if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'value status-error'; }
-        });
-    });
+    // ===== Connect / Disconnect Backend (status bar buttons) =====
+    const btnConnect = document.getElementById('btn-connect-status');
+    const btnDisconnect = document.getElementById('btn-disconnect-status');
 
-    document.getElementById('btn-disconnect').addEventListener('click', function() {
-        var statusEl = document.getElementById('backend-status');
-        if (statusEl) { statusEl.textContent = 'Disconnecting...'; statusEl.className = 'value status-neutral'; }
-        fetch('/api/disconnect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.status === 'disconnected') {
-                if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.className = 'value status-neutral'; }
-            } else {
-                if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'value status-error'; }
-            }
-        })
-        .catch(function(err) {
-            if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'value status-error'; }
+    if (btnConnect) {
+        btnConnect.addEventListener('click', function() {
+            var statusEl = document.getElementById('backend-status-text');
+            if (statusEl) { statusEl.textContent = 'Connecting...'; statusEl.className = 'status-value status-neutral'; }
+            fetch('/api/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'connected') {
+                    if (statusEl) { statusEl.textContent = 'Connected'; statusEl.className = 'status-value status-ok'; }
+                } else {
+                    if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'status-value status-error'; }
+                }
+            })
+            .catch(function(err) {
+                if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'status-value status-error'; }
+            });
         });
-    });
+    }
 
-    // ===== Select All / Clear Selection =====
-    var selectAllBtn = document.getElementById('btn-select-all');
-    if (selectAllBtn) {
-        selectAllBtn.addEventListener('click', function() {
+    if (btnDisconnect) {
+        btnDisconnect.addEventListener('click', function() {
+            var statusEl = document.getElementById('backend-status-text');
+            if (statusEl) { statusEl.textContent = 'Disconnecting...'; statusEl.className = 'status-value status-neutral'; }
+            fetch('/api/disconnect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'disconnected') {
+                    if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.className = 'status-value status-neutral'; }
+                } else {
+                    if (statusEl) { statusEl.textContent = 'Error: ' + (data.detail || 'unknown'); statusEl.className = 'status-value status-error'; }
+                }
+            })
+            .catch(function(err) {
+                if (statusEl) { statusEl.textContent = 'Error: ' + (err.message || err); statusEl.className = 'status-value status-error'; }
+            });
+        });
+    }
+
+    // ===== Select All / Clear Selection (guarded: may not exist) =====
+    var btnSelectAll = document.getElementById('btn-select-all');
+    var btnClearSel = document.getElementById('btn-clear-selection');
+
+    if (btnSelectAll) {
+        btnSelectAll.addEventListener('click', function() {
             document.querySelectorAll('.drone-card').forEach(function(card) {
                 card.classList.add('selected');
             });
@@ -58,9 +67,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    var clearSelBtn = document.getElementById('btn-clear-selection');
-    if (clearSelBtn) {
-        clearSelBtn.addEventListener('click', function() {
+    if (btnClearSel) {
+        btnClearSel.addEventListener('click', function() {
             document.querySelectorAll('.drone-card.selected').forEach(function(card) {
                 card.classList.remove('selected');
             });
@@ -69,115 +77,136 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ===== Arm =====
-    document.getElementById('btn-arm').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        fetch('/api/arm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1 })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Arm'); })
-        .catch(function(err) { updateCmdAckError('Arm', err); });
-    });
+    var btnArm = document.getElementById('btn-arm');
+    if (btnArm) {
+        btnArm.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            fetch('/api/arm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Arm'); })
+            .catch(function(err) { updateCmdAckError('Arm', err); });
+        });
+    }
 
     // ===== Disarm =====
-    document.getElementById('btn-disarm').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        fetch('/api/disarm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1 })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Disarm'); })
-        .catch(function(err) { updateCmdAckError('Disarm', err); });
-    });
+    var btnDisarm = document.getElementById('btn-disarm');
+    if (btnDisarm) {
+        btnDisarm.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            fetch('/api/disarm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Disarm'); })
+            .catch(function(err) { updateCmdAckError('Disarm', err); });
+        });
+    }
 
     // ===== Force Arm =====
-    document.getElementById('btn-force-arm').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        if (!confirm('⚠️ Force ArmはARMING_CHECK等を無効化します。屋内テスト専用。続行しますか？')) return;
-        fetch('/api/force_arm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1, confirmed: true })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Force Arm'); })
-        .catch(function(err) { updateCmdAckError('Force Arm', err); });
-    });
+    var btnForceArm = document.getElementById('btn-force-arm');
+    if (btnForceArm) {
+        btnForceArm.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (!confirm('⚠️ Force ArmはARMING_CHECK等を無効化します。屋内テスト専用。続行しますか？')) return;
+            fetch('/api/force_arm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1, confirmed: true })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Force Arm'); })
+            .catch(function(err) { updateCmdAckError('Force Arm', err); });
+        });
+    }
 
     // ===== Takeoff =====
-    document.getElementById('btn-takeoff').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        var altInput = document.getElementById('takeoff-altitude');
-        var altitude = altInput ? parseFloat(altInput.value) : 10.0;
-        fetch('/api/takeoff', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1, altitude: altitude })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Takeoff'); })
-        .catch(function(err) { updateCmdAckError('Takeoff', err); });
-    });
+    var btnTakeoff = document.getElementById('btn-takeoff');
+    if (btnTakeoff) {
+        btnTakeoff.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            var altInput = document.getElementById('takeoff-altitude');
+            var altitude = altInput ? parseFloat(altInput.value) : 10.0;
+            fetch('/api/takeoff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1, altitude: altitude })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Takeoff'); })
+            .catch(function(err) { updateCmdAckError('Takeoff', err); });
+        });
+    }
 
     // ===== Land =====
-    document.getElementById('btn-land').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        var rateInput = document.getElementById('land-descent-rate');
-        var descent_rate = rateInput ? parseFloat(rateInput.value) : 1.5;
-        fetch('/api/land', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1, descent_rate: descent_rate })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Land'); })
-        .catch(function(err) { updateCmdAckError('Land', err); });
-    });
+    var btnLand = document.getElementById('btn-land');
+    if (btnLand) {
+        btnLand.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            var rateInput = document.getElementById('land-descent-rate');
+            var descent_rate = rateInput ? parseFloat(rateInput.value) : 1.5;
+            fetch('/api/land', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1, descent_rate: descent_rate })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Land'); })
+            .catch(function(err) { updateCmdAckError('Land', err); });
+        });
+    }
 
     // ===== Guided Position =====
-    document.getElementById('btn-guided-position').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        var north = parseFloat(document.getElementById('guided-north').value || 0);
-        var east  = parseFloat(document.getElementById('guided-east').value || 0);
-        var down  = parseFloat(document.getElementById('guided-down').value || 0);
-        var yaw   = parseFloat(document.getElementById('guided-yaw').value || 0);
-        fetch('/api/guided/position', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1, north: north, east: east, down: down, yaw: yaw })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Guided Position'); })
-        .catch(function(err) { updateCmdAckError('Guided Position', err); });
-    });
+    var btnGuidedPos = document.getElementById('btn-guided-position');
+    if (btnGuidedPos) {
+        btnGuidedPos.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            var north = parseFloat(document.getElementById('guided-north').value || 0);
+            var east  = parseFloat(document.getElementById('guided-east').value || 0);
+            var down  = parseFloat(document.getElementById('guided-down').value || 0);
+            var yaw   = parseFloat(document.getElementById('guided-yaw').value || 0);
+            fetch('/api/guided/position', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1, north: north, east: east, down: down, yaw: yaw })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Guided Position'); })
+            .catch(function(err) { updateCmdAckError('Guided Position', err); });
+        });
+    }
 
     // ===== Guided Velocity =====
-    document.getElementById('btn-guided-velocity').addEventListener('click', function() {
-        var ids = getSelectedSystemIds();
-        if (ids.length === 0) { alert('Please select a drone'); return; }
-        var vx  = parseFloat(document.getElementById('guided-vx').value || 0);
-        var vy  = parseFloat(document.getElementById('guided-vy').value || 0);
-        var vz  = parseFloat(document.getElementById('guided-vz').value || 0);
-        var yaw = parseFloat(document.getElementById('guided-yaw-vel').value || 0);
-        fetch('/api/guided/velocity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ system_ids: ids, component_id: 1, vx: vx, vy: vy, vz: vz, yaw: yaw })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { updateCmdAck(data, 'Guided Velocity'); })
-        .catch(function(err) { updateCmdAckError('Guided Velocity', err); });
-    });
+    var btnGuidedVel = document.getElementById('btn-guided-velocity');
+    if (btnGuidedVel) {
+        btnGuidedVel.addEventListener('click', function() {
+            var ids = getSelectedSystemIds();
+            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            var vx  = parseFloat(document.getElementById('guided-vx').value || 0);
+            var vy  = parseFloat(document.getElementById('guided-vy').value || 0);
+            var vz  = parseFloat(document.getElementById('guided-vz').value || 0);
+            var yaw = parseFloat(document.getElementById('guided-yaw-vel').value || 0);
+            fetch('/api/guided/velocity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, component_id: 1, vx: vx, vy: vy, vz: vz, yaw: yaw })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Guided Velocity'); })
+            .catch(function(err) { updateCmdAckError('Guided Velocity', err); });
+        });
+    }
 
 });
 
@@ -204,22 +233,28 @@ function updateCmdAckError(label, err) {
 // ===== Broadcast / Per-Drone Control Functions =====
 
 /**
- * Get selected drone system IDs from .drone-card.selected elements.
+ * Get selected drone system IDs from drone cards with .selected class.
+ * Falls back to first online drone if nothing selected.
  */
 function getSelectedSystemIds() {
     var ids = [];
     var cards = document.querySelectorAll('.drone-card.selected');
     cards.forEach(function(card) {
-        var sid = card.getAttribute('data-sysid');
+        var sid = card.getAttribute('data-system-id');
         if (sid) ids.push(parseInt(sid, 10));
     });
+    if (ids.length > 0) return ids;
+
+    // Fallback: first online drone
+    if (typeof getOnlineDroneIds === 'function') {
+        var online = getOnlineDroneIds();
+        if (online.length > 0) return online;
+    }
     return ids;
 }
 
 /**
  * Get all currently online drone IDs.
- * Delegates to getOnlineDroneIds() from websocket.js if available,
- * otherwise falls back to telemetryState.drones.
  */
 function _getOnlineIds() {
     if (typeof getOnlineDroneIds === 'function') {
@@ -324,8 +359,8 @@ function stopDrone(sysid) {
  * Force Arm a single drone (double confirm for safety).
  */
 function forceArmDrone(sysid) {
-    if (!confirm('\u26A0\uFE0F Force Arm Drone ' + sysid + '?\n(ARMING_CHECK bypass - \u5C4B\u5185\u30C6\u30B9\u30C8\u5C02\u7528)')) return;
-    if (!confirm('\u672C\u5F53\u306BForce Arm\u3057\u307E\u3059\u304B\uFF1F\nDrone ' + sysid)) return;
+    if (!confirm('\u26A0\uFE0F Force Arm Drone ' + sysid + '?\n(ARMING_CHECK bypass - 屋内テスト専用)')) return;
+    if (!confirm('本当にForce Armしますか？\nDrone ' + sysid)) return;
     fetch('/api/force_arm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
