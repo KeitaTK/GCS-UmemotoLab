@@ -6,36 +6,28 @@
 
 ## 1. 全体アーキテクチャ
 
-```
-┌────────────────────────────────────────────────┐
-│               PC / Mac (GCS)                   │
-│  ┌──────────────────────────────────────────┐  │
-│  │  Python App (PySide6 + MAVLink)          │  │
-│  │  - MavlinkConnection (UDP bind or Serial)│  │
-│  │  - MessageRouter (テレメトリ受信)         │  │
-│  │  - RtcmReader (RTCM TCP受信)             │  │
-│  │  - RtcmInjector (GPS_RTCM_DATA 送信)     │  │
-│  │  - CommandDispatcher (コマンド送信)       │  │
-│  └──────────────────┬───────────────────────┘  │
-└─────────────────────┼──────────────────────────┘
-                      │ SSH Tunnel または UDP
-       (UDP/TCP MAVLink v2)
-                      │
-┌─────────────────────┼──────────────────────────┐
-│           Raspberry Pi 5                        │
-│  ┌──────────────────────────────────────────┐  │
-│  │  mavlink-router (systemd サービス)        │  │
-│  │  UART(ttyAMA0) ↔ UDP(14550)              │  │
-│  │  ※ カスタムメッセージ含む全MAVLink透過    │  │
-│  └──────────────────┬───────────────────────┘  │
-└─────────────────────┼──────────────────────────┘
-                      │ UART (GPIO 14/15)
-                      │ Baud: 115200
-┌─────────────────────┼──────────────────────────┐
-│         Pixhawk (ArduPilot)                     │
-│         TELEM1 接続                             │
-│         System ID: 1                            │
-└────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph PC["PC / Mac (GCS)"]
+        subgraph App["Python App (PySide6 + MAVLink)"]
+            Conn["MavlinkConnection<br/>(UDP bind or Serial)"]
+            Router["MessageRouter<br/>(telemetry receive)"]
+            RtcmR["RtcmReader<br/>(RTCM TCP receive)"]
+            RtcmI["RtcmInjector<br/>(GPS_RTCM_DATA send)"]
+            CmdDisp["CommandDispatcher<br/>(command send)"]
+        end
+    end
+
+    subgraph Raspi["Raspberry Pi 5"]
+        MLR["mavlink-router (systemd service)<br/>UART(ttyAMA0) <-> UDP(14550)<br/>All MAVLink pass-through"]
+    end
+
+    subgraph Pixhawk["Pixhawk (ArduPilot)"]
+        Tele["TELEM1 connection<br/>System ID: 1"]
+    end
+
+    PC -->|"SSH Tunnel or UDP<br/>(UDP/TCP MAVLink v2)"| Raspi
+    Raspi -->|"UART (GPIO 14/15)<br/>Baud: 115200"| Pixhawk
 ```
 
 ### 各ノードの役割
@@ -56,15 +48,27 @@
 Tailscale の UDP 転送制限を回避するため、TCPベースのリレーを構築する。
 
 **経路**:
-```
-Mac (GCS)
-  └─ UDP:local_port → UDP:bridge_udp_port
-       └─ udp_tcp_bridge.py (UDP↔TCP)
-            └─ TCP:local_tcp_port
-                 └─ SSH Tunnel (-L {local_tcp_port}:localhost:{raspi_tcp_port})
-                      └─ Raspi: socat (TCP:raspi_tcp_port → UDP:localhost:14550)
-                           └─ mavlink-router (UDP:14550)
-                                └─ UART ttyAMA0 → Pixhawk
+
+```mermaid
+graph LR
+    subgraph Mac["Mac (GCS)"]
+        GCS_A["GCS<br/>UDP:local_port"]
+        Bridge["udp_tcp_bridge.py<br/>UDP <-> TCP"]
+        SSH_L["SSH Tunnel<br/>-L local_tcp_port:localhost:raspi_tcp_port"]
+    end
+
+    subgraph Raspi["Raspi"]
+        Socat["socat<br/>TCP:raspi_tcp_port -> UDP:localhost:14550"]
+        MLR_A["mavlink-router<br/>UDP:14550"]
+    end
+
+    Pixhawk_A["Pixhawk<br/>UART ttyAMA0"]
+
+    GCS_A -->|"UDP:bridge_udp_port"| Bridge
+    Bridge -->|"TCP:local_tcp_port"| SSH_L
+    SSH_L --> Socat
+    Socat --> MLR_A
+    MLR_A --> Pixhawk_A
 ```
 
 **使用ポート**:
@@ -106,13 +110,23 @@ Mac (GCS)
 **用途**: 本番接続（手動SSHトンネル管理）。
 
 **経路**:
-```
-Mac (GCS)
-  └─ UDP:14551 (bind)
-       └─ GCS send → 127.0.0.1:14550
-            └─ SSH Tunnel (-L 14550:localhost:14550)
-                 └─ Raspi: mavlink-router (UDP:14550)
-                      └─ UART ttyAMA0 → Pixhawk
+
+```mermaid
+graph LR
+    subgraph Mac["Mac (GCS)"]
+        GCS_B["GCS<br/>UDP:14551 bind<br/>send -> 127.0.0.1:14550"]
+        SSH_B["SSH Tunnel<br/>-L 14550:localhost:14550"]
+    end
+
+    subgraph Raspi["Raspi"]
+        MLR_B["mavlink-router<br/>UDP:14550"]
+    end
+
+    Pixhawk_B["Pixhawk<br/>UART ttyAMA0"]
+
+    GCS_B --> SSH_B
+    SSH_B --> MLR_B
+    MLR_B --> Pixhawk_B
 ```
 
 **SSH トンネル作成手順**（GCS起動前に別ターミナルで実行）:
@@ -155,10 +169,15 @@ python app/main.py
 **用途**: 開発・テスト。PCとPixhawkをUSB直結。
 
 **経路**:
-```
-PC (GCS)
-  └─ USB Serial (/dev/ttyACM0, 115200 baud)
-       └─ Pixhawk (TELEM2 または USB)
+
+```mermaid
+graph LR
+    PC_C["PC (GCS)"]
+    Serial_C["USB Serial<br/>/dev/ttyACM0, 115200 baud"]
+    Pixhawk_C["Pixhawk<br/>(TELEM2 or USB)"]
+
+    PC_C --> Serial_C
+    Serial_C --> Pixhawk_C
 ```
 
 **設定パラメータ**:
@@ -180,12 +199,20 @@ PC (GCS)
 **用途**: GCSをRaspi上で直接実行する場合。
 
 **経路**:
-```
-Raspi (GCS + mavlink-router 同一マシン)
-  └─ GCS: UDP bind 0.0.0.0:14551 (受信)
-       └─ GCS send → 127.0.0.1:14550 (mavlink-router)
-            └─ mavlink-router
-                 └─ UART ttyAMA0 → Pixhawk
+
+```mermaid
+graph LR
+    subgraph Raspi["Raspi (GCS + mavlink-router same machine)"]
+        GCS_D["GCS<br/>UDP bind 0.0.0.0:14551 (recv)"]
+        Send_D["GCS send<br/>-> 127.0.0.1:14550"]
+        MLR_D["mavlink-router"]
+    end
+
+    Pixhawk_D["Pixhawk<br/>UART ttyAMA0"]
+
+    GCS_D --> Send_D
+    Send_D --> MLR_D
+    MLR_D --> Pixhawk_D
 ```
 
 **設定パラメータ**:
@@ -214,11 +241,16 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)/app
 
 設定ファイルは `rtk_tools/config_loader.py` の `resolve_config_path()` によって以下の優先順位で解決される:
 
-```
-1. GCS_CONFIG_PATH 環境変数（明示的なパス指定）
-2. config/gcs.user.local.yml（Git管理外、ユーザー固有の上書き）
-3. config/gcs_local.yml
-4. config/gcs.yml（デフォルト）
+```mermaid
+graph TD
+    P1["1. GCS_CONFIG_PATH env var<br/>(explicit path)"]
+    P2["2. config/gcs.user.local.yml<br/>(not git-managed, user override)"]
+    P3["3. config/gcs_local.yml"]
+    P4["4. config/gcs.yml<br/>(default)"]
+
+    P1 -->|"fallback"| P2
+    P2 -->|"fallback"| P3
+    P3 -->|"fallback"| P4
 ```
 
 ### 各ファイルの役割と使い分け
@@ -298,10 +330,6 @@ MAVLink通信（UDP/Serial）を管理するコアクラス。
 
 - `send()` のエイリアス。明示的に「対象システム」を指定する場合に使用。
 
-
-python app/main.py
-```
-
 > **注意**: README内ではファイル名を `gcs_raspi_direct.yml` と表記しているが、実ファイル名は `gcs_drone.yml`。
 
 
@@ -314,49 +342,45 @@ python app/main.py
 
 ### 上り（テレメトリ）: Pixhawk → GCS
 
-```
-Pixhawk (TELEM1)
-  │ MAVLink v2 over UART, 115200 baud
-  ▼
-Raspi mavlink-router (ttyAMA0)
-  │ UDP:14550 (Mode: Server, Address: 0.0.0.0)
-  ▼
-GCS MavlinkConnection (UDP bind 0.0.0.0:{udp_listen_port})
-  │ recv_callback(data, addr)
-  ▼
-MessageRouter (受信スレッド)
-  │ MAVLinkメッセージ解析・振り分け
-  ▼
-TelemetryStore (データ保存) + UI更新 / WebSocket broadcast
+```mermaid
+graph TD
+    Pixhawk_U["Pixhawk (TELEM1)"]
+    MLR_U["Raspi mavlink-router (ttyAMA0)"]
+    Conn_U["GCS MavlinkConnection<br/>(UDP bind 0.0.0.0:udp_listen_port)"]
+    Router_U["MessageRouter (recv thread)"]
+    Store_U["TelemetryStore + UI update / WebSocket broadcast"]
+
+    Pixhawk_U -->|"MAVLink v2 over UART<br/>115200 baud"| MLR_U
+    MLR_U -->|"UDP:14550<br/>(Mode: Server, Address: 0.0.0.0)"| Conn_U
+    Conn_U -->|"recv_callback(data, addr)"| Router_U
+    Router_U -->|"MAVLink message<br/>parse & dispatch"| Store_U
 ```
 
 ### 下り（コマンド）: GCS → Pixhawk
 
-```
-GCS CommandDispatcher / GuidedControl
-  │ MAVLinkメッセージエンコード
-  ▼
-MavlinkConnection.send(system_id, data)
-  │ sock.sendto(data, endpoint) または serial_conn.write(data)
-  ▼
-Raspi mavlink-router (UDP:14550)
-  │ UART ttyAMA0
-  ▼
-Pixhawk (TELEM1)
+```mermaid
+graph TD
+    CmdDisp_D["GCS CommandDispatcher / GuidedControl"]
+    Conn_D["MavlinkConnection.send<br/>(system_id, data)"]
+    MLR_D["Raspi mavlink-router<br/>(UDP:14550)"]
+    Pixhawk_D["Pixhawk (TELEM1)"]
+
+    CmdDisp_D -->|"MAVLink message encode"| Conn_D
+    Conn_D -->|"sock.sendto(data, endpoint)<br/>or serial_conn.write(data)"| MLR_D
+    MLR_D -->|"UART ttyAMA0"| Pixhawk_D
 ```
 
 ### RTCM/RTK データフロー
 
+```mermaid
+graph LR
+    Source["RTCM TCP Source<br/>(e.g. NTRIP caster, rtk_base_station.py)"]
+    Reader["RtcmReader<br/>(_read_loop, daemon thread)<br/>RTCM v3 frame parsing (0xD3 preamble)<br/>callback(on_rtcm_data)"]
+    Injector["RtcmInjector.inject(rtcm_data)<br/>convert to GPS_RTCM_DATA (msgid=67)"]
+
+    Source -->|"TCP (default port: 2101)"| Reader
+    Reader --> Injector
 ```
-RTCM TCP Source (例: NTRIP caster, rtk_base_station.py)
-  │ TCP (デフォルトポート: 2101)
-  ▼
-RtcmReader (_read_loop, daemon thread)
-  │ RTCM v3 フレーム解析 (0xD3 プレアンブル)
-  │ callback(on_rtcm_data)
-  ▼
-RtcmInjector.inject(rtcm_data)
-  │ GPS_RTCM_DATA (msgid=67) に変換
 
 ---
 
@@ -505,10 +529,29 @@ python app/main.py
 
 パターンAのローカルUDP↔TCPブリッジ:
 
-```
-GCS (UDP:14550) ←──────────────────────┐
-GCS send → UDP:14552 → Bridge → TCP:14551 → SSH Tunnel → Raspi
-                                       └────────────────────→ GCS (UDP:14550)
+```mermaid
+graph LR
+    GCS_Br["GCS<br/>(UDP:14550)"]
+    Send_Br["GCS send<br/>UDP:14552"]
+    Bridge["udp_tcp_bridge.py<br/>UDP <-> TCP"]
+    TCP_Br["TCP:14551"]
+    SSH_Br["SSH Tunnel"]
+    Raspi_Br["Raspi"]
+
+    subgraph Mac["Mac"]
+        GCS_Br
+        Send_Br
+        Bridge
+    end
+
+    Send_Br --> Bridge
+    Bridge -->|"send"| TCP_Br
+    TCP_Br --> SSH_Br
+    SSH_Br -->|"-> Raspi"| Raspi_Br
+    Raspi_Br -->|"recv"| SSH_Br
+    SSH_Br --> TCP_Br
+    TCP_Br --> Bridge
+    Bridge --> GCS_Br
 ```
 
 - **UDP受信**: `127.0.0.1:{bridge_udp_port}` でGCSからのMAVLinkメッセージを受信
@@ -527,55 +570,56 @@ Raspberry Pi 5 の初回セットアップスクリプト:
 
 ## 11. データフロー完全図
 
+### 11.1 GCS 内部データフロー (PC/Mac)
+
+```mermaid
+graph TD
+    subgraph UI["UI Layer"]
+        PySide["PySide6 GUI / FastAPI Web UI"]
+    end
+
+    subgraph Logic["Logic Layer"]
+        Router["MessageRouter (recv thread)<br/>TelemetryStore"]
+        RtcmR["RtcmReader<br/>(TCP client, daemon thread)"]
+        CmdDisp["CommandDispatcher / GuidedControl"]
+    end
+
+    subgraph Transport["Transport Layer"]
+        Conn["MavlinkConnection<br/>send() / send_to_system() /<br/>send_rc_channels_override() /<br/>send_command_long() /<br/>send_set_position_target_local_ned()"]
+        Socket["UDP Socket<br/>(0.0.0.0:udp_listen_port)<br/>or Serial<br/>(/dev/ttyACM0, 115200)"]
+    end
+
+    PySide -->|"telemetry"| Router
+    PySide -->|"command"| CmdDisp
+    Router -->|"recv_callback"| Conn
+    CmdDisp -->|"send"| Conn
+    RtcmR -->|"rtcm_data"| Conn
+    Conn --> Socket
+    Socket -->|"recv"| Conn
+    Conn -->|"recv_callback"| Router
+    Conn -->|"recv_callback"| RtcmR
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        PC / Mac (GCS)                            │
-│                                                                  │
-│  ┌──────────┐   ┌───────────────┐   ┌────────────────────────┐  │
-│  │ PySide6  │   │ MessageRouter │   │    RtcmReader          │  │
-│  │ GUI /    │◄──│ (recv thread) │   │    (TCP client,        │  │
-│  │ FastAPI  │   │               │   │     daemon thread)     │  │
-│  │ Web UI   │   │ TelemetryStore│   │                        │  │
-│  └────┬─────┘   └───────┬───────┘   └───────────┬────────────┘  │
-│       │                 │                       │                │
-│       │  CommandDispatcher / GuidedControl       │                │
-│       │         │                               │                │
-│       ▼         ▼                               ▼                │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │              MavlinkConnection                           │    │
-│  │  send() / send_to_system() / send_rc_channels_override() │    │
-│  │  send_command_long() / send_set_position_target_local_ned│    │
-│  │                                                          │    │
-│  │  recv_callback ──► MessageRouter / RTCM                  │    │
-│  └──────────────────────┬───────────────────────────────────┘    │
-│                         │                                        │
-│  ┌──────────────────────┴───────────────────────────────────┐    │
-│  │  UDP Socket (0.0.0.0:{udp_listen_port})                  │    │
-│  │  or Serial (/dev/ttyACM0, 115200)                        │    │
-│  └──────────────────────┬───────────────────────────────────┘    │
-└─────────────────────────┼────────────────────────────────────────┘
-                          │
-          ════════════════╪════════════════
-          SSH Tunnel / UDP / Serial Direct
-          ════════════════╪════════════════
-                          │
-┌─────────────────────────┼────────────────────────────────────────┐
-│                 Raspberry Pi 5                                   │
-│  ┌──────────────────────┴───────────────────────────────────┐    │
-│  │              mavlink-router                              │    │
-│  │  [UdpEndpoint gcs]     Address: 0.0.0.0, Port: 14550    │    │
-│  │  [UartEndpoint pixhawk] Device: /dev/ttyAMA0, Baud: 115200│   │
-│  └──────────────────────┬───────────────────────────────────┘    │
-└─────────────────────────┼────────────────────────────────────────┘
-                          │
-                          │ UART (GPIO 14/15, 115200 baud)
-                          │
-┌─────────────────────────┼────────────────────────────────────────┐
-│                Pixhawk (ArduPilot)                               │
-│  TELEM1 (UART)                                                   │
-│  System ID: 1                                                    │
-│  MAVLink v2                                                      │
-└──────────────────────────────────────────────────────────────────┘
+
+### 11.2 エンドツーエンド通信経路
+
+```mermaid
+graph TD
+    subgraph GCS["PC / Mac (GCS)"]
+        App["Python App<br/>(PySide6 + MAVLink)"]
+        Transport_GCS["MavlinkConnection<br/>UDP Socket or Serial"]
+        App --> Transport_GCS
+    end
+
+    subgraph Raspi["Raspberry Pi 5"]
+        MLR["mavlink-router<br/>[UdpEndpoint gcs] Address: 0.0.0.0, Port: 14550<br/>[UartEndpoint pixhawk] Device: /dev/ttyAMA0, Baud: 115200"]
+    end
+
+    subgraph Pixhawk["Pixhawk (ArduPilot)"]
+        Tele["TELEM1 (UART)<br/>System ID: 1<br/>MAVLink v2"]
+    end
+
+    Transport_GCS -->|"SSH Tunnel / UDP / Serial Direct"| MLR
+    MLR -->|"UART (GPIO 14/15, 115200 baud)"| Tele
 ```
 
 ---
