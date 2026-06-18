@@ -147,14 +147,18 @@ function renderAllCards(drones, conn) {
     const grid = document.getElementById('multi-drone-grid');
     if (!grid) return;
 
-    // Build new HTML but compare before replacing to avoid resetting dropdowns
+    // When a <select> dropdown is open, do lightweight text-only update instead
+    if (grid.querySelector('.mode-select:focus')) {
+        updateCardValuesOnly(drones, conn);
+        return;
+    }
+
     const backendOnline = conn && conn.is_connected;
     let html = '';
 
     for (let i = 1; i <= MAX_SLOTS; i++) {
         const sysidStr = String(i);
         const drone = drones[sysidStr] || null;
-
         if (!backendOnline) {
             html += renderPlaceholderCard(i);
         } else if (!drone) {
@@ -164,25 +168,111 @@ function renderAllCards(drones, conn) {
         }
     }
 
-    // Only replace DOM if content actually changed (prevents closing <select> dropdown)
-    if (grid.innerHTML !== html) {
-        // Save currently selected sysid before re-rendering
-        const selectedSysid = getSelectedSystemId();
-        grid.innerHTML = html;
-
-        // Restore selection if the same drone still has a card
-        if (selectedSysid !== null) {
-            const card = grid.querySelector('.drone-card[data-system-id="' + selectedSysid + '"]');
-            if (card) {
-                card.classList.add('selected');
-            }
-        }
+    const selectedSysid = getSelectedSystemId();
+    grid.innerHTML = html;
+    if (selectedSysid !== null) {
+        const card = grid.querySelector('.drone-card[data-system-id="' + selectedSysid + '"]');
+        if (card) card.classList.add('selected');
     }
 }
 
 /**
  * Render a single drone card.
  */
+
+/**
+ * Lightweight text-only card update when <select> dropdown is open.
+ * Avoids innerHTML replacement so the dropdown stays open.
+ */
+function updateCardValuesOnly(drones, conn) {
+    const grid = document.getElementById('multi-drone-grid');
+    if (!grid) return;
+
+    for (let i = 1; i <= MAX_SLOTS; i++) {
+        const card = grid.querySelector('.drone-card[data-system-id="' + i + '"]');
+        const drone = drones ? drones[String(i)] : null;
+        if (!card || !drone) continue;
+
+        const online = drone.online !== undefined ? drone.online : isDroneOnline(i);
+        const hb = drone.heartbeat || {};
+        const bat = drone.battery || {};
+        const gps = drone.gps || {};
+        const armed = online && hb.armed;
+
+        // Armed badge
+        const badge = card.querySelector('.armed-badge-mini');
+        if (badge) {
+            if (!online) { badge.textContent = 'NO SIGNAL'; badge.className = 'armed-badge-mini offline'; }
+            else if (armed) { badge.textContent = 'ARMED'; badge.className = 'armed-badge-mini armed'; }
+            else { badge.textContent = 'DISARMED'; badge.className = 'armed-badge-mini disarmed'; }
+        }
+
+        // Mode
+        const modeEl = card.querySelector('.mode-value');
+        if (modeEl) modeEl.textContent = online ? (hb.mode || '--') : '--';
+
+        // Battery
+        const voltEl = card.querySelector('.battery-voltage');
+        if (voltEl) voltEl.textContent = bat.voltage !== null ? bat.voltage.toFixed(1) + 'V' : '--.-V';
+        const fillEl = card.querySelector('.battery-fill');
+        if (fillEl) {
+            const r = bat.remaining !== null ? bat.remaining : 0;
+            const fc = r <= 25 ? 'red' : (r <= 50 ? 'yellow' : 'green');
+            fillEl.className = 'battery-fill ' + fc;
+            fillEl.style.width = r + '%';
+        }
+        const pctEl = card.querySelector('.battery-pct');
+        if (pctEl) {
+            const r = bat.remaining !== null ? bat.remaining : 0;
+            pctEl.textContent = r + '%';
+            pctEl.className = r < 25 ? 'battery-pct low' : 'battery-pct';
+        }
+
+        // GPS
+        const fixEl = card.querySelector('.gps-fix-badge');
+        if (fixEl && gps.fix_type >= 0) {
+            let fc = 'fix-bad';
+            if (gps.fix_type >= 5) fc = 'fix-ok';
+            else if (gps.fix_type >= 3) fc = 'fix-warn';
+            fixEl.className = 'gps-fix-badge ' + fc;
+            fixEl.textContent = gps.fix_name || 'UNKNOWN';
+        } else if (fixEl) {
+            fixEl.className = 'gps-fix-badge fix-bad';
+            fixEl.textContent = '--';
+        }
+
+        const altEl = card.querySelector('.gps-altitude');
+        if (altEl) altEl.textContent = gps.alt !== null ? gps.alt.toFixed(1) + 'm' : '--';
+
+        const supp = card.querySelectorAll('.gps-supplement span');
+        if (supp.length >= 2) {
+            const sats = gps.satellites || 0;
+            supp[0].textContent = sats + ' sats';
+            supp[0].className = sats === 0 ? 'gps-sats-low' : '';
+            supp[1].textContent = 'HDOP ' + (gps.hdop !== null ? gps.hdop.toFixed(2) : '--');
+        }
+
+        // Connection dot
+        const dot = card.querySelector('.conn-dot');
+        if (dot) dot.className = 'conn-dot ' + (online ? 'on' : 'off');
+
+        // STOP button
+        const stopBtn = card.querySelector('.btn-stop');
+        if (stopBtn) {
+            stopBtn.disabled = !online || !armed;
+            stopBtn.textContent = !online ? '--' : (armed ? 'STOP' : 'DISARMED');
+        }
+
+        // Force button
+        const forceBtn = card.querySelector('.btn-force-arm-sm');
+        if (forceBtn) forceBtn.disabled = !online;
+
+        // Card class
+        var newClass = !online ? 'drone-card offline' : (armed ? 'drone-card armed' : 'drone-card');
+        if (card.classList.contains('selected')) newClass += ' selected';
+        if (card.className !== newClass) card.className = newClass;
+    }
+}
 function renderDroneCard(sysid, drone) {
     const online = drone.online !== undefined ? drone.online : isDroneOnline(sysid);
     const hb = drone.heartbeat || {};
