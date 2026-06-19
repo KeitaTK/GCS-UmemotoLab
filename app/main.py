@@ -112,7 +112,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GCS-UmemotoLab")
     parser.add_argument("--native", action="store_true",
         help="Launch PySide6 GUI (default: start FastAPI web server)")
-    parser.add_argument("--host", default="100.95.30.60",
+    parser.add_argument("--host", default="0.0.0.0",
         help="Server bind address (default: 100.95.30.60)")
     parser.add_argument("--port", type=int, default=8080,
         help="Server port (default: 8080)")
