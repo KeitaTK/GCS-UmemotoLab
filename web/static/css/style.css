@@ -474,6 +474,66 @@ body {
 .btn-force-arm-sm:hover { background: #a93226; }
 .btn-force-arm-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ---- RTK precision-control row (Heading / Distance / Go / RTL) ---- */
+.rtk-control-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #0f0f23;
+    border-radius: 6px;
+    border: 1px solid #0f3460;
+    flex-wrap: wrap;
+}
+
+.rtk-ctrl-label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    cursor: default;
+}
+
+.rtk-input {
+    width: 46px;
+    padding: 5px 4px;
+    border-radius: 4px;
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    color: #e0e0e0;
+    text-align: center;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.rtk-input:focus {
+    outline: none;
+    border-color: #e67e22;
+}
+.rtk-input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-go,
+.btn-rtl {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: none;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-go { background: #2980b9; margin-left: auto; }
+.btn-go:hover { background: #2471a3; }
+.btn-rtl { background: #8e44ad; }
+.btn-rtl:hover { background: #7d3c98; }
+.btn-go:disabled,
+.btn-rtl:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ==========================================================================
  * RTK Bar
  * ========================================================================== */

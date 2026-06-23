@@ -70,6 +70,26 @@
     </div>
 </template>
 
+<!--
+  Canonical RTK precision-control row markup for each drone card. Rendered
+  dynamically by dashboard.js (renderDroneCard); this template documents the
+  Heading / Distance inputs and the Go / RTL buttons and is kept in sync with
+  the HTML produced there. Go -> sendGuidedPosition() (NED move), RTL ->
+  sendRTL() (Return to Launch). See web/static/js/controls.js.
+-->
+<template id="drone-card-rtk-template">
+    <div class="rtk-control-row">
+        <label class="rtk-ctrl-label">Hdg
+            <input class="rtk-input rtk-heading-input" type="number" min="0" max="360" step="1" value="0" title="Heading (deg, 0-360)">
+        </label>
+        <label class="rtk-ctrl-label">Dist
+            <input class="rtk-input rtk-distance-input" type="number" min="0" max="1000" step="0.5" value="1" title="Distance (m)">
+        </label>
+        <button class="btn-go">Go</button>
+        <button class="btn-rtl">RTL</button>
+    </div>
+</template>
+
 <!-- ====== BROADCAST PANEL ====== -->
 <div class="broadcast-panel" id="broadcast-panel">
     <span class="broadcast-label">&#128227; ALL DRONES</span>

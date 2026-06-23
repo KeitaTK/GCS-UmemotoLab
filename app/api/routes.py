@@ -458,3 +458,22 @@ async def cmd_guided_velocity(req: GuidedVelocityRequest):
         "velocity": {"vx": req.vx, "vy": req.vy, "vz": req.vz},
         "yaw": req.yaw,
     }
+
+
+# ==========================================================================
+# POST /api/rtl — Return To Launch for one or more drones
+# ==========================================================================
+
+# MAV_CMD_NAV_RETURN_TO_LAUNCH
+_MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
+
+
+@router.post("/rtl")
+async def cmd_rtl(req: SystemIdsRequest):
+    """Command Return-To-Launch (RTL) for the given drones."""
+    disp = _get_disp()
+    for sysid in req.system_ids:
+        logger.info("RTL \u2192 drone %d", sysid)
+        # MAV_CMD_NAV_RETURN_TO_LAUNCH (20): no parameters required.
+        disp._send_command(sysid, req.component_id, _MAV_CMD_NAV_RETURN_TO_LAUNCH)
+    return {"status": "ok", "command": "rtl", "system_ids": req.system_ids}

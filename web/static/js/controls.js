@@ -471,3 +471,121 @@ function forceArmDrone(sysid) {
     .then(function(data) { updateCmdAck(data, 'Force Arm Drone-' + sysid); })
     .catch(function(err) { updateCmdAckError('Force Arm Drone-' + sysid, err); });
 }
+
+// ==========================================================================
+// RTK Precision Control (per-drone): Heading + Distance guided move, and RTL
+// ==========================================================================
+
+/**
+ * Store a per-drone RTK control input value so it survives the periodic
+ * full card re-render (see dashboard.js renderDroneCard / rtkControlValues).
+ *
+ * @param {number} sysid  Target drone system id.
+ * @param {string} field  'heading' or 'distance'.
+ * @param {string} value  Raw input value (kept as string).
+ */
+function setRtkValue(sysid, field, value) {
+    if (!window.rtkControlValues) window.rtkControlValues = {};
+    if (!window.rtkControlValues[sysid]) window.rtkControlValues[sysid] = {};
+    window.rtkControlValues[sysid][field] = value;
+}
+
+/**
+ * Read the Heading/Distance inputs from a drone card and dispatch a guided
+ * position move. Wired to the per-card "Go" button.
+ *
+ * @param {number} sysid  Target drone system id.
+ */
+function sendGuidedPositionFromInputs(sysid) {
+    var card = document.querySelector('.drone-card[data-system-id="' + sysid + '"]');
+    var hEl = card ? card.querySelector('.rtk-heading-input') : null;
+    var dEl = card ? card.querySelector('.rtk-distance-input') : null;
+    var heading = hEl ? parseFloat(hEl.value) : NaN;
+    var distance = dEl ? parseFloat(dEl.value) : NaN;
+    sendGuidedPosition(sysid, heading, distance);
+}
+
+/**
+ * Compute a local-NED target from a compass Heading (deg) and Distance (m)
+ * relative to the drone's current NED position, then send it as a GUIDED
+ * position target via POST /api/guided/position.
+ *
+ * Heading convention: 0deg = North, 90deg = East (clockwise).
+ *   dNorth = distance * cos(heading)
+ *   dEast  = distance * sin(heading)
+ * Altitude (Down) is held at the current value so the move is horizontal.
+ *
+ * @param {number} systemId  Target drone system id.
+ * @param {number} heading   Compass heading in degrees (0-360).
+ * @param {number} distance  Travel distance in meters (> 0).
+ */
+function sendGuidedPosition(systemId, heading, distance) {
+    if (isNaN(heading) || heading < 0 || heading > 360) {
+        alert('Heading must be a number between 0 and 360 degrees.');
+        return;
+    }
+    if (isNaN(distance) || distance <= 0) {
+        alert('Distance must be a positive number of meters.');
+        return;
+    }
+
+    var headingRad = heading * Math.PI / 180.0;
+    var dNorth = distance * Math.cos(headingRad);
+    var dEast = distance * Math.sin(headingRad);
+
+    // Current local NED (from GLOBAL_POSITION_INT / LOCAL_POSITION_NED).
+    var ned = (typeof getDroneNED === 'function') ? getDroneNED(systemId) : null;
+
+    var north, east, down;
+    if (ned) {
+        north = ned.n + dNorth;
+        east = ned.e + dEast;
+        down = ned.d;            // hold current altitude
+    } else {
+        // No local NED available yet: treat heading/distance as an offset from
+        // the local origin and hold a conservative default altitude.
+        north = dNorth;
+        east = dEast;
+        down = -5.0;
+    }
+
+    // Heading (0-360) -> yaw (-180..180) so the vehicle faces its travel
+    // direction (matches /api/guided/position yaw validation range).
+    var yaw = heading > 180 ? heading - 360 : heading;
+
+    if (!confirm('Drone ' + systemId + ': move ' + distance.toFixed(1) + ' m @ ' +
+                 heading.toFixed(0) + '\u00B0?\n' +
+                 'Target NED  N=' + north.toFixed(2) + '  E=' + east.toFixed(2) +
+                 '  D=' + down.toFixed(2))) {
+        return;
+    }
+
+    fetch('/api/guided/position', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            system_ids: [systemId], component_id: 1,
+            north: north, east: east, down: down, yaw: yaw
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { updateCmdAck(data, 'Guided Pos Drone-' + systemId); })
+    .catch(function(err) { updateCmdAckError('Guided Pos Drone-' + systemId, err); });
+}
+
+/**
+ * Send a Return-To-Launch (RTL) command to a single drone via POST /api/rtl.
+ *
+ * @param {number} systemId  Target drone system id.
+ */
+function sendRTL(systemId) {
+    if (!confirm('RTL (Return to Launch) Drone ' + systemId + '?')) return;
+    fetch('/api/rtl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system_ids: [systemId], component_id: 1 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { updateCmdAck(data, 'RTL Drone-' + systemId); })
+    .catch(function(err) { updateCmdAckError('RTL Drone-' + systemId, err); });
+}

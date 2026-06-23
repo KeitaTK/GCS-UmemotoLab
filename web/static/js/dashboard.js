@@ -6,6 +6,13 @@
 const MAX_SLOTS = 4;
 
 /**
+ * Per-drone RTK precision-control input values (Heading / Distance).
+ * Persisted across the ~1 s full card re-render so typed values are not lost.
+ * Keyed by system id: { <sysid>: { heading: '<deg>', distance: '<m>' } }.
+ */
+window.rtkControlValues = window.rtkControlValues || {};
+
+/**
  * Escape HTML special characters to prevent XSS.
  */
 function escapeHtml(str) {
@@ -190,8 +197,11 @@ function renderAllCards(drones, conn) {
     const grid = document.getElementById('multi-drone-grid');
     if (!grid) return;
 
-    // When a <select> dropdown is open, do lightweight text-only update instead
-    if (grid.querySelector('.mode-select:focus')) {
+    // When a <select> dropdown or an input is focused (e.g. the user is
+    // picking a flight mode or typing a Heading/Distance value), do a
+    // lightweight text-only update instead of replacing innerHTML so the
+    // open dropdown / typed value is preserved.
+    if (grid.querySelector('.mode-select:focus') || grid.querySelector('input:focus')) {
         updateCardValuesOnly(drones, conn);
         return;
     }
@@ -327,6 +337,12 @@ function updateCardValuesOnly(drones, conn) {
         const forceBtn = card.querySelector('.btn-force-arm-sm');
         if (forceBtn) forceBtn.disabled = !online;
 
+        // RTK precision-control buttons (Go / RTL)
+        const goBtn = card.querySelector('.btn-go');
+        if (goBtn) goBtn.disabled = !online;
+        const rtlBtn = card.querySelector('.btn-rtl');
+        if (rtlBtn) rtlBtn.disabled = !online;
+
         // Card class
         var newClass = !online ? 'drone-card offline' : (armed ? 'drone-card armed' : 'drone-card');
         if (card.classList.contains('selected')) newClass += ' selected';
@@ -460,6 +476,27 @@ function renderDroneCard(sysid, drone) {
         modeSelectHtml +
         '</div>';
 
+    // RTK precision-control row: Heading (deg) / Distance (m) / Go / RTL.
+    // Typed values persist across re-renders via window.rtkControlValues.
+    const stored = window.rtkControlValues[sysid] || {};
+    const headingVal = (stored.heading !== undefined && stored.heading !== null) ? stored.heading : '0';
+    const distanceVal = (stored.distance !== undefined && stored.distance !== null) ? stored.distance : '1';
+    const rtkDisabled = !online ? ' disabled' : '';
+    const rtkHtml = '<div class="rtk-control-row">' +
+        '<label class="rtk-ctrl-label">Hdg' +
+            '<input class="rtk-input rtk-heading-input" type="number" min="0" max="360" step="1" ' +
+                'value="' + headingVal + '" title="Heading (deg, 0-360)" ' +
+                'onclick="event.stopPropagation()" ' +
+                'oninput="setRtkValue(' + sysid + ', \'heading\', this.value)"' + rtkDisabled + '></label>' +
+        '<label class="rtk-ctrl-label">Dist' +
+            '<input class="rtk-input rtk-distance-input" type="number" min="0" max="1000" step="0.5" ' +
+                'value="' + distanceVal + '" title="Distance (m)" ' +
+                'onclick="event.stopPropagation()" ' +
+                'oninput="setRtkValue(' + sysid + ', \'distance\', this.value)"' + rtkDisabled + '></label>' +
+        '<button class="btn-go" onclick="sendGuidedPositionFromInputs(' + sysid + ')"' + rtkDisabled + '>Go</button>' +
+        '<button class="btn-rtl" onclick="sendRTL(' + sysid + ')"' + rtkDisabled + '>RTL</button>' +
+        '</div>';
+
     return '<div class="' + cardClass + '" data-system-id="' + sysid + '" onclick="selectCard(event, ' + sysid + ')">' +
         '<div class="card-header">' +
             '<span class="drone-label">DRONE ' + sysid + '</span>' +
@@ -471,6 +508,7 @@ function renderDroneCard(sysid, drone) {
         gpsHtml +
         nedHtml +
         debugHtml +
+        rtkHtml +
         buttonsHtml +
         '</div>';
 }
@@ -581,8 +619,10 @@ window.addEventListener('DOMContentLoaded', function() {
  * Ctrl/Cmd+click for multi-select, plain click replaces selection.
  */
 function selectCard(event, sysid) {
-    // Don't select if clicking a button inside the card
-    if (event.target.tagName === 'BUTTON') return;
+    // Don't toggle selection when interacting with a control inside the card
+    // (button, number input, mode dropdown).
+    var tag = event.target.tagName;
+    if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'OPTION') return;
 
     const card = document.querySelector('.drone-card[data-system-id="' + sysid + '"]');
     if (!card) return;
