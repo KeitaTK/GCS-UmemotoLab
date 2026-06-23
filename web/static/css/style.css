@@ -636,7 +636,15 @@ body {
 /* Land is a safe operation: use blue (not red, which is reserved for emergency/kill). */
 .btn-land-all      { background: #3498db; }
 .btn-land-all:hover      { background: #2980b9; }
-.broadcast-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Disabled broadcast buttons are dimmed AND desaturated (grayscale). Without the
+ * grayscale, vivid colors like LAND ALL's blue (#3498db) still read as a live,
+ * clickable button even at low opacity. Desaturating makes the whole panel look
+ * uniformly inactive. */
+.broadcast-panel button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(100%);
+}
 
 .takeoff-alt-label {
     color: #e0e0e0;
@@ -758,6 +766,13 @@ body {
 .disconnected .broadcast-panel {
     opacity: 0.4;
     pointer-events: none;
+}
+
+/* Belt-and-braces: while the backend is disconnected, desaturate every broadcast
+ * button (most notably the vivid blue LAND ALL) so the panel reads as uniformly
+ * inactive even if a button is not individually `:disabled` for any reason. */
+.disconnected .broadcast-panel button {
+    filter: grayscale(100%);
 }
 
 /* Pulse animation to draw attention to the Connect button while offline. */

@@ -608,11 +608,27 @@ function updateRtkStatus(drones, rtk) {
     }
 }
 
-// Initial render on page load
-window.addEventListener('DOMContentLoaded', function() {
+// Initial render on page load.
+//
+// This MUST run on first load so the broadcast panel (LAND ALL etc.) starts in
+// the locked / greyed-out "disconnected" state until a live backend connection
+// arrives. We pass an explicit `{ is_connected: false }` so the intent is clear
+// and `updateConnectionUiState()` adds the `disconnected` body class + disables
+// every broadcast control from the very first paint.
+//
+// If the DOM has already finished parsing by the time this script runs (e.g. the
+// script is loaded with defer/async or injected late), `DOMContentLoaded` will
+// never fire again, so apply the initial state synchronously in that case.
+function initDashboardUiState() {
     renderAllCards({}, null);
-    updateConnectionUiState(null);
-});
+    updateConnectionUiState({ is_connected: false });
+}
+
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initDashboardUiState);
+} else {
+    initDashboardUiState();
+}
 
 /**
  * Toggle selection of a drone card by clicking it.
