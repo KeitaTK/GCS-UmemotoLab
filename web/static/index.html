@@ -53,6 +53,21 @@
     <!-- Filled by renderAllCards() -->
 </div>
 
+<!--
+  Canonical NED (North/East/Down) row markup for each drone card.
+  Cards are rendered dynamically by dashboard.js (renderDroneCard); this
+  template documents the NED display element and is kept in sync with the
+  HTML produced there. Values are updated live from getDroneNED() in
+  websocket.js (GLOBAL_POSITION_INT / LOCAL_POSITION_NED -> local NED).
+-->
+<template id="drone-card-ned-template">
+    <div class="ned-row">
+        <span class="ned-coord ned-n">N: 0.00m</span>
+        <span class="ned-coord ned-e">E: 0.00m</span>
+        <span class="ned-coord ned-d">D: 0.00m</span>
+    </div>
+</template>
+
 <!-- ====== RTK BASE STATION BAR ====== -->
 <div class="rtk-bar" id="rtk-bar">
     <span class="rtk-label">&#128247; RTK Base</span>

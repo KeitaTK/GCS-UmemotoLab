@@ -252,6 +252,23 @@ function updateCardValuesOnly(drones, conn) {
             supp[1].textContent = 'HDOP ' + (gps.hdop !== null ? gps.hdop.toFixed(2) : '--');
         }
 
+        // NED local position
+        const ned = (typeof getDroneNED === 'function') ? getDroneNED(i) : null;
+        const nedN = card.querySelector('.ned-n');
+        const nedE = card.querySelector('.ned-e');
+        const nedD = card.querySelector('.ned-d');
+        if (nedN && nedE && nedD) {
+            if (!online || !ned) {
+                nedN.textContent = 'N: --';
+                nedE.textContent = 'E: --';
+                nedD.textContent = 'D: --';
+            } else {
+                nedN.textContent = 'N: ' + ned.n.toFixed(2) + 'm';
+                nedE.textContent = 'E: ' + ned.e.toFixed(2) + 'm';
+                nedD.textContent = 'D: ' + ned.d.toFixed(2) + 'm';
+            }
+        }
+
         // Connection dot
         const dot = card.querySelector('.conn-dot');
         if (dot) dot.className = 'conn-dot ' + (online ? 'on' : 'off');
@@ -341,6 +358,21 @@ function renderDroneCard(sysid, drone) {
             '<span>HDOP ' + hdop + '</span></div>';
     }
 
+    // NED local position row (North / East / Down in meters)
+    const ned = (typeof getDroneNED === 'function') ? getDroneNED(sysid) : null;
+    let nedHtml;
+    if (!online || !ned) {
+        nedHtml = '<div class="ned-row">' +
+            '<span class="ned-coord ned-n">N: --</span>' +
+            '<span class="ned-coord ned-e">E: --</span>' +
+            '<span class="ned-coord ned-d">D: --</span></div>';
+    } else {
+        nedHtml = '<div class="ned-row">' +
+            '<span class="ned-coord ned-n">N: ' + ned.n.toFixed(2) + 'm</span>' +
+            '<span class="ned-coord ned-e">E: ' + ned.e.toFixed(2) + 'm</span>' +
+            '<span class="ned-coord ned-d">D: ' + ned.d.toFixed(2) + 'm</span></div>';
+    }
+
     // Debug box: render STATUSTEXT (all available, scrollable, color-coded by severity)
     const statusTexts = drone.status_texts || [];
     let debugHtml = '<div class="debug-box">';
@@ -394,6 +426,7 @@ function renderDroneCard(sysid, drone) {
         '<div class="mode-value">' + modeText + '</div>' +
         batteryHtml +
         gpsHtml +
+        nedHtml +
         debugHtml +
         buttonsHtml +
         '</div>';

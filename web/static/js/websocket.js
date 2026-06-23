@@ -12,6 +12,15 @@ const HEARTBEAT_TIMEOUT_SEC = 5;
 // Per-drone last-seen timestamps for offline detection
 var droneLastSeen = {};
 
+// Per-drone local NED position {n, e, d} (meters). Derived from
+// LOCAL_POSITION_NED (preferred) or computed from GLOBAL_POSITION_INT.
+var droneNED = {};
+// Per-drone NED reference origin {lat, lon, alt} captured on first valid fix.
+var droneNEDOrigin = {};
+
+// WGS84 equatorial radius (m), used for the flat-earth NED conversion.
+const WGS84_RADIUS_M = 6378137.0;
+
 /**
  * Connect to the telemetry WebSocket endpoint.
  */
@@ -44,6 +53,8 @@ function connectWebSocket() {
                         if (drone.heartbeat && drone.heartbeat.mode !== 'N/A') {
                             droneLastSeen[sysid] = now;
                         }
+                        // Update cached local NED position for this drone
+                        updateDroneNED(sysid, drone);
                     }
                 }
 
@@ -140,11 +151,92 @@ function getOnlineDroneIds() {
     }).map(Number);
 }
 
+/**
+ * Update the cached local NED position for a drone from the latest payload.
+ *
+ * Prefers an explicit LOCAL_POSITION_NED-derived `local_position` field
+ * ({n, e, d} in meters). Falls back to computing local NED from the
+ * GLOBAL_POSITION_INT-derived `gps` lat/lon/alt relative to a per-drone
+ * reference origin captured on the first valid fix.
+ */
+function updateDroneNED(sysid, drone) {
+    const key = String(sysid);
+
+    // Offline drones have no meaningful position.
+    if (!drone || drone.online === false) {
+        droneNED[key] = null;
+        return;
+    }
+
+    // 1) Prefer explicit LOCAL_POSITION_NED data when the backend provides it.
+    const lp = drone.local_position;
+    if (lp &&
+        lp.n !== null && lp.n !== undefined &&
+        lp.e !== null && lp.e !== undefined &&
+        lp.d !== null && lp.d !== undefined) {
+        droneNED[key] = { n: lp.n, e: lp.e, d: lp.d };
+        return;
+    }
+
+    // 2) Otherwise derive local NED from GLOBAL_POSITION_INT (lat/lon/alt).
+    const gps = drone.gps;
+    if (!gps ||
+        gps.lat === null || gps.lat === undefined ||
+        gps.lon === null || gps.lon === undefined ||
+        gps.alt === null || gps.alt === undefined) {
+        return; // keep last known NED; no new valid position this frame
+    }
+
+    // Capture the reference origin on the first valid fix.
+    if (!droneNEDOrigin[key]) {
+        droneNEDOrigin[key] = { lat: gps.lat, lon: gps.lon, alt: gps.alt };
+    }
+
+    droneNED[key] = computeNED(gps.lat, gps.lon, gps.alt, droneNEDOrigin[key]);
+}
+
+/**
+ * Convert a geodetic position to local NED (meters) relative to an origin
+ * using a flat-earth (equirectangular) approximation. Accurate for the
+ * short ranges relevant to RTK precision control.
+ */
+function computeNED(lat, lon, alt, origin) {
+    const deg2rad = Math.PI / 180.0;
+    const dLat = (lat - origin.lat) * deg2rad;
+    const dLon = (lon - origin.lon) * deg2rad;
+    const lat0 = origin.lat * deg2rad;
+
+    const north = dLat * WGS84_RADIUS_M;
+    const east = dLon * WGS84_RADIUS_M * Math.cos(lat0);
+    const down = -(alt - origin.alt); // NED: down positive
+
+    return { n: north, e: east, d: down };
+}
+
+/**
+ * Get the cached local NED position {n, e, d} for a drone, or null.
+ */
+function getDroneNED(sysid) {
+    return droneNED[String(sysid)] || null;
+}
+
+/**
+ * Reset the NED reference origin for a drone so it re-zeroes at the current
+ * position on the next valid fix. Useful when re-homing for RTK control.
+ */
+function resetDroneNEDOrigin(sysid) {
+    delete droneNEDOrigin[String(sysid)];
+    droneNED[String(sysid)] = null;
+}
+
 // Expose getters globally
 window.getTelemetryState = () => telemetryState;
 window.isDroneOnline = isDroneOnline;
 window.getOnlineDroneIds = getOnlineDroneIds;
 window.droneLastSeen = droneLastSeen;
+window.getDroneNED = getDroneNED;
+window.resetDroneNEDOrigin = resetDroneNEDOrigin;
+window.droneNED = droneNED;
 
 // Auto-connect when script loads
 connectWebSocket();

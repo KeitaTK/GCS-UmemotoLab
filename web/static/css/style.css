@@ -368,6 +368,32 @@ body {
 
 .gps-sats-low { color: #e74c3c; }
 
+/* ---- NED local position row (North / East / Down) ---- */
+.ned-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 10px;
+    background: #0f0f23;
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.ned-coord {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+}
+.ned-coord.ned-n { color: #4aa3df; }
+.ned-coord.ned-e { color: #2ecc71; }
+.ned-coord.ned-d { color: #e67e22; }
+
 /* ---- Debug / STATUSTEXT scroll box ---- */
 .debug-box {
     flex: 1;
