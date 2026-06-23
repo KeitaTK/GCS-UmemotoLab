@@ -89,6 +89,19 @@
     <button id="btn-land-all" class="btn-land-all" onclick="broadcastLand()">LAND ALL</button>
 </div>
 
+<!-- ====== CONFIRM MODAL (broadcast ARM/DISARM safety) ====== -->
+<div class="modal-overlay" id="confirm-modal" aria-hidden="true">
+    <div class="modal-box danger" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+        <div class="modal-icon" id="confirm-modal-icon">&#9888;</div>
+        <h2 class="modal-title" id="confirm-modal-title">確認</h2>
+        <p class="modal-message" id="confirm-modal-message"></p>
+        <div class="modal-actions">
+            <button type="button" class="modal-btn modal-btn-cancel" id="confirm-modal-cancel">キャンセル</button>
+            <button type="button" class="modal-btn modal-btn-confirm" id="confirm-modal-confirm">実行</button>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts: load order matters -->
 <script src="/static/js/websocket.js"></script>
 <script src="/static/js/dashboard.js"></script>

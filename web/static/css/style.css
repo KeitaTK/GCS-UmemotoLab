@@ -560,6 +560,93 @@ body {
 .takeoff-alt-input:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ==========================================================================
+ * Confirm Modal (broadcast ARM/DISARM safety dialog)
+ * ========================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-overlay.show { display: flex; }
+
+.modal-box {
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 10px;
+    padding: 24px 28px;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55);
+    animation: modal-pop 0.15s ease-out;
+}
+.modal-box.danger { border-color: #e74c3c; }
+.modal-box.warn   { border-color: #e67e22; }
+
+@keyframes modal-pop {
+    from { transform: scale(0.92); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+}
+
+.modal-icon {
+    font-size: 38px;
+    line-height: 1;
+    margin-bottom: 10px;
+    color: #e67e22;
+}
+.modal-box.danger .modal-icon { color: #e74c3c; }
+.modal-box.warn   .modal-icon { color: #e67e22; }
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+}
+
+.modal-message {
+    font-size: 14px;
+    color: #c0c0c0;
+    line-height: 1.55;
+    margin-bottom: 22px;
+    white-space: pre-line;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.modal-btn {
+    padding: 9px 22px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    min-width: 120px;
+    transition: background 0.2s, opacity 0.2s;
+}
+.modal-btn-cancel { background: #2c3e50; color: #cfd8dc; }
+.modal-btn-cancel:hover { background: #34495e; }
+
+.modal-btn-confirm { background: #e74c3c; }
+.modal-btn-confirm:hover { background: #c0392b; }
+.modal-btn-confirm.arm { background: #2ecc71; }
+.modal-btn-confirm.arm:hover { background: #27ae60; }
+.modal-btn-confirm.disarm { background: #e74c3c; }
+.modal-btn-confirm.disarm:hover { background: #c0392b; }
+
+/* ==========================================================================
  * Status Colors (utility)
  * ========================================================================== */
 .status-ok      { color: #2ecc71 !important; }

@@ -271,20 +271,99 @@ function _getOnlineIds() {
 }
 
 /**
+ * Show a custom confirm modal (replaces native confirm() for dangerous ops).
+ * Provides a clearly visible safety dialog for broadcast ARM/DISARM.
+ *
+ * opts:
+ *   title       {string}   modal heading
+ *   message     {string}   body text (supports "\n" line breaks via CSS pre-line)
+ *   confirmText {string}   label for the confirm button
+ *   variant     {string}   'arm' (green btn / orange box) | 'disarm' (red btn / red box) | 'danger'
+ *   onConfirm   {function} called only when the user confirms
+ *
+ * Falls back to the native confirm() if the modal markup is missing.
+ */
+function showConfirmModal(opts) {
+    opts = opts || {};
+    var overlay = document.getElementById('confirm-modal');
+
+    if (!overlay) {
+        if (window.confirm(opts.message || opts.title || 'Confirm?')) {
+            if (typeof opts.onConfirm === 'function') opts.onConfirm();
+        }
+        return;
+    }
+
+    var box        = overlay.querySelector('.modal-box');
+    var titleEl    = document.getElementById('confirm-modal-title');
+    var messageEl  = document.getElementById('confirm-modal-message');
+    var cancelBtn  = document.getElementById('confirm-modal-cancel');
+    var confirmBtn = document.getElementById('confirm-modal-confirm');
+
+    var variant = opts.variant || 'danger';
+    var boxStyle = (variant === 'arm' || variant === 'warn') ? 'warn' : 'danger';
+    if (box) box.className = 'modal-box ' + boxStyle;
+
+    if (titleEl)   titleEl.textContent = opts.title || '確認';
+    if (messageEl) messageEl.textContent = opts.message || '';
+    if (confirmBtn) {
+        confirmBtn.textContent = opts.confirmText || '実行';
+        confirmBtn.className = 'modal-btn modal-btn-confirm ' + variant;
+    }
+
+    function cleanup() {
+        overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
+        confirmBtn.removeEventListener('click', onConfirm);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlay);
+        document.removeEventListener('keydown', onKey);
+    }
+    function onConfirm() {
+        cleanup();
+        if (typeof opts.onConfirm === 'function') opts.onConfirm();
+    }
+    function onCancel() { cleanup(); }
+    function onOverlay(e) { if (e.target === overlay) cleanup(); }
+    // Escape cancels. Enter is intentionally NOT bound to confirm (avoid
+    // accidental execution of a dangerous broadcast command).
+    function onKey(e) {
+        if (e.key === 'Escape' || e.keyCode === 27) onCancel();
+    }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onKey);
+
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    // Default focus on Cancel = safer default for a destructive action.
+    if (cancelBtn) cancelBtn.focus();
+}
+
+/**
  * Broadcast Arm to all online drones.
  */
 function broadcastArm() {
     var ids = _getOnlineIds();
     if (ids.length === 0) { alert('No online drones'); return; }
-    if (!confirm('ARM ALL ' + ids.length + ' drone(s)?')) return;
-    fetch('/api/arm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: ids })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Broadcast Arm'); })
-    .catch(function(err) { updateCmdAckError('Broadcast Arm', err); });
+    showConfirmModal({
+        title: 'ARM ALL',
+        message: '本当に全機アームしますか？\n対象: ' + ids.length + ' 機\n全機のプロペラが回転を開始します。',
+        confirmText: 'ARM ALL 実行',
+        variant: 'arm',
+        onConfirm: function() {
+            fetch('/api/arm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Broadcast Arm'); })
+            .catch(function(err) { updateCmdAckError('Broadcast Arm', err); });
+        }
+    });
 }
 
 /**
@@ -293,15 +372,22 @@ function broadcastArm() {
 function broadcastDisarm() {
     var ids = _getOnlineIds();
     if (ids.length === 0) { alert('No online drones'); return; }
-    if (!confirm('DISARM ALL ' + ids.length + ' drone(s)?')) return;
-    fetch('/api/disarm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: ids })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Broadcast Disarm'); })
-    .catch(function(err) { updateCmdAckError('Broadcast Disarm', err); });
+    showConfirmModal({
+        title: 'DISARM ALL',
+        message: '本当に全機ディスアームしますか？\n対象: ' + ids.length + ' 機\n全機のプロペラが停止します。',
+        confirmText: 'DISARM ALL 実行',
+        variant: 'disarm',
+        onConfirm: function() {
+            fetch('/api/disarm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Broadcast Disarm'); })
+            .catch(function(err) { updateCmdAckError('Broadcast Disarm', err); });
+        }
+    });
 }
 
 /**
