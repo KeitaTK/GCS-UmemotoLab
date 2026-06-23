@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnArm) {
         btnArm.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             fetch('/api/arm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnDisarm) {
         btnDisarm.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             fetch('/api/disarm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -115,16 +115,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnForceArm) {
         btnForceArm.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
-            if (!confirm('⚠️ Force ArmはARMING_CHECK等を無効化します。屋内テスト専用。続行しますか？')) return;
-            fetch('/api/force_arm', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ system_ids: ids, component_id: 1, confirmed: true })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) { updateCmdAck(data, 'Force Arm'); })
-            .catch(function(err) { updateCmdAckError('Force Arm', err); });
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
+            showConfirmModal({
+                title: 'FORCE ARM',
+                message: '\u26A0\uFE0F Force Arm は ARMING_CHECK 等の安全チェックを無効化します。\n屋内テスト専用です。\n対象: ' + ids.length + ' 機\n本当に続行しますか？',
+                confirmText: 'FORCE ARM 実行',
+                variant: 'danger',
+                onConfirm: function() {
+                    fetch('/api/force_arm', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ system_ids: ids, component_id: 1, confirmed: true })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) { updateCmdAck(data, 'Force Arm'); })
+                    .catch(function(err) { updateCmdAckError('Force Arm', err); });
+                }
+            });
         });
     }
 
@@ -133,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnTakeoff) {
         btnTakeoff.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             var altInput = document.getElementById('takeoff-altitude');
             var altitude = altInput ? parseFloat(altInput.value) : 10.0;
             fetch('/api/takeoff', {
@@ -152,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnLand) {
         btnLand.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             var rateInput = document.getElementById('land-descent-rate');
             var descent_rate = rateInput ? parseFloat(rateInput.value) : 1.5;
             fetch('/api/land', {
@@ -171,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnGuidedPos) {
         btnGuidedPos.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             var north = parseFloat(document.getElementById('guided-north').value || 0);
             var east  = parseFloat(document.getElementById('guided-east').value || 0);
             var down  = parseFloat(document.getElementById('guided-down').value || 0);
@@ -192,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnGuidedVel) {
         btnGuidedVel.addEventListener('click', function() {
             var ids = getSelectedSystemIds();
-            if (ids.length === 0) { alert('Please select a drone card first'); return; }
+            if (ids.length === 0) { showToast('ドローンカードを1つ以上選択してください', 'warn'); return; }
             var vx  = parseFloat(document.getElementById('guided-vx').value || 0);
             var vy  = parseFloat(document.getElementById('guided-vy').value || 0);
             var vz  = parseFloat(document.getElementById('guided-vz').value || 0);
@@ -310,6 +317,12 @@ function showConfirmModal(opts) {
         confirmBtn.textContent = opts.confirmText || '実行';
         confirmBtn.className = 'modal-btn modal-btn-confirm ' + variant;
     }
+    // A prior showAlertModal() call may have hidden the Cancel button. A
+    // confirm dialog must always offer a Cancel, so restore it here.
+    if (cancelBtn) {
+        cancelBtn.style.display = '';
+        cancelBtn.textContent = 'キャンセル';
+    }
 
     function cleanup() {
         overlay.classList.remove('show');
@@ -343,11 +356,123 @@ function showConfirmModal(opts) {
 }
 
 /**
+ * Show a single-button (OK only) notice modal for important errors / warnings
+ * that must be acknowledged. Reuses the #confirm-modal markup, hiding the
+ * Cancel button. Falls back to window.alert() if the markup is missing.
+ *
+ * opts:
+ *   title   {string}   modal heading
+ *   message {string}   body text ("\n" line breaks via CSS pre-line)
+ *   okText  {string}   label for the single OK button (default "OK")
+ *   variant {string}   'warn' (orange) | 'danger' (red). default 'warn'
+ *   onClose {function} optional callback fired after dismissal
+ */
+function showAlertModal(opts) {
+    opts = opts || {};
+    var overlay = document.getElementById('confirm-modal');
+
+    if (!overlay) {
+        window.alert(opts.message || opts.title || '');
+        if (typeof opts.onClose === 'function') opts.onClose();
+        return;
+    }
+
+    var box        = overlay.querySelector('.modal-box');
+    var titleEl    = document.getElementById('confirm-modal-title');
+    var messageEl  = document.getElementById('confirm-modal-message');
+    var cancelBtn  = document.getElementById('confirm-modal-cancel');
+    var confirmBtn = document.getElementById('confirm-modal-confirm');
+
+    var variant = (opts.variant === 'danger') ? 'danger' : 'warn';
+    if (box) box.className = 'modal-box ' + variant;
+
+    if (titleEl)   titleEl.textContent = opts.title || '通知';
+    if (messageEl) messageEl.textContent = opts.message || '';
+
+    // Single-button notice: hide Cancel, relabel Confirm to "OK".
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (confirmBtn) {
+        confirmBtn.textContent = opts.okText || 'OK';
+        confirmBtn.className = 'modal-btn modal-btn-confirm ' + variant;
+    }
+
+    function cleanup() {
+        overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
+        confirmBtn.removeEventListener('click', onClose);
+        overlay.removeEventListener('click', onOverlay);
+        document.removeEventListener('keydown', onKey);
+        // Restore the Cancel button for subsequent confirm dialogs.
+        if (cancelBtn) cancelBtn.style.display = '';
+    }
+    function onClose() {
+        cleanup();
+        if (typeof opts.onClose === 'function') opts.onClose();
+    }
+    function onOverlay(e) { if (e.target === overlay) onClose(); }
+    // For a non-destructive notice, both Enter and Escape simply dismiss.
+    function onKey(e) {
+        if (e.key === 'Escape' || e.keyCode === 27 ||
+            e.key === 'Enter'  || e.keyCode === 13) onClose();
+    }
+
+    confirmBtn.addEventListener('click', onClose);
+    overlay.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onKey);
+
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    if (confirmBtn) confirmBtn.focus();
+}
+
+/**
+ * Show a brief, non-blocking toast notification (top-center) for minor,
+ * non-destructive notices such as selection prompts ("select a drone first")
+ * or "no online drones". Important confirmations always use showConfirmModal();
+ * important errors use showAlertModal(). The toast container is created lazily
+ * and appended to <body>, so no markup changes to index.html are required.
+ *
+ * @param {string} message  Text to display.
+ * @param {string} type     'info' | 'warn' | 'error' (controls accent color).
+ */
+function showToast(message, type) {
+    type = type || 'info';
+    var container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.setAttribute('role', 'status');
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    // Trigger the enter transition on the next frame.
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+
+    var hideTimer = setTimeout(function() { dismiss(); }, 3200);
+    function dismiss() {
+        clearTimeout(hideTimer);
+        toast.classList.remove('show');
+        // Remove from the DOM after the fade-out transition completes.
+        setTimeout(function() {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 250);
+    }
+    // Allow click-to-dismiss.
+    toast.addEventListener('click', dismiss);
+}
+
+/**
  * Broadcast Arm to all online drones.
  */
 function broadcastArm() {
     var ids = _getOnlineIds();
-    if (ids.length === 0) { alert('No online drones'); return; }
+    if (ids.length === 0) { showToast('オンラインのドローンがありません', 'warn'); return; }
     showConfirmModal({
         title: 'ARM ALL',
         message: '本当に全機アームしますか？\n対象: ' + ids.length + ' 機\n全機のプロペラが回転を開始します。',
@@ -371,7 +496,7 @@ function broadcastArm() {
  */
 function broadcastDisarm() {
     var ids = _getOnlineIds();
-    if (ids.length === 0) { alert('No online drones'); return; }
+    if (ids.length === 0) { showToast('オンラインのドローンがありません', 'warn'); return; }
     showConfirmModal({
         title: 'DISARM ALL',
         message: '本当に全機ディスアームしますか？\n対象: ' + ids.length + ' 機\n全機のプロペラが停止します。',
@@ -395,18 +520,25 @@ function broadcastDisarm() {
  */
 function broadcastTakeoff() {
     var ids = _getOnlineIds();
-    if (ids.length === 0) { alert('No online drones'); return; }
+    if (ids.length === 0) { showToast('オンラインのドローンがありません', 'warn'); return; }
     var altInput = document.getElementById('takeoff-all-alt');
     var altitude = altInput ? parseFloat(altInput.value) : 10.0;
-    if (!confirm('TAKEOFF ALL ' + ids.length + ' drone(s) to ' + altitude + 'm?')) return;
-    fetch('/api/takeoff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: ids, altitude: altitude })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Broadcast Takeoff'); })
-    .catch(function(err) { updateCmdAckError('Broadcast Takeoff', err); });
+    showConfirmModal({
+        title: 'TAKEOFF ALL',
+        message: '全機を離陸させますか？\n対象: ' + ids.length + ' 機\n目標高度: ' + altitude + ' m',
+        confirmText: 'TAKEOFF ALL 実行',
+        variant: 'warn',
+        onConfirm: function() {
+            fetch('/api/takeoff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, altitude: altitude })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Broadcast Takeoff'); })
+            .catch(function(err) { updateCmdAckError('Broadcast Takeoff', err); });
+        }
+    });
 }
 
 /**
@@ -414,31 +546,45 @@ function broadcastTakeoff() {
  */
 function broadcastLand() {
     var ids = _getOnlineIds();
-    if (ids.length === 0) { alert('No online drones'); return; }
-    if (!confirm('LAND ALL ' + ids.length + ' drone(s)?')) return;
-    fetch('/api/land', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: ids, descent_rate: 1.5 })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Broadcast Land'); })
-    .catch(function(err) { updateCmdAckError('Broadcast Land', err); });
+    if (ids.length === 0) { showToast('オンラインのドローンがありません', 'warn'); return; }
+    showConfirmModal({
+        title: 'LAND ALL',
+        message: '全機を着陸させますか？\n対象: ' + ids.length + ' 機',
+        confirmText: 'LAND ALL 実行',
+        variant: 'warn',
+        onConfirm: function() {
+            fetch('/api/land', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: ids, descent_rate: 1.5 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Broadcast Land'); })
+            .catch(function(err) { updateCmdAckError('Broadcast Land', err); });
+        }
+    });
 }
 
 /**
  * Stop (Land immediately) a single drone by system ID.
  */
 function stopDrone(sysid) {
-    if (!confirm('STOP Drone ' + sysid + ' (Land immediately)?')) return;
-    fetch('/api/land', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: [sysid] })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Stop Drone-' + sysid); })
-    .catch(function(err) { updateCmdAckError('Stop Drone-' + sysid, err); });
+    showConfirmModal({
+        title: 'STOP Drone ' + sysid,
+        message: 'Drone ' + sysid + ' を直ちに着陸させますか？\n(緊急着陸)',
+        confirmText: 'STOP 実行',
+        variant: 'danger',
+        onConfirm: function() {
+            fetch('/api/land', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: [sysid] })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Stop Drone-' + sysid); })
+            .catch(function(err) { updateCmdAckError('Stop Drone-' + sysid, err); });
+        }
+    });
 }
 
 /**
@@ -460,16 +606,22 @@ function changeMode(sysid, mode) {
 }
 
 function forceArmDrone(sysid) {
-    if (!confirm('\u26A0\uFE0F Force Arm Drone ' + sysid + '?\n(ARMING_CHECK bypass - 屋内テスト専用)')) return;
-    if (!confirm('本当にForce Armしますか？\nDrone ' + sysid)) return;
-    fetch('/api/force_arm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: [sysid], confirmed: true })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Force Arm Drone-' + sysid); })
-    .catch(function(err) { updateCmdAckError('Force Arm Drone-' + sysid, err); });
+    showConfirmModal({
+        title: 'FORCE ARM Drone ' + sysid,
+        message: '\u26A0\uFE0F Drone ' + sysid + ' を Force Arm します。\nARMING_CHECK 等の安全チェックを無効化します。\n屋内テスト専用です。\n本当に続行しますか？',
+        confirmText: 'FORCE ARM 実行',
+        variant: 'danger',
+        onConfirm: function() {
+            fetch('/api/force_arm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: [sysid], confirmed: true })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Force Arm Drone-' + sysid); })
+            .catch(function(err) { updateCmdAckError('Force Arm Drone-' + sysid, err); });
+        }
+    });
 }
 
 // ==========================================================================
@@ -521,11 +673,19 @@ function sendGuidedPositionFromInputs(sysid) {
  */
 function sendGuidedPosition(systemId, heading, distance) {
     if (isNaN(heading) || heading < 0 || heading > 360) {
-        alert('Heading must be a number between 0 and 360 degrees.');
+        showAlertModal({
+            title: '入力エラー',
+            message: 'Heading（方位）は 0〜360 度の数値で入力してください。',
+            variant: 'warn'
+        });
         return;
     }
     if (isNaN(distance) || distance <= 0) {
-        alert('Distance must be a positive number of meters.');
+        showAlertModal({
+            title: '入力エラー',
+            message: 'Distance（距離）は正の数（メートル）で入力してください。',
+            variant: 'warn'
+        });
         return;
     }
 
@@ -553,24 +713,28 @@ function sendGuidedPosition(systemId, heading, distance) {
     // direction (matches /api/guided/position yaw validation range).
     var yaw = heading > 180 ? heading - 360 : heading;
 
-    if (!confirm('Drone ' + systemId + ': move ' + distance.toFixed(1) + ' m @ ' +
-                 heading.toFixed(0) + '\u00B0?\n' +
-                 'Target NED  N=' + north.toFixed(2) + '  E=' + east.toFixed(2) +
-                 '  D=' + down.toFixed(2))) {
-        return;
-    }
-
-    fetch('/api/guided/position', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            system_ids: [systemId], component_id: 1,
-            north: north, east: east, down: down, yaw: yaw
-        })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'Guided Pos Drone-' + systemId); })
-    .catch(function(err) { updateCmdAckError('Guided Pos Drone-' + systemId, err); });
+    showConfirmModal({
+        title: 'GUIDED 移動 Drone ' + systemId,
+        message: 'Drone ' + systemId + ' を ' + distance.toFixed(1) + ' m / 方位 ' +
+                 heading.toFixed(0) + '\u00B0 に移動させますか？\n' +
+                 '目標 NED  N=' + north.toFixed(2) + '  E=' + east.toFixed(2) +
+                 '  D=' + down.toFixed(2),
+        confirmText: '移動 実行',
+        variant: 'warn',
+        onConfirm: function() {
+            fetch('/api/guided/position', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    system_ids: [systemId], component_id: 1,
+                    north: north, east: east, down: down, yaw: yaw
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'Guided Pos Drone-' + systemId); })
+            .catch(function(err) { updateCmdAckError('Guided Pos Drone-' + systemId, err); });
+        }
+    });
 }
 
 /**
@@ -579,13 +743,20 @@ function sendGuidedPosition(systemId, heading, distance) {
  * @param {number} systemId  Target drone system id.
  */
 function sendRTL(systemId) {
-    if (!confirm('RTL (Return to Launch) Drone ' + systemId + '?')) return;
-    fetch('/api/rtl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_ids: [systemId], component_id: 1 })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { updateCmdAck(data, 'RTL Drone-' + systemId); })
-    .catch(function(err) { updateCmdAckError('RTL Drone-' + systemId, err); });
+    showConfirmModal({
+        title: 'RTL Drone ' + systemId,
+        message: 'Drone ' + systemId + ' を RTL（Return to Launch / 自動帰還）させますか？',
+        confirmText: 'RTL 実行',
+        variant: 'warn',
+        onConfirm: function() {
+            fetch('/api/rtl', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ system_ids: [systemId], component_id: 1 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) { updateCmdAck(data, 'RTL Drone-' + systemId); })
+            .catch(function(err) { updateCmdAckError('RTL Drone-' + systemId, err); });
+        }
+    });
 }
