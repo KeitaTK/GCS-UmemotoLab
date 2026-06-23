@@ -680,12 +680,26 @@ body {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.65);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
     display: none;
     align-items: center;
     justify-content: center;
     z-index: 1000;
 }
-.modal-overlay.show { display: flex; }
+/* Only ever visible while JS has explicitly added `.show`. The !important guard
+ * makes this immune to FOUC, stale inline styles, or any conflicting rule so
+ * the static "確認 / 実行 / キャンセル" markup can never leak onto the page. */
+.modal-overlay:not(.show) { display: none !important; }
+.modal-overlay.show {
+    display: flex;
+    animation: modal-overlay-fade 0.15s ease-out;
+}
+
+@keyframes modal-overlay-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
 
 .modal-box {
     background: #16213e;
@@ -760,6 +774,12 @@ body {
 .modal-btn-confirm.danger:hover { background: #c0392b; }
 .modal-btn-confirm.warn { background: #e67e22; }
 .modal-btn-confirm.warn:hover { background: #d35400; }
+
+/* Clear keyboard-focus ring so the default (Cancel) action is obvious. */
+.modal-btn:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
 
 /* ==========================================================================
  * Toast Notifications (non-blocking minor notices: selection prompts, etc.)

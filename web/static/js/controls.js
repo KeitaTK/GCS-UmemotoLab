@@ -218,23 +218,33 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function updateCmdAck(data, label) {
-    var el = document.getElementById('cmd-ack');
-    if (!el) return;
     var status = data.status || 'unknown';
-    if (status === 'ok' || status === 'sent' || status === 'partial') {
+    var ok = (status === 'ok' || status === 'sent' || status === 'partial');
+    var el = document.getElementById('cmd-ack');
+    if (el) {
         el.textContent = label + ': ' + status;
-        el.className = 'value status-ok';
-    } else {
-        el.textContent = label + ': ' + status;
-        el.className = 'value status-error';
+        el.className = ok ? 'value status-ok' : 'value status-error';
+        return;
+    }
+    // No dedicated status element in the layout: surface the command response
+    // as a non-blocking toast (single source of truth for command feedback)
+    // instead of leaving stray text in a corner of the page.
+    if (typeof showToast === 'function') {
+        showToast(label + ': ' + status, ok ? 'info' : 'error');
     }
 }
 
 function updateCmdAckError(label, err) {
+    var msg = label + ': Error - ' + (err && (err.message || err));
     var el = document.getElementById('cmd-ack');
-    if (!el) return;
-    el.textContent = label + ': Error - ' + (err.message || err);
-    el.className = 'value status-error';
+    if (el) {
+        el.textContent = msg;
+        el.className = 'value status-error';
+        return;
+    }
+    if (typeof showToast === 'function') {
+        showToast(msg, 'error');
+    }
 }
 
 // ===== Broadcast / Per-Drone Control Functions =====
@@ -326,6 +336,7 @@ function showConfirmModal(opts) {
 
     function cleanup() {
         overlay.classList.remove('show');
+        overlay.hidden = true;
         overlay.setAttribute('aria-hidden', 'true');
         confirmBtn.removeEventListener('click', onConfirm);
         cancelBtn.removeEventListener('click', onCancel);
@@ -349,6 +360,7 @@ function showConfirmModal(opts) {
     overlay.addEventListener('click', onOverlay);
     document.addEventListener('keydown', onKey);
 
+    overlay.hidden = false;
     overlay.classList.add('show');
     overlay.setAttribute('aria-hidden', 'false');
     // Default focus on Cancel = safer default for a destructive action.
@@ -398,6 +410,7 @@ function showAlertModal(opts) {
 
     function cleanup() {
         overlay.classList.remove('show');
+        overlay.hidden = true;
         overlay.setAttribute('aria-hidden', 'true');
         confirmBtn.removeEventListener('click', onClose);
         overlay.removeEventListener('click', onOverlay);
@@ -420,6 +433,7 @@ function showAlertModal(opts) {
     overlay.addEventListener('click', onOverlay);
     document.addEventListener('keydown', onKey);
 
+    overlay.hidden = false;
     overlay.classList.add('show');
     overlay.setAttribute('aria-hidden', 'false');
     if (confirmBtn) confirmBtn.focus();
