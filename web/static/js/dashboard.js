@@ -31,6 +31,7 @@ function updateDashboard() {
     renderAllCards(drones, conn);
     updateRtkStatus(drones, rtk);
     updateAllNominal(drones, conn);
+    updateConnectionUiState(conn);
 
     // Also update graph and raw data panels
     if (typeof updateGraphs === 'function') updateGraphs();
@@ -55,6 +56,48 @@ function updateBackendStatus(conn) {
         el.className = 'status-value status-error';
     }
 }
+/**
+ * Toggle overall UI state based on backend connection status.
+ *
+ * When the backend is NOT connected:
+ *   - greys out + locks the broadcast panel (via the `disconnected` body class
+ *     which CSS turns into opacity:0.4 + pointer-events:none)
+ *   - pulses the status-bar Connect button to guide the operator
+ *   - explicitly disables every broadcast control and per-drone card button
+ *
+ * When the backend IS connected the greyout and pulse are removed and the
+ * broadcast controls are re-enabled (per-drone card buttons keep their own
+ * online/armed-based disabled state from renderDroneCard()).
+ */
+function updateConnectionUiState(conn) {
+    const backendOnline = !!(conn && conn.is_connected);
+
+    // Body-level class drives `.disconnected .broadcast-panel` greyout in CSS.
+    document.body.classList.toggle('disconnected', !backendOnline);
+
+    // Pulse the Connect button while disconnected to strengthen the CTA.
+    const connectBtn = document.getElementById('btn-connect-status');
+    if (connectBtn) connectBtn.classList.toggle('pulse', !backendOnline);
+
+    // Explicitly disable broadcast panel controls (pointer-events also blocks
+    // clicks, but `disabled` also prevents keyboard focus / form submission).
+    const panel = document.getElementById('broadcast-panel');
+    if (panel) {
+        panel.querySelectorAll('button, input, select').forEach(function(el) {
+            el.disabled = !backendOnline;
+        });
+    }
+
+    // When offline, force-disable any per-drone card operation buttons that
+    // may still be present so they cannot be triggered.
+    if (!backendOnline) {
+        document
+            .querySelectorAll('.drone-card .btn-stop, .drone-card .btn-force-arm-sm, .drone-card .mode-select')
+            .forEach(function(el) { el.disabled = true; });
+    }
+}
+
+
 
 /**
  * Update "All Systems Nominal" display and alert bar.
@@ -530,6 +573,7 @@ function updateRtkStatus(drones, rtk) {
 // Initial render on page load
 window.addEventListener('DOMContentLoaded', function() {
     renderAllCards({}, null);
+    updateConnectionUiState(null);
 });
 
 /**
@@ -600,3 +644,4 @@ function switchTab(tabName) {
 window.selectCard = selectCard;
 window.getSelectedSystemId = getSelectedSystemId;
 window.switchTab = switchTab;
+window.updateConnectionUiState = updateConnectionUiState;

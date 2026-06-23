@@ -689,6 +689,28 @@ body {
 .modal-btn-confirm.disarm:hover { background: #c0392b; }
 
 /* ==========================================================================
+ * Disconnected State (backend offline UI lockout)
+ * ========================================================================== */
+/* When the backend is not connected, <body> gets the `disconnected` class
+ * (added from dashboard.js). Grey out + lock the broadcast panel so the
+ * operator cannot trigger broadcast commands until reconnecting. */
+.disconnected .broadcast-panel {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Pulse animation to draw attention to the Connect button while offline. */
+@keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.6); }
+    70%  { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+}
+
+.btn-connect-sm.pulse {
+    animation: pulse 1.5s ease-out infinite;
+}
+
+/* ==========================================================================
  * Status Colors (utility)
  * ========================================================================== */
 .status-ok      { color: #2ecc71 !important; }
