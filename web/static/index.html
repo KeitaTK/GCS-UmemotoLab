@@ -19,6 +19,8 @@
     <span class="status-label">Backend</span>
     <span class="status-value" id="backend-status-text">Not connected</span>
     <div class="status-bar-right">
+        <span class="rtk-badge rtk-none" id="rtk-badge" title="RTK Fix Status">RTK: None</span>
+        <span class="rtk-detail" id="rtk-detail"></span>
         <span class="nominal-text" id="all-nominal-text"></span>
         <button class="btn-sm btn-connect-sm" id="btn-connect-status">Connect</button>
         <button class="btn-sm btn-disconnect-sm" id="btn-disconnect-status">Disconnect</button>
@@ -67,16 +69,6 @@
         <span class="ned-coord ned-d">D: 0.00m</span>
     </div>
 </template>
-
-<!-- ====== RTK BASE STATION BAR ====== -->
-<div class="rtk-bar" id="rtk-bar">
-    <span class="rtk-label">&#128247; RTK Base</span>
-    <span>Status: <span class="rtk-val" id="rtk-status">Disabled</span></span>
-    <span>|</span>
-    <span>Messages: <span class="rtk-val" id="rtk-msgs">0</span></span>
-    <span>|</span>
-    <span>Reconnects: <span class="rtk-val" id="rtk-reconns">0</span></span>
-</div>
 
 <!-- ====== BROADCAST PANEL ====== -->
 <div class="broadcast-panel" id="broadcast-panel">

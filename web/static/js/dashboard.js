@@ -1,5 +1,5 @@
 /**
- * Multi-Drone Dashboard - Card rendering, alert bar, RTK bar, status updates.
+ * Multi-Drone Dashboard - Card rendering, alert bar, RTK status, status updates.
  * Called from websocket.js onmessage every ~1 second.
  */
 
@@ -29,7 +29,7 @@ function updateDashboard() {
     updateBackendStatus(conn);
     updateAlertBar(drones, conn);
     renderAllCards(drones, conn);
-    updateRtkBar(rtk);
+    updateRtkStatus(drones, rtk);
     updateAllNominal(drones, conn);
 
     // Also update graph and raw data panels
@@ -459,26 +459,72 @@ function renderPlaceholderCard(sysid) {
 }
 
 /**
- * Update RTK base station bar.
+ * Update the RTK Fix status badge in the header status bar.
+ *
+ * The badge color reflects the best RTK fix achieved across all online drones:
+ *   - RTK_FIXED (fix_type 6) -> green  "RTK: Fixed"
+ *   - RTK_FLOAT (fix_type 5) -> yellow "RTK: Float"
+ *   - otherwise              -> red    "RTK: None"
+ *
+ * A secondary detail line shows the RTK base station (RtcmReader) statistics.
+ *
+ * @param {Object} drones - Map of system id -> drone telemetry.
+ * @param {Object} rtk    - RTK base station (RtcmReader) statistics.
  */
-function updateRtkBar(rtk) {
-    const statusEl = document.getElementById('rtk-status');
-    const msgsEl = document.getElementById('rtk-msgs');
-    const reconnsEl = document.getElementById('rtk-reconns');
+function updateRtkStatus(drones, rtk) {
+    const badge = document.getElementById('rtk-badge');
+    const detail = document.getElementById('rtk-detail');
+    if (!badge) return;
 
-    if (!rtk) {
-        if (statusEl) { statusEl.textContent = 'N/A'; statusEl.className = 'rtk-disabled'; }
-        if (msgsEl) msgsEl.textContent = '0';
-        if (reconnsEl) reconnsEl.textContent = '0';
-        return;
+    // Fix type constants (MAVLink GPS_FIX_TYPE)
+    const RTK_FLOAT = 5;
+    const RTK_FIXED = 6;
+
+    // Find the best RTK fix state across all online drones.
+    let best = 0;                 // 0 = none, 5 = float, 6 = fixed
+    const fixedDrones = [];
+    const floatDrones = [];
+    if (drones) {
+        for (const sysid of Object.keys(drones)) {
+            if (!isDroneOnline(parseInt(sysid, 10))) continue;
+            const gps = drones[sysid].gps;
+            if (!gps || typeof gps.fix_type !== 'number') continue;
+            if (gps.fix_type === RTK_FIXED) {
+                fixedDrones.push(sysid);
+                if (best < RTK_FIXED) best = RTK_FIXED;
+            } else if (gps.fix_type === RTK_FLOAT) {
+                floatDrones.push(sysid);
+                if (best < RTK_FLOAT) best = RTK_FLOAT;
+            }
+        }
     }
 
-    if (statusEl) {
-        statusEl.textContent = rtk.enabled ? 'Connected' : 'Disabled';
-        statusEl.className = rtk.enabled ? 'rtk-enabled' : 'rtk-disabled';
+    // Update the badge label + color class.
+    if (best === RTK_FIXED) {
+        badge.textContent = 'RTK: Fixed';
+        badge.className = 'rtk-badge rtk-fixed';
+        badge.title = 'RTK Fixed on drone(s): ' + fixedDrones.join(', ');
+    } else if (best === RTK_FLOAT) {
+        badge.textContent = 'RTK: Float';
+        badge.className = 'rtk-badge rtk-float';
+        badge.title = 'RTK Float on drone(s): ' + floatDrones.join(', ');
+    } else {
+        badge.textContent = 'RTK: None';
+        badge.className = 'rtk-badge rtk-none';
+        badge.title = 'No drone has reached RTK Float/Fixed';
     }
-    if (msgsEl) msgsEl.textContent = String(rtk.messages_received || 0);
-    if (reconnsEl) reconnsEl.textContent = String(rtk.reconnects || 0);
+
+    // Update the RTK base station (RTCM) detail line.
+    if (detail) {
+        if (!rtk) {
+            detail.textContent = 'Base: N/A';
+        } else {
+            const baseState = rtk.enabled ? 'Connected' : 'Disabled';
+            detail.textContent = 'Base: ' + baseState +
+                ' \u00B7 Msgs: ' + (rtk.messages_received || 0) +
+                ' \u00B7 Reconn: ' + (rtk.reconnects || 0);
+        }
+    }
 }
 
 // Initial render on page load

@@ -491,6 +491,48 @@ body {
 .rtk-label { color: #e0e0e0; font-weight: bold; }
 .rtk-val   { color: #e0e0e0; font-weight: 600; }
 
+/* ---- RTK Fix Status Badge (header status bar) ---- */
+.rtk-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    transition: background 0.3s, color 0.3s, border-color 0.3s;
+}
+.rtk-badge::before {
+    content: "\1F4E1"; /* satellite antenna */
+    margin-right: 6px;
+    font-size: 12px;
+}
+.rtk-badge.rtk-fixed {
+    background: rgba(46, 204, 113, 0.18);
+    color: #2ecc71;
+    border-color: #2ecc71;
+}
+.rtk-badge.rtk-float {
+    background: rgba(243, 156, 18, 0.18);
+    color: #f39c12;
+    border-color: #f39c12;
+}
+.rtk-badge.rtk-none {
+    background: rgba(231, 76, 60, 0.18);
+    color: #e74c3c;
+    border-color: #e74c3c;
+}
+
+.rtk-detail {
+    color: #888;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 /* ==========================================================================
  * Broadcast Panel
  * ========================================================================== */
