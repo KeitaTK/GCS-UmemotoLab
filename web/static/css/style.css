@@ -535,6 +535,14 @@ body {
 .btn-land-all:hover      { background: #a93226; }
 .broadcast-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.takeoff-alt-label {
+    color: #e0e0e0;
+    font-weight: 700;
+    font-size: 12px;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+
 .takeoff-alt-input {
     width: 56px;
     padding: 6px 4px;

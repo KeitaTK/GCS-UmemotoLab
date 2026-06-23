@@ -83,7 +83,8 @@
     <span class="broadcast-label">&#128227; ALL DRONES</span>
     <button id="btn-arm-all" onclick="broadcastArm()">ARM ALL</button>
     <button id="btn-disarm-all" onclick="broadcastDisarm()">DISARM ALL</button>
-    <input type="number" class="takeoff-alt-input" id="takeoff-all-alt" value="10" min="0.5" max="500" step="0.5" title="Altitude (m)">
+    <label class="takeoff-alt-label" for="takeoff-all-alt">Alt (m):</label>
+    <input type="number" class="takeoff-alt-input" id="takeoff-all-alt" value="10" min="0.5" max="500" step="0.5" placeholder="Altitude in meters" title="Takeoff altitude in meters">
     <button id="btn-takeoff-all" onclick="broadcastTakeoff()">TAKEOFF ALL</button>
     <button id="btn-land-all" class="btn-land-all" onclick="broadcastLand()">LAND ALL</button>
 </div>
