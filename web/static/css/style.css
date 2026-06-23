@@ -633,8 +633,9 @@ body {
 .btn-disarm-all:hover    { background: #c0392b; }
 .btn-takeoff-all   { background: #e67e22; }
 .btn-takeoff-all:hover   { background: #d35400; }
-.btn-land-all      { background: #c0392b; }
-.btn-land-all:hover      { background: #a93226; }
+/* Land is a safe operation: use blue (not red, which is reserved for emergency/kill). */
+.btn-land-all      { background: #3498db; }
+.btn-land-all:hover      { background: #2980b9; }
 .broadcast-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .takeoff-alt-label {
