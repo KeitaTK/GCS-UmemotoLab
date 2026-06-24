@@ -1,4 +1,4 @@
-# GCS Configuration - LAN Direct UDP
+# GCS Configuration - SSH Tunnel via Tailscale
 #
 connection_type: udp
 udp_listen_port: 14550
@@ -6,7 +6,7 @@ udp_listen_port: 14550
 drones:
   drone1:
     system_id: 1
-    endpoint: "192.168.11.19:14552"  # Raspi LAN IP (有線)
+    endpoint: "127.0.0.1:14552"  # Bridge UDP port (SSH Tunnel)
     name: "Pixhawk6C Main"
 
 rtcm_enabled: false
