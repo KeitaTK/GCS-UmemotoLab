@@ -106,6 +106,10 @@ class MessageRouter:
                                  4:'WARNING',5:'NOTICE',6:'INFO',7:'DEBUG'}
                     sev = sev_names.get(severity, str(severity))
                     self.logger.info(f"STATUSTEXT from sys={system_id} [{sev}]: {text}")
+                elif msg_type == 'PARAM_VALUE':
+                    param_id = getattr(msg, 'param_id', b'').decode('utf-8', errors='replace').rstrip('\x00')
+                    param_value = getattr(msg, 'param_value', 0.0)
+                    self.logger.info(f"PARAM_VALUE from sys={system_id}: {param_id} = {param_value}")
                 elif msg_type == 'HEARTBEAT':
                     pass  # too verbose, skip
                 else:
