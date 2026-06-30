@@ -54,6 +54,11 @@ class SystemIdsRequest(BaseModel):
     system_ids: list[int] = Field(..., min_length=1)
     component_id: int = Field(default=1)
 
+class ParamRequest(BaseModel):
+    system_id: int = Field(default=1)
+    param_id: str
+    component_id: int = Field(default=1)
+
 
 class ForceArmRequest(SystemIdsRequest):
     confirmed: bool = Field(..., description="Must be true to proceed")
@@ -477,3 +482,28 @@ async def cmd_rtl(req: SystemIdsRequest):
         # MAV_CMD_NAV_RETURN_TO_LAUNCH (20): no parameters required.
         disp._send_command(sysid, req.component_id, _MAV_CMD_NAV_RETURN_TO_LAUNCH)
     return {"status": "ok", "command": "rtl", "system_ids": req.system_ids}
+
+
+# ==========================================================================
+# POST /api/param/request — Request a parameter from the drone
+# ==========================================================================
+
+@router.post("/param/request")
+async def cmd_param_request(req: ParamRequest):
+    """Send PARAM_REQUEST_READ to the drone."""
+    conn = _get_conn()
+    
+    msg = conn.mav.param_request_read_encode(
+        req.system_id, req.component_id,
+        req.param_id.encode('utf-8'), -1
+    )
+    frame = msg.pack(conn.mav)
+    conn.send(req.system_id, frame)
+    logger.info(f"PARAM_REQUEST sent: {req.param_id} to sys={req.system_id}")
+    
+    return {
+        "status": "sent",
+        "param_id": req.param_id,
+        "system_id": req.system_id
+    }
+
