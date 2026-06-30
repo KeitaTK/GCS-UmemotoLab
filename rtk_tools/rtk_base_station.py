@@ -70,21 +70,34 @@ class RtcmSerialReader:
         self.logger.info(f"Serial reader stopped. Stats: {self.stats}")
     
     def _read_loop(self):
-        """シリアルポートからデータを読み込むループ"""
+        """シリアルポートからデータを読み込むループ
+
+        macOS USB切断時のカーネルブロックを防ぐため、select()で
+        読み取り可能チェックを行ってから read() する。
+        """
+        import select
         ser = None
         try:
             ser = serial.Serial(
                 port=self.config.serial_port,
                 baudrate=self.config.baudrate,
-                timeout=self.config.serial_timeout
+                timeout=0  # non-blocking — select() で待つ
             )
             self.logger.info(f"Serial port opened: {self.config.serial_port} @ {self.config.baudrate} baud")
             
             buffer = bytearray()
+            fd = ser.fileno()
             
             while self.running:
                 try:
-                    # シリアルから1024バイト読み込み
+                    # select() で読み取り可能まで待機（最大1秒）
+                    # macOSでデバイス切断時は select が即座に例外を投げるため
+                    # kernel I/Oブロックを回避できる
+                    ready, _, _ = select.select([fd], [], [], 1.0)
+                    if not ready:
+                        continue
+                    
+                    # データがある場合のみ read()
                     data = ser.read(1024)
                     if not data:
                         continue
@@ -118,7 +131,10 @@ class RtcmSerialReader:
                         self.stats['frames_received'] += 1
                         self.logger.debug(f"RTCM frame received: {len(frame)} bytes")
                 
-                except serial.SerialException as e:
+                except (serial.SerialException, OSError, ValueError) as e:
+                    # OSError: select() on disconnected fd (macOS)
+                    # ValueError: select() on closed fd
+                    # SerialException: read() on disconnected device
                     self.logger.error(f"Serial read error: {e}")
                     self.stats['read_errors'] += 1
                     time.sleep(1.0)
@@ -131,11 +147,12 @@ class RtcmSerialReader:
                         ser = serial.Serial(
                             port=self.config.serial_port,
                             baudrate=self.config.baudrate,
-                            timeout=self.config.serial_timeout
+                            timeout=0
                         )
+                        fd = ser.fileno()
                         self.logger.info(f"Serial port reopened: {self.config.serial_port}")
                         buffer = bytearray()
-                    except serial.SerialException as e2:
+                    except (serial.SerialException, OSError) as e2:
                         self.logger.error(f"Failed to reopen serial: {e2}")
                         break
         
