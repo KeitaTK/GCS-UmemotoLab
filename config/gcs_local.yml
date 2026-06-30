@@ -9,4 +9,4 @@ drones:
     endpoint: "127.0.0.1:14552"  # Bridge UDP port (SSH Tunnel)
     name: "Pixhawk6C Main"
 
-rtcm_enabled: false
+rtcm_enabled: true

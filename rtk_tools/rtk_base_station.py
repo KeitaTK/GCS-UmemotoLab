@@ -179,6 +179,15 @@ class TcpServer:
                     self.logger.info(f"Client connected: {client_addr}")
                     self.stats['connections'] += 1
                     
+                    # TCP keepalive for Tailscale stability
+                    client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    try:
+                        # macOS: TCP_KEEPALIVE=0x10, Linux: TCP_KEEPIDLE
+                        TCP_KEEPIDLE = 0x10 if hasattr(socket, 'TCP_KEEPALIVE') else socket.TCP_KEEPIDLE
+                        client_sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPIDLE, 30)
+                    except:
+                        pass
+                    
                     # クライアントハンドラースレッドを起動
                     client_thread = threading.Thread(
                         target=self._handle_client,
