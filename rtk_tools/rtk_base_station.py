@@ -365,10 +365,42 @@ class RtkBaseStation:
         self.udp_broadcaster.stop()
         self.logger.info("RTK Base Station stopped")
     
+    def _read_gps_status(self):
+        """Read latest NMEA $GNGGA from serial port for GPS status display."""
+        try:
+            import serial as _ser
+            s = _ser.Serial(self.config.serial_port, self.config.baudrate, timeout=0.3)
+            buf = s.read(3000)
+            s.close()
+            for line in buf.split(b'\\n'):
+                if line.startswith(b'$GNGGA'):
+                    p = line.decode().split(',')
+                    if len(p) >= 10 and p[2]:
+                        lat_r = float(p[2])
+                        lat_deg = int(lat_r / 100)
+                        lat = lat_deg + (lat_r - lat_deg * 100) / 60
+                        lon_r = float(p[4])
+                        lon_deg = int(lon_r / 100)
+                        lon = lon_deg + (lon_r - lon_deg * 100) / 60
+                        alt = float(p[9]) if p[9] else 0
+                        fix = int(p[6]) if p[6] else 0
+                        sats = int(p[7]) if p[7] else 0
+                        hdop = float(p[8]) if p[8] else 0
+                        fix_names = {0: 'NoFix', 1: 'GPS', 2: 'DGPS', 4: 'RTK_FIXED', 5: 'RTK_FLOAT'}
+                        return {'lat': lat, 'lon': lon, 'alt': alt, 'fix': fix,
+                                'sats': sats, 'hdop': hdop, 'fix_name': fix_names.get(fix, f'({fix})')}
+        except:
+            pass
+        return None
+
     def print_stats(self):
         """統計情報を出力"""
+        gps = self._read_gps_status()
         print("\n" + "=" * 70)
         print("RTK Base Station Statistics")
+        if gps:
+            print(f"  GPS: fix={gps['fix']}({gps['fix_name']}) sats={gps['sats']} "
+                  f"lat={gps['lat']:.7f} lon={gps['lon']:.7f} alt={gps['alt']:.1f}m hdop={gps['hdop']:.2f}")
         print("=" * 70)
         print(f"\nSerial Reader:")
         for key, val in self.serial_reader.stats.items():
