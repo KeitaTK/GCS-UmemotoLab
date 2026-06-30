@@ -121,8 +121,23 @@ class RtcmSerialReader:
                 except serial.SerialException as e:
                     self.logger.error(f"Serial read error: {e}")
                     self.stats['read_errors'] += 1
-                    time.sleep(0.5)
-                    break
+                    time.sleep(1.0)
+                    # Retry: close and reopen serial port
+                    try:
+                        ser.close()
+                    except:
+                        pass
+                    try:
+                        ser = serial.Serial(
+                            port=self.config.serial_port,
+                            baudrate=self.config.baudrate,
+                            timeout=self.config.serial_timeout
+                        )
+                        self.logger.info(f"Serial port reopened: {self.config.serial_port}")
+                        buffer = bytearray()
+                    except serial.SerialException as e2:
+                        self.logger.error(f"Failed to reopen serial: {e2}")
+                        break
         
         except serial.SerialException as e:
             self.logger.error(f"Failed to open serial port: {e}")

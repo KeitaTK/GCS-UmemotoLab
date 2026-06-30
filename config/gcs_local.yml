@@ -8,5 +8,11 @@ drones:
     system_id: 1
     endpoint: "127.0.0.1:14552"  # Bridge UDP port (SSH Tunnel)
     name: "Pixhawk6C Main"
+  drone2:
+    system_id: 2
+    endpoint: "127.0.0.1:14552"
+    name: "Pixhawk6C (sysid=2)"
 
 rtcm_enabled: true
+rtcm_host: 127.0.0.1
+rtcm_tcp_port: 2101
