@@ -365,5 +365,92 @@ macbook-air (u-blox)                  MacBook Air (GCS+RTK)
 
 ---
 
-*次回更新: サンプル4-5のデータ取得後*
-*連絡先: GitHub Issues https://github.com/KeitaTK/GCS-UmemotoLab/issues*
+## 6. 本日の作業サマリー（2026-06-30）
+
+### 6.1 目的
+RTK Fixed (fix=6) 到達に向けた環境整備・診断・データ収集
+
+### 6.2 達成した成果
+
+| 項目 | 結果 | 詳細 |
+|------|------|------|
+| サンプル4データ収集 | ✅ 完了 | 20サンプル, fix=4(DGPS), HDOP 0.62-0.77 |
+| RTCM注入基盤 | ✅ 確立 | type 1018/268-307全種, GPS_RTCM_DATA送信 |
+| Survey-In 設定 | ✅ 完了 | u-blox F9P: 0.2m精度/600秒→flash保存 |
+| GCS設定修正 | ✅ 完了 | RTCMポート 15000→2101 に修正 |
+| MAVLink V1 通信確立 | ✅ | mavlink-routerd TCP:5760 へのTailscale直結発見 |
+| SSH tunnel 不要通信路 | ✅ 発見 | Tailscale IP 100.123.158.105:5760 直結可能 |
+| direct_bridge.py | ✅ 作成 | SSHトンネル不要の直接ブリッジ |
+| QGroundControl 確認 | ✅ 設定済み | GPS_INJECT_TO=send to all, GPS_AUTO_CONFIG=2 |
+
+### 6.3 コード修正
+
+| # | コミット | 内容 |
+|---|----------|------|
+| 1 | `c279d51` | select() シリアルブロック防止（macOS USB切断時） |
+| 2 | `e8662cb` | config/gcs_local.yml に RTCM ポート設定追加 |
+| 3 | `d511047` | 進捗報告更新（Raspiオフライン対応） |
+| 4 | `1fd5ead` | rtk_monitor.sh 統合起動スクリプト |
+| 5 | `7a1faca` | PARAM_VALUE ログ出力 (message_router) |
+| 6 | `620c51a` | /api/param/request API エンドポイント |
+| 7 | (未コミット) | direct_bridge.py — Tailscale直結ブリッジ |
+
+### 6.4 発見した重要知見
+
+| # | 発見 | インパクト |
+|---|------|------------|
+| 1 | GPS_TYPE = DroneCAN (9) — F9PはCAN接続 | UART用のGPS_TYPE=17では認識不可 |
+| 2 | fix=4(DGPS) で安定 — 9,450回観測、fix=5/6は0回 | RTCM補正は届いているがRTK ambiguity未解決 |
+| 3 | EKF3 unhealthy → healthy に解決 | 機体を動かして初期化 |
+| 4 | SSHトンネル不要！ Tailscale直結でTCP:5760到達可能 | 通信の信頼性大幅向上 |
+| 5 | PARAM_REQUEST_READ が Pixhawk に無視される | MAVLink V1/V2両方で応答なし |
+| 6 | GPS_AUTO_CONFIG=2 で F9P Rover モード自動設定を試行 | Pixhawk再起動後に効果検証が必要 |
+
+### 6.5 fix=6 未達の推定原因
+
+```
+DroneCAN 接続の F9P:
+  ├── RTCM 補正は GPS モジュールに到達（fix: 3→4 遷移で証明）
+  ├── しかし Rover モードの RTCM 入力設定が不完全
+  └── → 整数値アンビギュイティ解決できず fix=5/6 に遷移しない
+```
+
+### 6.6 明日のタスク
+
+| 優先度 | タスク | 手順 |
+|--------|--------|------|
+| 🔴 1 | u-blox USB 接続確認 | `ls /dev/tty.usbmodem*` |
+| 🔴 2 | 基地局 + Bridge 起動 | `python scripts/direct_bridge.py &` |
+| 🔴 3 | GCS 接続 + RTCM 注入開始 | `/api/connect` → 注入ログ確認 |
+| 🟡 4 | fix=4→5→6 遷移監視 | `tail -f /tmp/gcs_web.log \| grep fix=` |
+| 🟡 5 | GPS_RTK メッセージ確認 | QGC MAVLink Inspector |
+| 🟢 6 | サンプル5 データ収集 | `gps_compare_collect.py --count 20` |
+| 🟢 7 | 報告書更新 | セクション4.x, 6.x に追記 |
+
+### 6.7 明日のクイックスタート
+
+```bash
+# 1. u-blox 確認
+ls /dev/tty.usbmodem*
+
+# 2. 基地局起動
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+nohup python rtk_tools/rtk_base_station.py \
+  --serial-port /dev/tty.usbmodem113301 --tcp-port 2101 &
+
+# 3. Bridge起動（Tailscale直結）
+python scripts/direct_bridge.py &
+
+# 4. GCS接続
+curl -s -X POST http://localhost:8000/api/connect \
+  -H 'Content-Type: application/json' \
+  -d '{"config_path":"config/gcs_local.yml"}'
+
+# 5. fix監視
+tail -f /tmp/gcs_web.log | grep "fix="
+```
+
+---
+
+*次回更新: サンプル5-7のデータ取得後*
+*最終更新: 2026-06-30 21:30*
