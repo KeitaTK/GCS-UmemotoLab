@@ -303,7 +303,8 @@ def test_rtcm_injector():
     # フレーム検証
     for i, frame in enumerate(sent_frames):
         assert frame[0] == 0xFD, f"Frame {i}: Invalid MAVLink v2 header"
-        assert frame[7] == 67, f"Frame {i}: Invalid message ID (expected 67, got {frame[7]})"
+        msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16)
+        assert msgid == 233, f"Frame {i}: Invalid message ID (expected 233, got {msgid})"
     
     stats = injector.get_stats()
     logger.info(f"RtcmInjector stats: {stats}")

@@ -49,23 +49,26 @@ class RtcmInjector:
             total_chunks = len(chunks)
             
             for seq_idx, chunk in enumerate(chunks):
-                # GPS_RTCM_DATA メッセージ (msgid=67) を構築
-                # 構造: flags(1) + len(2) + data(最大180)
+                # GPS_RTCM_DATA メッセージ (msgid=233) を構築
+                # 構造: flags(uint8) + len(uint8) + data(最大180)
                 flags = 0
                 data_len = len(chunk)
                 
                 # フラグに分割情報を含める
+                # Bit 0: fragmented flag
+                # Bits 1-2: fragment ID (0-3)
+                # Bits 3-7: sequence ID (0-31)
                 if total_chunks > 1:
                     flags |= 0x01  # 分割フラグ
-                    # シーケンス番号を上位ビットに含める
-                    flags |= (seq_idx & 0x1F) << 3
+                    flags |= (seq_idx & 0x03) << 1  # fragment ID
+                # Note: sequence ID rolling counter managed externally
+                # if needed; currently each injection uses its own sequence
 
-                # ペイロードを構築
-                payload = bytearray(3 + len(chunk))
+                # ペイロードを構築 (flags + len + data)
+                payload = bytearray(2 + len(chunk))
                 payload[0] = flags
-                payload[1] = data_len & 0xFF
-                payload[2] = (data_len >> 8) & 0xFF
-                payload[3:] = chunk
+                payload[1] = data_len & 0xFF  # uint8_t
+                payload[2:] = chunk
 
                 # MAVLinkメッセージを送信
                 frame = self._build_gps_rtcm_data_message(
@@ -95,7 +98,7 @@ class RtcmInjector:
 
     def _build_gps_rtcm_data_message(self, payload: bytearray, seq: int, total: int) -> bytes:
         """
-        GPS_RTCM_DATA (msgid=67) MAVLink v2メッセージを構築
+        GPS_RTCM_DATA (msgid=233) MAVLink v2メッセージを構築
         
         フレーム構造:
         - Header: 0xFD
@@ -103,11 +106,11 @@ class RtcmInjector:
         - Sequence: 1 byte (自動インクリメント)
         - System ID: 1 byte
         - Component ID: 1 byte
-        - Message ID: 1 byte (67 = GPS_RTCM_DATA)
+        - Message ID: 3 bytes (233 = GPS_RTCM_DATA)
         - Payload: up to 255 bytes
         - Checksum: 2 bytes (CRC-16 CCITT)
         """
-        msgid = 67  # GPS_RTCM_DATA
+        msgid = 233  # GPS_RTCM_DATA
         
         # シーケンス番号（0-255でカウントアップ）
         seq_num = seq & 0xFF

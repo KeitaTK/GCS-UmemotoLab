@@ -99,6 +99,22 @@ class MessageRouter:
                         f"sats={num_sats}, lat={lat:.6f}, lon={lon:.6f}, "
                         f"alt={alt:.2f}m, hdop={hdop:.2f}"
                     )
+                elif msg_type in ('GPS_RTK', 'GPS2_RTK'):
+                    rtk_id = getattr(msg, 'rtk_receiver_id', 0)
+                    rtk_health = getattr(msg, 'rtk_health', 0xff)
+                    rtk_rate = getattr(msg, 'rtk_rate', 0)
+                    nsats = getattr(msg, 'nsats', 0)
+                    baseline_a = getattr(msg, 'baseline_a_mm', 0)
+                    baseline_b = getattr(msg, 'baseline_b_mm', 0)
+                    baseline_c = getattr(msg, 'baseline_c_mm', 0)
+                    accuracy = getattr(msg, 'accuracy', 0)
+                    iar_num = getattr(msg, 'iar_num_hypotheses', 0)
+                    self.logger.info(
+                        f"{msg_type} from sys={system_id}: "
+                        f"rtk_id={rtk_id}, health={rtk_health}, rate={rtk_rate}Hz, "
+                        f"nsats={nsats}, baseline=({baseline_a},{baseline_b},{baseline_c})mm, "
+                        f"accuracy={accuracy}mm, iar_hyp={iar_num}"
+                    )
                 elif msg_type == 'STATUSTEXT':
                     text = getattr(msg, 'text', '').rstrip('\x00')
                     severity = getattr(msg, 'severity', 0)
