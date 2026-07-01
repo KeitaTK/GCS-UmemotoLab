@@ -3,6 +3,16 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-07-01 12:45: [進捗報告書: Survey-In / TIME mode 解説 + サンプル5グラフ追加]
+- 問題: サンプル1〜3では水平誤差を算出できたが、サンプル4〜5では「算出不可」となっている理由が不明瞭だった。
+- 調査: u-blox ZED-F9P の動作モード（Survey-In mode vs TIME mode）の違いを調査。TIME mode では NMEA 出力が停止するため、基準局座標が取得できず誤差計算が不可能になることを確認。
+- 試行:
+  - `docs/progress_report_20260624.md` に「u-blox F9P の動作モード：Survey-In と TIME mode の違い」セクションを追加（セクション4.4内）
+  - `scripts/generate_sample5_graph.py` を作成し、サンプル5の Fix Type / 衛星数 / 緯度経度高度 の3段グラフを生成
+  - `docs/sample5_rtk_fixed.png` をレポートに埋め込み
+- 結果: Survey-In / TIME mode の違いと NMEA 出力有無の重要性が明確に文書化された。サンプル5の全20サンプル完全安定（fix=6, 標準偏差0）がグラフで視覚的に確認できるようになった。
+- 備考: 次回は u-blox を Survey-In mode に戻し、基準局座標との絶対誤差比較を行う必要がある。
+
 ### 2026-06-17 16:00: [Web UI: カード方式に統一]
 - 問題: index.html に PySide6風タブ構造（#panel-dashboard）とカードグリッド（#multi-drone-grid）が混在し、レイアウトが崩れていた。drone-list がHTMLに存在せず、選択ロジックが機能していなかった。
 - 調査: #sidebar（CSS定義のみでHTMLに非存在）、#ws-status-bar（status-barと重複）、#drone-list無し、getSelectedSystemIds()が常に空を返すことを確認。
