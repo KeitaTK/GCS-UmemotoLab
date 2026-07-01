@@ -15,6 +15,26 @@ class TelemetryStore:
             self._data[system_id][message_type] = payload
             self._last_seen[system_id] = time.time()
 
+            if message_type == 'NAMED_VALUE_FLOAT':
+                field_name = getattr(payload, 'name', 'unknown')
+                if isinstance(field_name, bytes):
+                    field_name = field_name.decode('utf-8', errors='ignore')
+                field_name = str(field_name)
+                value = getattr(payload, 'value', 0.0)
+                ts = getattr(payload, 'time_usec', 0)
+                if not ts:
+                    ts = int(time.time() * 1_000_000)
+
+                nvf_history = self._data[system_id].setdefault('NAMED_VALUE_FLOAT_HISTORY', {})
+                field_history = nvf_history.setdefault(field_name, [])
+                field_history.append({
+                    'value': value,
+                    'timestamp': ts,
+                    'payload': payload,
+                })
+
+                self._data[system_id].setdefault('NAMED_VALUE_FLOAT_BY_NAME', {})[field_name] = payload
+
     def get_last_seen(self, system_id):
         """Get the last update timestamp for a system_id. Returns None if never seen."""
         with self._lock:
@@ -24,26 +44,6 @@ class TelemetryStore:
         """Get dict of {system_id: timestamp} for all known drones."""
         with self._lock:
             return dict(self._last_seen)
-
-            if message_type == 'NAMED_VALUE_FLOAT':
-                field_name = getattr(payload, 'name', 'unknown')
-                if isinstance(field_name, bytes):
-                    field_name = field_name.decode('utf-8', errors='ignore')
-                field_name = str(field_name)
-                value = getattr(payload, 'value', 0.0)
-                timestamp = getattr(payload, 'time_usec', 0)
-                if not timestamp:
-                    timestamp = int(time.time() * 1_000_000)
-
-                nvf_history = self._data[system_id].setdefault('NAMED_VALUE_FLOAT_HISTORY', {})
-                field_history = nvf_history.setdefault(field_name, [])
-                field_history.append({
-                    'value': value,
-                    'timestamp': timestamp,
-                    'payload': payload,
-                })
-
-                self._data[system_id].setdefault('NAMED_VALUE_FLOAT_BY_NAME', {})[field_name] = payload
 
     def get(self, system_id, message_type=None):
         with self._lock:
