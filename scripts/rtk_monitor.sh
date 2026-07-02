@@ -1,11 +1,27 @@
 #!/bin/bash
 # RTK Full Pipeline + Monitor
-# Usage: bash scripts/rtk_monitor.sh
+# Usage:
+#   bash scripts/rtk_monitor.sh          # v1 (rtk_base_station.py)
+#   bash scripts/rtk_monitor.sh --v2     # v2 (rtk_base_station_v2.py)
+#   USE_V2=1 bash scripts/rtk_monitor.sh # v2 (environment variable)
 set -e
 cd ~/GCS-UmemotoLab
 source .venv/bin/activate
 
+# --- v2 selection ---
+USE_V2="${USE_V2:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        --v2) USE_V2=1 ;;
+    esac
+done
+
 echo "=== RTK Pipeline Startup ==="
+if [ "$USE_V2" = "1" ]; then
+    echo "Mode: v2 (rtk_base_station_v2.py)"
+else
+    echo "Mode: v1 (rtk_base_station.py)"
+fi
 
 # 1. Kill any existing bridge/SSH
 pkill -f 'udp_tcp_bridge' 2>/dev/null || true
@@ -13,13 +29,24 @@ pkill -f 'ssh.*14551.*raspi' 2>/dev/null || true
 
 # 2. Start RTK Base Station (port 2101)
 echo "[1/4] Starting RTK Base Station..."
-python3 -c "
+if [ "$USE_V2" = "1" ]; then
+    python3 -c "
+import subprocess, sys
+p = subprocess.Popen([sys.executable, '-u', 'rtk_tools/rtk_base_station_v2.py',
+    '--config', 'config/base_station.json',
+    '--tcp-port', '2101', '--log-level', 'INFO'],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+print(f'Base PID={p.pid}')
+"
+else
+    python3 -c "
 import subprocess, sys
 p = subprocess.Popen([sys.executable, '-u', 'rtk_tools/rtk_base_station.py',
     '--serial-port', '/dev/tty.usbmodem113301', '--tcp-port', '2101', '--log-level', 'INFO'],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
 print(f'Base PID={p.pid}')
 "
+fi
 sleep 5
 
 # Verify RTCM

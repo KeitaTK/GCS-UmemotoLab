@@ -20,6 +20,8 @@ Windows PC -> TCP/Wi-Fi -> Raspberry Pi 5 -> Serial/USB -> Pixhawk
 
 ### 1. 起動
 
+#### v1（旧バージョン、デフォルト）
+
 ```powershell
 # Windows 側
 python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0.0 --tcp-port 2101 --log-level INFO
@@ -28,18 +30,45 @@ python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0
 ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
 ```
 
+#### v2（F9P設定統合版）
+
+```powershell
+# Windows 側（config/base_station.json を使用）
+python rtk_tools/rtk_base_station_v2.py --config config/base_station.json --tcp-port 2101 --log-level INFO
+
+# Mac/Linux 側
+python rtk_tools/rtk_base_station_v2.py --config config/base_station.json --tcp-port 2101 --log-level INFO
+
+# Raspberry Pi 側
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
+```
+
+#### rtk_monitor.sh で切り替え
+
+```bash
+# v1（デフォルト）
+bash scripts/rtk_monitor.sh
+
+# v2
+bash scripts/rtk_monitor.sh --v2
+USE_V2=1 bash scripts/rtk_monitor.sh
+```
+
 ### 2. 設定
 
 - `config/gcs.yml`: 標準設定
 - `config/gcs_local.yml`: ローカル実行用設定
 - `config/gcs.user.local.yml`: Git 管理外の個人設定
 - `config/rtk_forwarder.yml`: RTK 転送サービス設定
+- `config/base_station.json`: v2 基地局設定（シリアルポート・基準座標）
 
 ### 3. 主要コンポーネント
 
 - `app/main.py`: GUI 実行の入口
 - `app/backend_server.py`: Raspberry Pi 用ヘッドレス実行
-- `rtk_base_station.py`: Windows 側 RTK 基地局
+- `rtk_base_station.py`: Windows 側 RTK 基地局 (v1)
+- `rtk_tools/rtk_base_station_v2.py`: F9P設定統合版 基地局 (v2)
+- `config/base_station.json`: v2 用 基地局設定ファイル
 - `app/mavlink/rtcm_reader.py`: RTCM 受信
 - `app/mavlink/rtcm_injector.py`: RTCM → GPS_RTCM_DATA 変換
 - `app/mavlink/message_router.py`: MAVLink メッセージ中継

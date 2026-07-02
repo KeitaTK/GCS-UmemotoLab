@@ -441,7 +441,7 @@ Week 1          Week 2          Week 3          Week 4
 - [ ] GCSサーバー起動確認: `curl http://localhost:8000/api/status`
 - [ ] Web UI表示確認: ブラウザで http://localhost:8000 表示
 - [ ] direct_bridge.py 起動確認（Tailscale直結）
-- [ ] rtk_base_station.py 起動確認・RTCM出力中
+- [ ] 基地局起動確認・RTCM出力中（v1: `rtk_base_station.py` / v2: `rtk_base_station_v2.py`）
 - [ ] Droneカード表示確認（接続・テレメトリ受信中）
 - [ ] ARMING_CHECK = 1（全チェック有効）を確認
 - [ ] FS_GCS_ENABLE = 1 確認
@@ -553,6 +553,8 @@ Week 1          Week 2          Week 3          Week 4
 | **Raspi Tailscale IP** | `100.123.158.105` |
 | **Raspi mavlink-routerd port** | `5760` (TCP) |
 | **Direct bridge** | UDP `127.0.0.1:14552` → TCP `100.123.158.105:5760` |
+| **RTK基地局** | v1: `rtk_base_station.py` / v2: `rtk_base_station_v2.py` |
+| **RTK base station config** | `config/base_station.json` (v2用) |
 | **RTCM TCP** | `127.0.0.1:2101` (localhost) |
 | **u-blox device** | `/dev/tty.usbmodem113301` |
 | **GPS_TYPE** | 9 (DroneCAN) |
@@ -566,10 +568,18 @@ Week 1          Week 2          Week 3          Week 4
 # 1. u-blox確認
 ls /dev/tty.usbmodem*
 
-# 2. RTK基地局起動
+# 2. RTK基地局起動（v1: 旧バージョン、デフォルト）
 cd ~/GCS-UmemotoLab && source .venv/bin/activate
 nohup python rtk_tools/rtk_base_station.py \
   --serial-port /dev/tty.usbmodem113301 --tcp-port 2101 &
+
+# 2'. RTK基地局起動（v2: F9P設定統合版）
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+nohup python rtk_tools/rtk_base_station_v2.py \
+  --config config/base_station.json --tcp-port 2101 &
+
+# 2''. rtk_monitor.sh で v2 起動
+USE_V2=1 bash scripts/rtk_monitor.sh
 
 # 3. direct_bridge起動（Tailscale直結）
 python scripts/direct_bridge.py &
@@ -595,6 +605,7 @@ tail -f /tmp/gcs_web.log | grep "fix="
 | 通信アーキテクチャ | `docs/communication-architecture.md` | 通信経路詳細 |
 | Web UI仕様 | `docs/web-ui-spec.md` | GCS Web UIの機能一覧 |
 | RTK基地局実装 | `docs/RTK_BASE_STATION_IMPLEMENTATION.md` | RTK基地局コード詳細 |
+| 基地局設定 (v2) | `config/base_station.json` | F9P統合版 JSON設定 |
 
 ---
 
