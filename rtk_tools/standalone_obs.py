@@ -1,0 +1,390 @@
+#!/usr/bin/env python3
+"""
+Standalone GPS Observation - F9P 単独測位 観測スクリプト
+
+RTKなしでF9PからNMEAセンテンスを受信し、指定時間観測した後、
+最良Fix品質のグループの平均座標を表示します。
+
+使用例:
+  python rtk_tools/standalone_obs.py
+  python rtk_tools/standalone_obs.py --port /dev/ttyACM0 --baudrate 115200 --duration 120
+  python rtk_tools/standalone_obs.py --csv
+"""
+
+import argparse
+import math
+import signal
+import sys
+import time
+from dataclasses import dataclass
+from typing import Optional
+
+import serial
+
+# ---------------------------------------------------------------------------
+# 定数
+# ---------------------------------------------------------------------------
+FIX_NAMES = {
+    0: "NoFix",
+    1: "GPS",
+    2: "DGPS",
+    4: "RTK_FIXED",
+    5: "RTK_FLOAT",
+}
+
+FIX_PRIORITY = {
+    0: 0,
+    1: 1,
+    2: 2,
+    5: 3,
+    4: 4,
+}
+
+METERS_PER_DEG_LAT = 111320.0
+
+
+# ---------------------------------------------------------------------------
+# データクラス
+# ---------------------------------------------------------------------------
+@dataclass
+class GpsSample:
+    """1回のGPS観測を表すデータクラス"""
+    fix_type: int
+    latitude: float
+    longitude: float
+    altitude: float
+    satellites_used: int
+    hdop: float
+    timestamp: float
+
+
+# ---------------------------------------------------------------------------
+# NMEA パース
+# ---------------------------------------------------------------------------
+def _ddmm_to_degrees(raw: float) -> float:
+    """ddmm.mmmm → 度単位に変換 (rtk_base_station.py と同じ計算方式)"""
+    deg = int(raw / 100)
+    return deg + (raw - deg * 100) / 60.0
+
+
+def _nmea_checksum_ok(sentence: str) -> bool:
+    """簡易チェックサム検証 ($ と * の間の XOR)"""
+    if "*" not in sentence:
+        return True
+    try:
+        data, csum_str = sentence.split("*")
+        csum_expected = int(csum_str.strip(), 16)
+    except ValueError:
+        return False
+    csum_calc = 0
+    for ch in data[1:]:
+        csum_calc ^= ord(ch)
+    return csum_calc == csum_expected
+
+
+def parse_nmea_gga(line: str) -> Optional[GpsSample]:
+    """$GxGGA センテンス1行をパース"""
+    line = line.strip()
+    if not line:
+        return None
+
+    if not (line.startswith("$GNGGA") or line.startswith("$GPGGA")):
+        return None
+
+    if not _nmea_checksum_ok(line):
+        return None
+
+    parts = line.split(",")
+    if len(parts) < 10:
+        return None
+
+    try:
+        if not parts[2] or not parts[4]:
+            return None
+
+        lat_raw = float(parts[2])
+        lat = _ddmm_to_degrees(lat_raw)
+        if parts[3] == "S":
+            lat = -lat
+
+        lon_raw = float(parts[4])
+        lon = _ddmm_to_degrees(lon_raw)
+        if parts[5] == "W":
+            lon = -lon
+
+        alt = float(parts[9]) if parts[9] else 0.0
+        fix_type = int(parts[6]) if parts[6] else 0
+        sats = int(parts[7]) if parts[7] else 0
+        hdop = float(parts[8]) if parts[8] else 99.9
+
+        return GpsSample(
+            fix_type=fix_type,
+            latitude=lat,
+            longitude=lon,
+            altitude=alt,
+            satellites_used=sats,
+            hdop=hdop,
+            timestamp=time.time(),
+        )
+    except (ValueError, IndexError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# 観測クラス
+# ---------------------------------------------------------------------------
+class StandaloneObserver:
+    """F9P 単独測位 観測クラス"""
+
+    def __init__(self, port: str, baudrate: int, duration_sec: int,
+                 show_csv: bool = False):
+        self.port = port
+        self.baudrate = baudrate
+        self.duration_sec = duration_sec
+        self.show_csv = show_csv
+        self.samples: list[GpsSample] = []
+        self.best_fix_seen = 0
+        self._interrupted = False
+        signal.signal(signal.SIGINT, self._sigint_handler)
+
+    def _sigint_handler(self, signum, frame):
+        self._interrupted = True
+
+    def _open_serial(self):
+        """シリアルポートを開く"""
+        print(f"シリアル接続中... {self.port} @ {self.baudrate} bps")
+        try:
+            ser = serial.Serial(self.port, self.baudrate, timeout=1.0)
+            ser.reset_input_buffer()
+            return ser
+        except serial.SerialException as e:
+            print(f"[ERROR] シリアルポートを開けません: {e}")
+            sys.exit(1)
+
+    def _format_fix(self, fix_type: int) -> str:
+        """Fixタイプの可読表現"""
+        name = FIX_NAMES.get(fix_type, f"UNKNOWN({fix_type})")
+        return f"{name}({fix_type})"
+
+    def _print_realtime(self, remaining: float, sample: Optional[GpsSample]):
+        """リアルタイムステータス表示（行上書き）"""
+        fix_str = self._format_fix(sample.fix_type) if sample else "---"
+        line = (
+            f"\r  [残り {remaining:4.0f}s] "
+            f"Fix={fix_str}  "
+            f"サンプル数={len(self.samples):4d}  "
+            f"最高Fix={self._format_fix(self.best_fix_seen)}  "
+        )
+        sys.stdout.write(line.ljust(100))
+        sys.stdout.flush()
+
+    def _lon_scale(self, lat_deg: float) -> float:
+        """指定緯度での経度1度あたりの距離 [m]"""
+        return METERS_PER_DEG_LAT * math.cos(math.radians(lat_deg))
+
+    def _stats_for_group(self, samples: list[GpsSample], fix_name: str):
+        """指定グループの統計を表示"""
+        n = len(samples)
+        if n == 0:
+            print(f"\n  [{fix_name}] サンプルなし")
+            return
+
+        lats = [s.latitude for s in samples]
+        lons = [s.longitude for s in samples]
+        alts = [s.altitude for s in samples]
+        satss = [s.satellites_used for s in samples]
+        hdops = [s.hdop for s in samples]
+
+        mean_lat = sum(lats) / n
+        mean_lon = sum(lons) / n
+        mean_alt = sum(alts) / n
+        mean_sats = sum(satss) / n
+        mean_hdop = sum(hdops) / n
+
+        def _stdev(values, mean):
+            if n < 2:
+                return 0.0
+            var = sum((v - mean) ** 2 for v in values) / (n - 1)
+            return math.sqrt(var)
+
+        std_lat_deg = _stdev(lats, mean_lat)
+        std_lon_deg = _stdev(lons, mean_lon)
+        std_alt = _stdev(alts, mean_alt)
+        std_lat_m = std_lat_deg * METERS_PER_DEG_LAT
+        std_lon_m = std_lon_deg * self._lon_scale(mean_lat)
+
+        print(f"\n{'='*60}")
+        print(f"  ★ 最良Fix品質グループ: {fix_name} の統計")
+        print(f"{'='*60}")
+        print(f"  平均緯度:       {mean_lat:.7f} °")
+        print(f"  平均経度:       {mean_lon:.7f} °")
+        print(f"  平均高度(MSL):  {mean_alt:.2f} m")
+        print(f"  標準偏差(緯度): {std_lat_deg:.7f}°  ({std_lat_m:.3f} m)")
+        print(f"  標準偏差(経度): {std_lon_deg:.7f}°  ({std_lon_m:.3f} m)")
+        print(f"  標準偏差(高度): {std_alt:.2f} m")
+        print(f"  サンプル数:     {n}")
+        print(f"  平均衛星数:     {mean_sats:.1f}")
+        print(f"  平均HDOP:       {mean_hdop:.2f}")
+
+        if self.show_csv and n > 0:
+            self._print_csv(samples, fix_name)
+
+    def _print_csv(self, samples: list[GpsSample], fix_name: str):
+        """指定グループの全サンプルをCSV形式で表示"""
+        print(f"\n  [{fix_name}] 全サンプル (CSV):")
+        print("  fix_type,latitude,longitude,altitude,satellites,hdop,timestamp")
+        for s in samples:
+            print(
+                f"  {s.fix_type},{s.latitude:.7f},{s.longitude:.7f},"
+                f"{s.altitude:.2f},{s.satellites_used},{s.hdop:.2f},"
+                f"{s.timestamp:.3f}"
+            )
+
+    def run(self):
+        """メイン観測ループ"""
+        print("=" * 60)
+        print("  F9P 単独GPS観測 - Standalone Observation")
+        print("=" * 60)
+        print(f"  ポート:     {self.port}")
+        print(f"  ボーレート: {self.baudrate}")
+        print(f"  観測時間:   {self.duration_sec} 秒")
+        print()
+
+        ser = self._open_serial()
+        print("観測を開始します... Ctrl+C で中断\n")
+
+        start_time = time.time()
+        end_time = start_time + self.duration_sec
+        last_display = 0.0
+
+        try:
+            while time.time() < end_time and not self._interrupted:
+                try:
+                    raw = ser.readline()
+                except serial.SerialException as e:
+                    print(f"\n[ERROR] シリアル読み取りエラー: {e}")
+                    break
+
+                if not raw:
+                    continue
+
+                try:
+                    line = raw.decode("ascii", errors="replace")
+                except UnicodeDecodeError:
+                    continue
+
+                sample = parse_nmea_gga(line)
+                if sample is None:
+                    continue
+
+                self.samples.append(sample)
+
+                if FIX_PRIORITY.get(sample.fix_type, -1) > FIX_PRIORITY.get(self.best_fix_seen, -1):
+                    self.best_fix_seen = sample.fix_type
+
+                now = time.time()
+                if now - last_display >= 1.0 or self._interrupted:
+                    remaining = max(0, end_time - now)
+                    self._print_realtime(remaining, sample)
+                    last_display = now
+
+        except KeyboardInterrupt:
+            self._interrupted = True
+
+        finally:
+            ser.close()
+            print("\n")
+
+        self._print_results()
+
+    def _print_results(self):
+        """観測結果の集計と表示"""
+        total = len(self.samples)
+
+        print("=" * 60)
+        print("  観測サマリ")
+        print("=" * 60)
+        print(f"  総観測数: {total}")
+
+        if total > 0:
+            elapsed = self.samples[-1].timestamp - self.samples[0].timestamp
+            rate = total / max(elapsed, 0.1)
+            print(f"  観測時間: {elapsed:.1f} 秒  ({rate:.1f} サンプル/秒)")
+
+        print()
+
+        if total == 0:
+            print("  [警告] 観測データがありません。")
+            print("  - シリアル接続とF9Pの電源を確認してください。")
+            print("  - F9PがNMEA GGAセンテンスを出力しているか確認してください。")
+            return
+
+        counts: dict[int, int] = {}
+        for s in self.samples:
+            counts[s.fix_type] = counts.get(s.fix_type, 0) + 1
+
+        print("  Fix品質 内訳:")
+        for ft in sorted(counts.keys()):
+            name = self._format_fix(ft)
+            cnt = counts[ft]
+            pct = cnt / total * 100
+            bar = "█" * int(pct / 2)
+            print(f"    {name:<18s} {cnt:5d}  ({pct:5.1f}%)  {bar}")
+
+        best_fix = max(counts.keys(), key=lambda ft: FIX_PRIORITY.get(ft, -1))
+        best_name = self._format_fix(best_fix)
+        best_samples = [s for s in self.samples if s.fix_type == best_fix]
+        self._stats_for_group(best_samples, best_name)
+
+        print()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description="F9P 単独GPS観測 - 最良Fix品質の平均座標を表示",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  python rtk_tools/standalone_obs.py
+  python rtk_tools/standalone_obs.py --port /dev/ttyACM0 --baudrate 115200
+  python rtk_tools/standalone_obs.py --duration 120 --csv
+        """,
+    )
+    parser.add_argument(
+        "--port",
+        default="/dev/tty.usbmodem113301",
+        help="シリアルポート (デフォルト: /dev/tty.usbmodem113301)",
+    )
+    parser.add_argument(
+        "--baudrate",
+        type=int,
+        default=38400,
+        help="ボーレート (デフォルト: 38400)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=60,
+        help="観測時間 [秒] (デフォルト: 60)",
+    )
+    parser.add_argument(
+        "--csv",
+        action="store_true",
+        help="最良Fix品質グループの全サンプルをCSV形式で表示",
+    )
+    args = parser.parse_args()
+
+    observer = StandaloneObserver(
+        port=args.port,
+        baudrate=args.baudrate,
+        duration_sec=args.duration,
+        show_csv=args.csv,
+    )
+    observer.run()
+
+
+if __name__ == "__main__":
+    main()
