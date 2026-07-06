@@ -39,7 +39,7 @@ base_station:
   mode: "auto"
   
   # autoモード用設定
-  auto_obs_duration: 10          # 単独測位の観測時間（秒）
+  auto_obs_duration: 30          # 単独測位の観測時間（秒）
   
   # manualモード用設定（mode=manual のときのみ使用）
   serial_port: "COM10"           # F9P 接続シリアルポート
