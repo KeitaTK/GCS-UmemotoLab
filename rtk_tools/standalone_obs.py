@@ -61,7 +61,9 @@ class GpsSample:
     fix_type: int
     latitude: float
     longitude: float
-    altitude: float
+    altitude: float       # 楕円体高 (HAE) = MSL + ジオイド分離量
+    geoid_sep: float      # ジオイド分離量 [m]
+    altitude_msl: float   # 平均海面高 [m]
     satellites_used: int
     hdop: float
     timestamp: float
@@ -121,7 +123,10 @@ def parse_nmea_gga(line: str) -> Optional[GpsSample]:
         if parts[5] == "W":
             lon = -lon
 
-        alt = float(parts[9]) if parts[9] else 0.0
+        # GGA: field6=fix, field7=sats, field8=hdop, field9=alt(MSL), field10=M, field11=geoid_sep
+        alt_msl = float(parts[9]) if parts[9] else 0.0
+        geoid_sep = float(parts[11]) if len(parts) > 11 and parts[11] else 0.0
+        alt_hae = alt_msl + geoid_sep  # 楕円体高 = MSL + ジオイド分離量
         fix_type = int(parts[6]) if parts[6] else 0
         sats = int(parts[7]) if parts[7] else 0
         hdop = float(parts[8]) if parts[8] else 99.9
@@ -130,13 +135,69 @@ def parse_nmea_gga(line: str) -> Optional[GpsSample]:
             fix_type=fix_type,
             latitude=lat,
             longitude=lon,
-            altitude=alt,
+            altitude=alt_hae,        # HAE (楕円体高)
+            geoid_sep=geoid_sep,
+            altitude_msl=alt_msl,
             satellites_used=sats,
             hdop=hdop,
             timestamp=time.time(),
         )
     except (ValueError, IndexError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# ポート自動検出（USBポートのみ、VID=0x1546 + PID=0x01A9）
+# ---------------------------------------------------------------------------
+def _auto_detect_port() -> str:
+    """利用可能なCOMポートをスキャンし、EVK-F9PのUSBポートを返す。
+
+    USBポート（VID=0x1546, PID=0x01A9）を最優先で検出する。
+    USBポートがない場合は UART1（PID=0x0507）→ UART2（PID=0x0508）の順にフォールバック。
+
+    Returns:
+        ポート名（例: "COM10", "COM3", "/dev/ttyACM0"）
+
+    Raises:
+        SystemExit: シリアルポートが1つも見つからない場合
+    """
+    import serial.tools.list_ports
+
+    ports = list(serial.tools.list_ports.comports())
+    if not ports:
+        print("[ERROR] シリアルポートが見つかりません。")
+        print("  - F9P の USB ケーブルを確認してください。")
+        print("  - `--port` でポートを直接指定することもできます。")
+        sys.exit(1)
+
+    # ポート一覧表示
+    print("\n検出されたシリアルポート:")
+    print(f"  {'ポート':<12} {'VID:PID':<14} {'説明'}")
+    print(f"  {'-'*12} {'-'*14} {'-'*40}")
+    for p in ports:
+        vid_pid = f"{p.vid:04x}:{p.pid:04x}" if p.vid and p.pid else "(none)"
+        marker = ""
+        if p.vid == 0x1546 and p.pid == 0x01A9:
+            marker = " ← USB(推奨)"
+        elif p.vid == 0x1546:
+            marker = " ← F9P"
+        print(f"  {p.device:<12} {vid_pid:<14} {p.description}{marker}")
+    print()
+
+    # 優先順: USB(PID=0x01A9) > UART1(PID=0x0507) > UART2(PID=0x0508)
+    priority_pids = [0x01A9, 0x0507, 0x0508]
+    for pid in priority_pids:
+        for p in ports:
+            if p.vid == 0x1546 and p.pid == pid:
+                port_name = f"USBネイティブ" if pid == 0x01A9 else f"UART{'1' if pid == 0x0507 else '2'}"
+                print(f"→ {port_name} ポートを検出: {p.device}")
+                print(f"\n→ 使用ポート: {p.device}")
+                return p.device
+
+    # F9P以外のポートがあれば最初のポートを使う
+    print(f"  [WARN] F9Pポートが見つかりません。")
+    print(f"  → 最初のポートを使用: {ports[0].device}")
+    return ports[0].device
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +493,92 @@ class StandaloneObserver:
 
 
 # ---------------------------------------------------------------------------
+# 公開API（他のモジュールからの再利用用）
+# ---------------------------------------------------------------------------
+def auto_detect_port() -> str:
+    """外部から呼び出し可能な USB ポート自動検出"""
+    return _auto_detect_port()
+
+
+def auto_observe_position(port: str, baudrate: int = 115200,
+                          duration_sec: int = 60) -> Optional[dict]:
+    """指定ポートで単独測位し、最良Fix品質グループの平均座標を返す。
+
+    Returns:
+        {'lat': float, 'lon': float, 'alt': float(HAE),
+         'alt_msl': float, 'geoid_sep': float, 'fix_type': int,
+         'samples': int, 'std_lat_m': float, 'std_lon_m': float, 'std_alt': float}
+        または None（データ不足時）
+    """
+    observer = StandaloneObserver(
+        port=port, baudrate=baudrate, duration_sec=duration_sec,
+        set_rover=True, show_csv=False, save_csv=False,
+    )
+    observer.run()
+
+    if not observer.samples:
+        return None
+
+    # 最良Fix品質のグループを抽出
+    counts: dict[int, int] = {}
+    for s in observer.samples:
+        counts[s.fix_type] = counts.get(s.fix_type, 0) + 1
+    best_fix = max(counts.keys(), key=lambda ft: FIX_PRIORITY.get(ft, -1))
+    best_samples = [s for s in observer.samples if s.fix_type == best_fix]
+
+    if not best_samples:
+        return None
+
+    n = len(best_samples)
+    lats = [s.latitude for s in best_samples]
+    lons = [s.longitude for s in best_samples]
+    alts = [s.altitude for s in best_samples]
+
+    mean_lat = sum(lats) / n
+    mean_lon = sum(lons) / n
+    mean_alt = sum(alts) / n
+
+    def _stdev(values, mean):
+        if n < 2:
+            return 0.0
+        return math.sqrt(sum((v - mean) ** 2 for v in values) / (n - 1))
+
+    std_lat_m = _stdev(lats, mean_lat) * METERS_PER_DEG_LAT
+    std_lon_m = _stdev(lons, mean_lon) * (METERS_PER_DEG_LAT * math.cos(math.radians(mean_lat)))
+    std_alt = _stdev(alts, mean_alt)
+
+    # 標高表示用（サンプル0番目のgeoid_sepを参考表示）
+    geoid_sep = best_samples[0].geoid_sep
+    alt_msl = best_samples[0].altitude_msl
+
+    print(f"\n{'='*60}")
+    print(f"  ★ 自動測位結果（最良Fix品質グループ）")
+    print(f"{'='*60}")
+    print(f"  Fix品質:    {FIX_NAMES.get(best_fix, f'UNKNOWN({best_fix})')}")
+    print(f"  平均緯度:   {mean_lat:.7f} °")
+    print(f"  平均経度:   {mean_lon:.7f} °")
+    print(f"  平均高度:   {mean_alt:.2f} m (楕円体高 HAE)")
+    print(f"  平均高度:   {alt_msl:.2f} m (海抜 MSL)")
+    print(f"  ジオイド分離量: {geoid_sep:.2f} m")
+    print(f"  標準偏差:   緯度{std_lat_m:.3f}m / 経度{std_lon_m:.3f}m / 高度{std_alt:.2f}m")
+    print(f"  サンプル数: {n}")
+    print()
+
+    return {
+        'lat': mean_lat,
+        'lon': mean_lon,
+        'alt': mean_alt,          # 楕円体高 (HAE)
+        'alt_msl': alt_msl,
+        'geoid_sep': geoid_sep,
+        'fix_type': best_fix,
+        'samples': n,
+        'std_lat_m': std_lat_m,
+        'std_lon_m': std_lon_m,
+        'std_alt': std_alt,
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main():
@@ -447,8 +594,8 @@ def main():
     )
     parser.add_argument(
         "--port",
-        default=_hw_config['f9p']['serial_port'],
-        help=f"シリアルポート (デフォルト: {_hw_config['f9p']['serial_port']})",
+        default=None,
+        help=f"シリアルポート (省略時は自動検出)",
     )
     parser.add_argument(
         "--baudrate",
@@ -484,8 +631,13 @@ def main():
     )
     args = parser.parse_args()
 
+    # ポート未指定 → 自動検出
+    port = args.port
+    if port is None:
+        port = _auto_detect_port()
+
     observer = StandaloneObserver(
-        port=args.port,
+        port=port,
         baudrate=args.baudrate,
         duration_sec=args.duration,
         show_csv=args.csv,
