@@ -58,10 +58,7 @@ class MavlinkConnection:
             self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
         
         # MAVLink encode/decode object using a bytearray buffer
-        # Use v20 dialect for v2 frames (0xFD magic) — v1 frames on the same
-        # UDP socket can interfere with the receive loop in mavlink-router.
-        from pymavlink.dialects.v20 import ardupilotmega as mavlink2
-        self.mav = mavlink2.MAVLink(bytearray())
+        self.mav = mavutil.mavlink.MAVLink(bytearray())
         
         self.running = False
         self.recv_thread = None
