@@ -3,19 +3,17 @@
 RTK Base Station v2 - F9P設定統合版 基地局スクリプト
 
 起動フロー:
-  1. JSON設定ファイル (config/base_station.json) を読み込み
+  1. config/config.yml から設定読み込み
   2. F9pConfigurator で F9P を基地局モードに設定（毎回実行、CFG-VALSET で冪等）
      - STEP1: TMODE3 Fixed Mode 設定
      - STEP2: RTCM3 出力メッセージ有効化
      - STEP3: 設定確認（check_tmode3）
   3. シリアルポートを開いて RTCM 受信開始
-  4. TCP サーバー起動（ポート 2101）
-  5. UDP ブロードキャスト（オプション）
+  4. MAVLink GPS_RTCM_DATA を UDP 送信（mavlink-router → Pixhawk）
 
 Usage:
-  python rtk_base_station_v2.py
-  python rtk_base_station_v2.py --config config/base_station.json
-  python rtk_base_station_v2.py --tcp-port 2110 --log-level DEBUG
+  python rtk_tools/rtk_base_station_v2.py
+  python rtk_tools/rtk_base_station_v2.py --rtcm-target 127.0.0.1:14550 --log-level DEBUG
 """
 
 import argparse

@@ -16,13 +16,9 @@ connection:
   serial_baudrate: 115200       # Pixhawk TELEM1 とのボーレート
   udp_listen_port: 14550        # UDPモード時の待受ポート
 
-# ============================================================================
-# RTCM/RTK 補正データ設定
-# ============================================================================
-rtcm:
-  enabled: true                 # RTK補正データ注入を有効化
-  host: 127.0.0.1               # PC側 RTK基地局（rtk_base_station.py）のIP
-  port: 2101                    # PC側 TCPサーバーポート（rtk_base_station の --tcp-port）
+# 注意: RTCM/RTK 補正データは PC側の rtk_base_station.py が MAVLink
+# GPS_RTCM_DATA として直接UDP送信し、mavlink-router が透過的に Pixhawk
+# に転送するため、ラズパイ側での設定は不要です。
 
 # ============================================================================
 # ドローン設定

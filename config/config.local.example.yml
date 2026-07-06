@@ -23,6 +23,9 @@
 #  enabled: true
 #  host: 127.0.0.1
 #  port: 2101
+#
+#rtcm_send:
+#  target: "127.0.0.1:14552"    # SSHトンネル経由でGPS_RTCM_DATA送信
 
 # ============================================================================
 # 例2: 手動SSHトンネル接続
@@ -38,9 +41,12 @@
 #    name: "Pixhawk6C Main"
 #
 #rtcm:
-#  enabled: false
+#  enabled: true
 #  host: 127.0.0.1
 #  port: 2101
+#
+#rtcm_send:
+#  target: "127.0.0.1:14550"    # SSHトンネル経由（手動 -L 14550）
 
 # ============================================================================
 # 例3: マルチドローン（シリアル接続）
@@ -61,6 +67,9 @@
 #    name: "Survey Drone"
 #
 #rtcm:
-#  enabled: false
+#  enabled: true
 #  host: 127.0.0.1
 #  port: 2101
+#
+#rtcm_send:
+#  target: "127.0.0.1:14550"    # 同一マシンのmavlink-routerへ
