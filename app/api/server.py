@@ -9,6 +9,7 @@ FastAPI アプリケーション定義。静的エンドポイントはここで
 import asyncio
 import json
 import logging
+import os
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -213,16 +214,21 @@ def _decode_flight_mode(mode: int) -> str:
     return _COPTER_MODES.get(mode, f"MODE_{mode}")
 
 
-# === Springy Fly: index.html ===
+# === index.html ===
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 @app.get("/")
 async def root():
     """GCS Web UI を提供"""
-    try:
-        with open("web/static/index.html", "r") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
+    candidates = [
+        os.path.join(_PROJECT_ROOT, "web", "static", "index.html"),
+        os.path.join(_PROJECT_ROOT, "app", "web", "index.html"),
+    ]
+    for path in candidates:
         try:
-            with open("app/web/index.html", "r") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 return HTMLResponse(content=f.read())
-        except FileNotFoundError:
-            return HTMLResponse(content="<h1>GCS-UmemotoLab API</h1><p>API is running. Web UI not found.</p>")
+        except OSError:
+            continue
+    return HTMLResponse(content="<h1>GCS-UmemotoLab API</h1><p>API is running. Web UI not found.</p>")

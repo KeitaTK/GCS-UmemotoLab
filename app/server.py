@@ -43,8 +43,9 @@ app.add_middleware(
 )
 
 # -- Static files mount --------------------------------------------------
+_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "static")
 try:
-    app.mount("/static", StaticFiles(directory="web/static"), name="static")
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 except RuntimeError:
     pass  # Already mounted or directory missing at import time
 
@@ -74,7 +75,7 @@ async def on_startup():
     asyncio.create_task(broadcast_telemetry())   # existing 0.5s loop
     asyncio.create_task(broadcast_loop())         # enhanced 1s loop
 
-    logger.info("=== GCS Web Server started (100.95.30.60:8000) ===\n"
+    logger.info("=== GCS Web Server started ===\n"
                 "    Backend not connected. Use POST /api/connect to connect.")
 
 
@@ -107,10 +108,15 @@ async def on_shutdown():
 # =========================================================================
 
 if __name__ == "__main__":
+    from rtk_tools.config_loader import load_config
+    config = load_config()
+    srv_cfg = config.get("server", {})
+    host = srv_cfg.get("host", "0.0.0.0")
+    port = srv_cfg.get("port", 8000)
     uvicorn.run(
         "server:app",
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         log_level="info",
         reload=False,
     )

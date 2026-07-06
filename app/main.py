@@ -112,10 +112,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GCS-UmemotoLab")
     parser.add_argument("--native", action="store_true",
         help="Launch PySide6 GUI (default: start FastAPI web server)")
-    parser.add_argument("--host", default="0.0.0.0",
-        help="Server bind address (default: 100.95.30.60)")
-    parser.add_argument("--port", type=int, default=8080,
-        help="Server port (default: 8080)")
+    parser.add_argument("--host", default=None,
+        help="Server bind address (default: from config.yml)")
+    parser.add_argument("--port", type=int, default=None,
+        help="Server port (default: from config.yml)")
     args = parser.parse_args()
 
     setup_logging()
@@ -213,13 +213,18 @@ if __name__ == "__main__":
         # =====================================================================
         #  Default: Web Server mode (FastAPI)
         # =====================================================================
-        logger.info(f"GCS Webサーバーを起動します: {args.host}:{args.port}")
+        from rtk_tools.config_loader import load_config
+        config = load_config()
+        srv_cfg = config.get("server", {})
+        host = args.host or srv_cfg.get("host", "0.0.0.0")
+        port = args.port or srv_cfg.get("port", 8000)
+        logger.info(f"GCS Webサーバーを起動します: {host}:{port}")
 
         import uvicorn
         uvicorn.run(
             "app.server:app",
-            host=args.host,
-            port=args.port,
+            host=host,
+            port=port,
             log_level="info",
             reload=False,
         )
