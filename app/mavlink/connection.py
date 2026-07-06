@@ -37,10 +37,11 @@ class MavlinkConnection:
             # Serial connection for Pixhawk
             self.serial_port = self.config.get('serial_port', '/dev/ttyACM0')
             self.serial_baudrate = self.config.get('serial_baudrate', 115200)
+            self.serial_rtscts = self.config.get('serial_rtscts', False)
             self.serial_conn = None
             self.serial_error_count = 0
             self.serial_max_errors = 5  # Consecutive errors before critical
-            self.logger.info(f"Serial mode: {self.serial_port} @ {self.serial_baudrate} baud")
+            self.logger.info(f"Serial mode: {self.serial_port} @ {self.serial_baudrate} baud, rtscts={self.serial_rtscts}")
         else:
             # UDP connection (default)
             self.udp_port = self.config.get('udp_listen_port', 14550)
@@ -142,7 +143,8 @@ class MavlinkConnection:
                         self.serial_conn = serial.Serial(
                             self.serial_port,
                             self.serial_baudrate,
-                            timeout=1
+                            timeout=1,
+                            rtscts=self.serial_rtscts
                         )
                         self.is_connected = True
                         self.serial_error_count = 0

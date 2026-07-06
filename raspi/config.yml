@@ -13,7 +13,8 @@
 connection:
   type: serial                  # serial または udp
   serial_port: /dev/ttyAMA0     # Pixhawk シリアルデバイス（UART GPIO: Pin 8/10）
-  serial_baudrate: 115200       # Pixhawk TELEM1 とのボーレート
+  serial_baudrate: 1000000       # Pixhawk TELEM1 とのボーレート（1M）
+  serial_rtscts: true            # RTS/CTS フロー制御を有効化
   udp_listen_port: 14550        # UDPモード時の待受ポート
 
 # ============================================================================

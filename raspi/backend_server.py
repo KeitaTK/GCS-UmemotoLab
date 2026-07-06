@@ -72,6 +72,7 @@ def main():
             "connection_type": conn_cfg.get("type", "serial"),
             "serial_port": conn_cfg.get("serial_port", "/dev/ttyAMA0"),
             "serial_baudrate": conn_cfg.get("serial_baudrate", 115200),
+            "serial_rtscts": conn_cfg.get("serial_rtscts", False),
             "udp_listen_port": conn_cfg.get("udp_listen_port", 14550),
             "drones": {},
             "rtcm_enabled": rtcm_cfg.get("enabled", True),
