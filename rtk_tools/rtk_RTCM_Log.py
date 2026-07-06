@@ -81,6 +81,9 @@ class Config:
     log_level: str = "INFO"
     log_file: str = "rtk_base_station.log"
 
+    # ログ取得専用モード（TCP/UDPなし、RTCM生ログ保存のみ）
+    log_only: bool = False
+
 
 def _merge_config(json_path: Optional[str], args: argparse.Namespace) -> Config:
     """hardware.yml とCLI引数をマージして Config を生成する
