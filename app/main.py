@@ -118,7 +118,9 @@ if __name__ == "__main__":
         help="Server port (default: from config.yml)")
     args = parser.parse_args()
 
-    setup_logging()
+    from rtk_tools.config_loader import load_config
+    _cfg = load_config()
+    setup_logging(_cfg)
     logger = logging.getLogger(__name__)
 
     if args.native:

@@ -228,7 +228,20 @@ async def root():
     for path in candidates:
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
+                html = f.read()
         except OSError:
             continue
+        else:
+            # Inject server port from config.yml for WebSocket connection
+            try:
+                from rtk_tools.config_loader import load_config
+                _cfg = load_config()
+                _port = _cfg.get("server", {}).get("port", 8010)
+            except Exception:
+                _port = 8010
+            _inject = f'<script>window.SERVER_PORT = {_port};</script>\n'
+            _marker = '<script src="/static/js/websocket.js"></script>'
+            if _inject not in html:
+                html = html.replace(_marker, _inject + _marker)
+            return HTMLResponse(content=html)
     return HTMLResponse(content="<h1>GCS-UmemotoLab API</h1><p>API is running. Web UI not found.</p>")

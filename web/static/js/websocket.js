@@ -26,7 +26,7 @@ const WGS84_RADIUS_M = 6378137.0;
  */
 function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const port = location.port || '8000';
+    const port = location.port || (window.SERVER_PORT ? String(window.SERVER_PORT) : '8010');
     const wsUrl = `${protocol}//${location.hostname}:${port}/ws/telemetry`;
 
     updateWsStatus('reconnecting');

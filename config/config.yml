@@ -59,10 +59,26 @@ server:
   port: 8010               # ポート番号（学校のプロキシ 8080 と被らないように）
 
 # ============================================================================
-# 共通設定
+# ログ設定
 # ============================================================================
 log:
+  # 全体のログレベル (DEBUG | INFO | WARNING | ERROR | CRITICAL)
   level: INFO
+
+  # ターミナル（コンソール）出力設定
+  console:
+    enabled: true               # false でターミナル出力を停止
+    level: ERROR                 # ターミナルのログレベル
+
+  # ファイル出力設定
+  file:
+    enabled: true               # false でファイル出力を停止
+    level: DEBUG                # ファイルのログレベル
+    path: logs/gcs.log          # 出力先パス
+    max_bytes: 5242880          # 1ファイル最大サイズ (5MB)
+    backup_count: 5             # 保持するバックアップ数
+
+  # 統計ログの表示間隔（秒）
   stats_interval_sec: 5
 
 retry:

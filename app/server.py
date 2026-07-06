@@ -66,7 +66,9 @@ logger = logging.getLogger("server")
 async def on_startup():
     """Lightweight startup: logging only. Backend initialized via /api/connect."""
     from logging_config import setup_logging
-    setup_logging()
+    from rtk_tools.config_loader import load_config
+    _cfg = load_config()
+    setup_logging(_cfg)
     global logger
     logger = logging.getLogger("server")
     logger.info("=== GCS Web Server starting (lightweight) ===")
