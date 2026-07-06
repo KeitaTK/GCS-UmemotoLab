@@ -133,7 +133,7 @@ if __name__ == "__main__":
         from mavlink.connection import MavlinkConnection
         from mavlink.message_router import MessageRouter
         from rtk_tools.telemetry_store import TelemetryStore
-        from rtk_tools.rtcm_reader import RtcmReader
+        from rtk_tools.rtcm_serial_reader import RtcmSerialReader
         from rtk_tools.rtcm_injector import RtcmInjector
         from rtk_tools.rtcm_logger import RtcmLogger
         import threading
@@ -173,40 +173,45 @@ if __name__ == "__main__":
 
         rtcm_cfg = config.get('rtcm', {})
         rtcm_enabled = rtcm_cfg.get('enabled', True)
-        rtcm_host = rtcm_cfg.get('host', '127.0.0.1')
-        rtcm_port = rtcm_cfg.get('port', 2101)
+        rtcm_serial_port = rtcm_cfg.get('f9p_serial_port', 'COM8')
+        rtcm_baudrate = rtcm_cfg.get('f9p_baudrate', 115200)
 
-        rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
+        # F9Pシリアル直読み + Queue
+        rtcm_serial_reader = RtcmSerialReader(
+            serial_port=rtcm_serial_port,
+            baudrate=rtcm_baudrate,
+            enabled=rtcm_enabled,
+        )
         rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
-
-        # RTCMデータロガー（生データ・注入データ共に保存）
         rtcm_logger = RtcmLogger(enabled=rtcm_enabled)
         logger.info(f"RTCM logger initialized (enabled={rtcm_enabled})")
 
         def send_rtcm_message(frame_data):
             try:
                 mav_conn.send_to_system(1, frame_data)
-                mav_conn.send_to_system(2, frame_data)
-                # 注入フレームもログ保存（RTCMペイロードは抽出できないため frame のみ）
                 rtcm_logger.log_injected(frame_data)
-                logger.debug(f"RTCM frame sent to all systems: {len(frame_data)} bytes")
+                logger.debug(f"RTCM frame sent to system 1: {len(frame_data)} bytes")
             except Exception as e:
                 logger.error(f"Failed to send RTCM frame: {e}")
 
         rtcm_injector.set_send_callback(send_rtcm_message)
 
-        def on_rtcm_data(data):
-            # ログ保存: RTCM生データ
-            rtcm_logger.log_raw(data)
-            # MAVLink注入
-            rtcm_injector.inject(data)
+        # Queue ポーリングスレッド: serial → inject
+        def _rtcm_poll_loop():
+            while rtcm_serial_reader.running:
+                try:
+                    rtcm_frame = rtcm_serial_reader.queue.get(timeout=0.1)
+                    rtcm_logger.log_raw(rtcm_frame)
+                    rtcm_injector.inject(rtcm_frame)
+                except Exception:
+                    pass  # timeout or queue empty
 
-        rtcm_reader.register_callback(on_rtcm_data)
-        rtcm_reader.start()
+        rtcm_serial_reader.start()
+        threading.Thread(target=_rtcm_poll_loop, daemon=True).start()
 
         # RTCM統計を60秒ごとに表示するスレッド
         def rtcm_stats_printer():
-            while rtcm_reader.running:
+            while rtcm_serial_reader.running:
                 time.sleep(60)
                 rtcm_logger.print_stats()
 
@@ -216,7 +221,7 @@ if __name__ == "__main__":
         from ui.main_window import MainWindow
 
         app = QApplication(sys.argv)
-        window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn, rtcm_reader=rtcm_reader)
+        window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn, rtcm_reader=rtcm_serial_reader)
         window.show()
 
         logger.info("GUIイベントループを開始します。")
@@ -225,7 +230,7 @@ if __name__ == "__main__":
         logger.info("終了処理中...")
         router.stop()
         mav_conn.stop()
-        rtcm_reader.stop()
+        rtcm_serial_reader.stop()
         rtcm_logger.print_stats()
         rtcm_logger.close()
         logger.info("RTCM injection stopped.")

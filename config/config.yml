@@ -29,7 +29,7 @@ drones:
 # F9P ハードウェア設定（hardware.yml 由来）
 # ============================================================================
 f9p:
-  serial_port: "COM8"           # F9P 接続シリアルポート（デフォルト: Windows）
+  serial_port: "COM10"          # F9P 接続シリアルポート（USBネイティブ）
   baudrate: 115200              # F9P ボーレート
 
 base_station:
@@ -39,10 +39,10 @@ base_station:
   mode: "auto"
   
   # autoモード用設定
-  auto_obs_duration: 60          # 単独測位の観測時間（秒）
+  auto_obs_duration: 10          # 単独測位の観測時間（秒）
   
   # manualモード用設定（mode=manual のときのみ使用）
-  serial_port: "COM8"            # F9P 接続シリアルポート（Windows用）
+  serial_port: "COM10"           # F9P 接続シリアルポート
   fixed_lat: 35.681236           # 固定基準局 緯度（degree）
   fixed_lon: 139.767125          # 固定基準局 経度（degree）
   fixed_alt: 42.0                # 固定基準局 高度（楕円体高 HAE）[m]
@@ -52,14 +52,12 @@ base_station:
 # RTCM/RTK 設定
 # ============================================================================
 rtcm:
-  enabled: true
-  host: 127.0.0.1               # PC側（rtk_base_station接続用、旧TCP:2101）
-  port: 2101                    # PC側（rtk_base_station接続用）
-
-rtcm_send:
-  target: "127.0.0.1:14550"     # GPS_RTCM_DATA 送信先（mavlink-router）
-                                # 開発: 127.0.0.1:14550（同一マシン）
-                                # 本番: localhost:14550（SSHトンネル経由）
+  enabled: true                       # RTK補正有効/無効
+  f9p_serial_port: "COM10"           # F9P接続シリアルポート（USBネイティブ）
+  f9p_baudrate: 115200                # F9Pボーレート
+  target: "127.0.0.1:14550"          # GPS_RTCM_DATA 送信先
+                                      # 開発: 127.0.0.1:14550（同一マシン）
+                                      # 本番: localhost:14550（SSHトンネル経由）
 
 # ============================================================================
 # Web サーバー設定（FastAPI）

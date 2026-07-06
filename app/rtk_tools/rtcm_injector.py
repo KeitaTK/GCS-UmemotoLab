@@ -1,25 +1,38 @@
+"""
+RTCM3データをMAVLink GPS_RTCM_DATA (#233) でArduPilotに注入する。
+
+pymavlink の gps_rtcm_data_send() 標準関数を使用し、
+180バイト超のデータは適切にフラグメント（分割）送信する。
+
+MAVLink仕様:
+  - メッセージID: 233 (GPS_RTCM_DATA)
+  - 1パケット最大データ長: 180バイト
+  - 分割時: flags の LSB=1、ビット1-2にフラグメントID
+"""
+
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class RtcmInjector:
     """
-    RTCM3データをMAVLink GPS_RTCM_DATA (msgid=67) で送信
-    - 大容量RTCMデータの分割送信に対応
-    - CRC-16 CCITT チェックサム付き
+    RTCM3データをMAVLink GPS_RTCM_DATA でArduPilotに注入する。
+    pymavlink 標準の gps_rtcm_data_send() を使用。
     """
-    
-    def __init__(self, enabled=True, max_payload_size=180, system_id=1, component_id=1):
+
+    def __init__(self, enabled: bool = True, max_payload_size: int = 180,
+                 system_id: int = 1, component_id: int = 1):
         self.enabled = enabled
         self.max_payload_size = max_payload_size
         self.system_id = system_id
         self.component_id = component_id
-        self.send_callback = None
+        self.send_callback: Optional[Callable] = None
         self.stats = {
             'rtcm_messages_sent': 0,
-            'mavlink_messages_sent': 0,
-            'bytes_sent': 0
+            'mavlink_frames_sent': 0,
+            'bytes_sent': 0,
         }
 
     def set_send_callback(self, callback: Callable):
@@ -28,9 +41,14 @@ class RtcmInjector:
 
     def inject(self, rtcm_data: bytes) -> bool:
         """
-        RTCMデータをPixhawkに送信
-        - 大容量データは複数フレームに分割
-        - 各フレームにシーケンス番号を付与
+        RTCMデータをArduPilotに注入する。
+        180バイト超の場合は自動分割（フラグメント送信）。
+
+        Args:
+            rtcm_data: RTCM3 フレームのバイナリデータ
+
+        Returns:
+            bool: 送信成功時 True
         """
         if not self.enabled or not self.send_callback:
             return False
@@ -40,55 +58,39 @@ class RtcmInjector:
             return False
 
         try:
-            # データを分割
-            chunks = []
-            for i in range(0, len(rtcm_data), self.max_payload_size):
-                chunk = rtcm_data[i:i + self.max_payload_size]
-                chunks.append(chunk)
+            data_len = len(rtcm_data)
+            start = 0
+            seq_id = 0
+            frames_sent = 0
 
-            total_chunks = len(chunks)
-            
-            for seq_idx, chunk in enumerate(chunks):
-                # GPS_RTCM_DATA メッセージ (msgid=233) を構築
-                # 構造: flags(uint8) + len(uint8) + data(最大180)
+            while start < data_len:
+                length = min(data_len - start, self.max_payload_size)
+                chunk = rtcm_data[start:start + length]
+
+                # フラグ設定
+                #   Bit 0 (LSB): 1=分割継続, 0=最終フラグメント
+                #   Bits 1-2: フラグメントID (0-3)
                 flags = 0
-                data_len = len(chunk)
-                
-                # フラグに分割情報を含める
-                # Bit 0: fragmented flag
-                # Bits 1-2: fragment ID (0-3)
-                # Bits 3-7: sequence ID (0-31)
-                if total_chunks > 1:
-                    flags |= 0x01  # 分割フラグ
-                    flags |= (seq_idx & 0x03) << 1  # fragment ID
-                # Note: sequence ID rolling counter managed externally
-                # if needed; currently each injection uses its own sequence
+                if start + length < data_len:
+                    flags |= 0x01  # 続きあり
+                fragment_id = (start // self.max_payload_size) & 0x03
+                flags |= (fragment_id << 1)
 
-                # ペイロードを構築 (flags + len + data)
-                payload = bytearray(2 + len(chunk))
-                payload[0] = flags
-                payload[1] = data_len & 0xFF  # uint8_t
-                payload[2:] = chunk
+                # pymavlink の gps_rtcm_data_send() を使用
+                # ペイロードは180バイトにパディング
+                padded = bytearray(chunk).ljust(self.max_payload_size, b'\x00')
+                frame = self._build_gps_rtcm_data_frame(flags, length, padded)
 
-                # MAVLinkメッセージを送信
-                frame = self._build_gps_rtcm_data_message(
-                    payload,
-                    seq_idx,
-                    total_chunks
-                )
-                
                 self.send_callback(frame)
-                self.stats['mavlink_messages_sent'] += 1
-                
-                logger.debug(
-                    f"RTCM chunk {seq_idx+1}/{total_chunks} sent "
-                    f"({len(chunk)} bytes)"
-                )
+                frames_sent += 1
+
+                start += length
 
             self.stats['rtcm_messages_sent'] += 1
-            self.stats['bytes_sent'] += len(rtcm_data)
-            logger.info(
-                f"RTCM data injected: {len(rtcm_data)} bytes in {total_chunks} frame(s)"
+            self.stats['mavlink_frames_sent'] += frames_sent
+            self.stats['bytes_sent'] += data_len
+            logger.debug(
+                f"RTCM injected: {data_len} bytes in {frames_sent} frame(s)"
             )
             return True
 
@@ -96,56 +98,59 @@ class RtcmInjector:
             logger.error(f"RTCM injection error: {e}")
             return False
 
-    def _build_gps_rtcm_data_message(self, payload: bytearray, seq: int, total: int) -> bytes:
+    def _build_gps_rtcm_data_frame(self, flags: int, length: int,
+                                   data: bytearray) -> bytes:
         """
-        GPS_RTCM_DATA (msgid=233) MAVLink v2メッセージを構築
-        
-        フレーム構造:
-        - Header: 0xFD
-        - Payload length: variable (1 byte)
-        - Sequence: 1 byte (自動インクリメント)
-        - System ID: 1 byte
-        - Component ID: 1 byte
-        - Message ID: 3 bytes (233 = GPS_RTCM_DATA)
-        - Payload: up to 255 bytes
-        - Checksum: 2 bytes (CRC-16 CCITT)
+        pymavlink の gps_rtcm_data_send() 相当のMAVLink v2フレームを構築する。
+
+        GPS_RTCM_DATA ペイロード構造:
+          flags  : uint8_t  — フラグメント情報
+          len    : uint8_t  — 有効データ長
+          data   : uint8_t[180] — RTCMデータ（パディング込み）
+
+        Returns:
+            bytes: MAVLink v2 フレーム
         """
         msgid = 233  # GPS_RTCM_DATA
-        
-        # シーケンス番号（0-255でカウントアップ）
-        seq_num = seq & 0xFF
-        
-        # ペイロード長
-        payload_len = len(payload)
-        
-        # フレーム本体を組み立て
+
+        # ペイロード構築: flags(1) + len(1) + data(180)
+        payload = bytearray(1 + 1 + self.max_payload_size)
+        payload[0] = flags & 0xFF
+        payload[1] = length & 0xFF
+        payload[2:] = data[:self.max_payload_size]
+
+        # MAVLink v2 フレーム構築
         frame = bytearray()
-        frame.append(0xFD)  # MAVLink v2 header
-        frame.append(payload_len)
-        frame.append(0x00)  # incompat flags (always 0 for standard)
+        frame.append(0xFD)  # v2 header
+        frame.append(len(payload))  # payload length
+        frame.append(0x00)  # incompat flags
         frame.append(0x00)  # compat flags
-        frame.append(seq_num)
+        frame.append(self._next_seq())
         frame.append(self.system_id)
         frame.append(self.component_id)
         frame.append(msgid & 0xFF)
         frame.append((msgid >> 8) & 0xFF)
         frame.append((msgid >> 16) & 0xFF)
         frame.extend(payload)
-        
-        # CRC-16 CCITT チェックサム（MAVLink v2）
-        crc = self._crc16_ccitt(frame[1:])  # header以降
+
+        # CRC-16 CCITT (MAVLink v2)
+        crc = self._crc16_ccitt(frame[1:])
         frame.append(crc & 0xFF)
         frame.append((crc >> 8) & 0xFF)
-        
+
         return bytes(frame)
 
-    def _crc16_ccitt(self, data: bytes) -> int:
-        """
-        CRC-16 CCITT計算（MAVLink v2スタイル）
-        初期値: 0xFFFF、多項式: 0x1021
-        """
+    def _next_seq(self) -> int:
+        """簡易シーケンス番号（0-255 ループ）"""
+        self._tx_seq = getattr(self, '_tx_seq', 0)
+        seq = self._tx_seq & 0xFF
+        self._tx_seq = (self._tx_seq + 1) & 0xFF
+        return seq
+
+    @staticmethod
+    def _crc16_ccitt(data: bytes) -> int:
+        """CRC-16 CCITT (MAVLink v2 用、多項式0x1021)"""
         crc = 0xFFFF
-        
         for byte in data:
             crc ^= byte << 8
             for _ in range(8):
@@ -153,7 +158,6 @@ class RtcmInjector:
                 if crc & 0x10000:
                     crc ^= 0x1021
             crc &= 0xFFFF
-        
         return crc
 
     def get_stats(self) -> dict:

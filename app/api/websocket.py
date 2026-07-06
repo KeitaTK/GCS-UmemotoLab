@@ -332,7 +332,13 @@ def _build_rtk_status(rtcm_reader) -> dict:
 # ── Base Station status (from app.state.base_station) ────────────────────
 
 def _build_base_station_status() -> dict:
-    """Build base station status from app.state.base_station (if running)."""
+    """Build base station status from app.state.
+
+    Supports two modes:
+    1. Integrated mode (base_station_routes.py): uses app.state.bs_phase,
+       app.state.rtcm_serial_reader, app.state.rtcm_logger.
+    2. Standalone mode (rtk_base_station_v2): uses app.state.base_station.
+    """
     try:
         import api.server as api_srv
     except ImportError:
@@ -340,30 +346,97 @@ def _build_base_station_status() -> dict:
 
     if not hasattr(api_srv, "app"):
         return {"running": False}
-    phase = getattr(api_srv.app.state, "bs_phase", "idle")
-    station = getattr(api_srv.app.state, "base_station", None)
-    if station is None:
-        # Report starting/error phase even without station instance
-        if phase in ("starting", "error"):
-            try:
-                from rtk_tools.config_loader import load_hardware_config
-                hw = load_hardware_config()
-                mode = hw.get('base_station', {}).get('mode', 'manual')
-            except Exception:
-                mode = 'manual'
-            result = {"running": False, "mode": mode, "phase": phase}
-            if phase == "starting":
-                progress = getattr(api_srv.app.state, "bs_progress", None)
-                if progress:
-                    result["progress"] = progress
-            return result
-        return {"running": False}
 
+    app_state = api_srv.app.state
+    phase = getattr(app_state, "bs_phase", "idle")
+    station = getattr(app_state, "base_station", None)
+
+    # --- Integrated mode (base_station_routes.py) ---
+    if station is None:
+        reader = getattr(app_state, "rtcm_serial_reader", None)
+        is_running = reader is not None and getattr(reader, "running", False)
+
+        try:
+            from rtk_tools.config_loader import load_hardware_config
+            hw = load_hardware_config()
+            mode = hw.get("base_station", {}).get("mode", "manual")
+        except Exception:
+            mode = "manual"
+
+        if is_running and phase == "running":
+            # --- Running in integrated mode ---
+            serial_stats = None
+            try:
+                ss = getattr(reader, "stats", None)
+                if ss:
+                    serial_stats = {
+                        "bytes_read": ss.get("bytes_read", 0),
+                        "frames_received": ss.get("frames_received", 0),
+                        "read_errors": ss.get("read_errors", 0),
+                    }
+            except Exception:
+                pass
+
+            rtcm_stats = None
+            try:
+                rtcm_logger = getattr(app_state, "rtcm_logger", None)
+                if rtcm_logger:
+                    rtcm_stats = rtcm_logger.get_stats()
+            except Exception:
+                pass
+
+            # GPS position from stored observation result
+            gps_status = None
+            pos = getattr(app_state, "bs_fixed_position", None)
+            if pos:
+                gps_status = {
+                    "fix_name": pos.get("fix_name", "FIXED"),
+                    "fix": 3,
+                    "sats": pos.get("sats", 0),
+                    "lat": pos.get("lat"),
+                    "lon": pos.get("lon"),
+                    "alt": pos.get("alt"),
+                }
+
+            result = {
+                "running": True,
+                "mode": mode,
+                "phase": "running",
+                "gps": gps_status,
+                "serial": serial_stats,
+                "rtcm": rtcm_stats,
+            }
+            # Include serial port info
+            serial_port = getattr(app_state, "rtcm_serial_port", None)
+            if serial_port:
+                result["serial_port"] = serial_port
+            return result
+
+        elif phase == "starting":
+            # --- Starting (observation in progress) ---
+            result = {"running": False, "mode": mode, "phase": "starting"}
+            progress = getattr(app_state, "bs_progress", None)
+            if progress:
+                result["progress"] = progress
+            error = getattr(app_state, "bs_error", None)
+            if error:
+                result["error"] = error
+            return result
+
+        elif phase == "error":
+            # --- Error state ---
+            error = getattr(app_state, "bs_error", "Unknown error")
+            return {"running": False, "mode": mode, "phase": "error", "error": error}
+
+        else:
+            # --- Idle ---
+            return {"running": False}
+
+    # --- Standalone mode (rtk_base_station_v2) ---
     try:
         # Read config mode from the station
         mode = 'manual'
         if hasattr(station, 'config') and hasattr(station.config, 'serial_port'):
-            # Determine mode from config via load_hardware_config
             try:
                 from rtk_tools.config_loader import load_hardware_config
                 hw = load_hardware_config()

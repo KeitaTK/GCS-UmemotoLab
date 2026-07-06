@@ -183,35 +183,75 @@ function formatBytes(bytes) {
 // ==========================================================================
 
 /**
- * Start the RTK Base Station.
+ * Ensure backend is connected (auto-connect if needed), then start RTK Base Station.
  */
 function startBaseStation() {
     var btnStart = document.getElementById('bs-btn-start');
     var statusEl = document.getElementById('bs-running');
     if (btnStart) btnStart.disabled = true;
-    if (statusEl) { statusEl.textContent = '起動中...'; statusEl.className = 'bs-status bs-starting'; }
+    if (statusEl) { statusEl.textContent = '接続確認中...'; statusEl.className = 'bs-status bs-starting'; }
 
-    fetch('/api/base_station/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.status === 'starting') {
-            if (statusEl) { statusEl.textContent = '起動中...'; statusEl.className = 'bs-status bs-starting'; }
-            showToast('RTK基地局: バックグラウンドで起動中... (' + data.mode + ' mode)', 'info');
-        } else {
+    // Step 1: Ensure backend is connected
+    var backendStatusEl = document.getElementById('backend-status-text');
+    var needsConnect = !backendStatusEl || backendStatusEl.textContent !== 'Connected';
+
+    function doStart() {
+        fetch('/api/base_station/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'starting' || data.status === 'already_running') {
+                if (statusEl) { statusEl.textContent = '起動中...'; statusEl.className = 'bs-status bs-starting'; }
+                showToast('RTK基地局: バックグラウンドで起動中... (' + (data.mode || 'auto') + ' mode)', 'info');
+            } else {
+                if (statusEl) { statusEl.textContent = 'エラー'; statusEl.className = 'bs-status bs-error'; }
+                showToast('RTK基地局 起動エラー: ' + (data.detail || 'unknown'), 'error');
+            }
+        })
+        .catch(function(err) {
             if (statusEl) { statusEl.textContent = 'エラー'; statusEl.className = 'bs-status bs-error'; }
-            showToast('RTK基地局 起動エラー: ' + (data.detail || 'unknown'), 'error');
-        }
-    })
-    .catch(function(err) {
-        if (statusEl) { statusEl.textContent = 'エラー'; statusEl.className = 'bs-status bs-error'; }
-        showToast('RTK基地局 起動エラー: ' + (err.message || err), 'error');
-    })
-    .finally(function() {
-        if (btnStart) btnStart.disabled = false;
-    });
+            showToast('RTK基地局 起動エラー: ' + (err.message || err), 'error');
+        })
+        .finally(function() {
+            if (btnStart) btnStart.disabled = false;
+        });
+    }
+
+    if (needsConnect) {
+        showToast('自動接続中... MAVLinkバックエンドに接続します', 'info');
+        fetch('/api/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'connected') {
+                if (backendStatusEl) { backendStatusEl.textContent = 'Connected'; backendStatusEl.className = 'status-value status-ok'; }
+                showToast('MAVLink接続完了 → 基地局を起動します', 'info');
+                if (statusEl) { statusEl.textContent = '起動中...'; statusEl.className = 'bs-status bs-starting'; }
+                // Give the backend a moment to fully initialize before starting base station
+                setTimeout(doStart, 500);
+            } else if (data.status === 'error' && data.detail && data.detail.indexOf('Already connected') >= 0) {
+                // Already connected (race condition) — proceed anyway
+                if (backendStatusEl) { backendStatusEl.textContent = 'Connected'; backendStatusEl.className = 'status-value status-ok'; }
+                doStart();
+            } else {
+                if (statusEl) { statusEl.textContent = '停止中'; statusEl.className = 'bs-status bs-stopped'; }
+                showToast('MAVLink接続エラー: ' + (data.detail || 'unknown'), 'error');
+                if (btnStart) btnStart.disabled = false;
+            }
+        })
+        .catch(function(err) {
+            if (statusEl) { statusEl.textContent = '停止中'; statusEl.className = 'bs-status bs-stopped'; }
+            showToast('MAVLink接続エラー: ' + (err.message || err), 'error');
+            if (btnStart) btnStart.disabled = false;
+        });
+    } else {
+        doStart();
+    }
 }
 
 /**

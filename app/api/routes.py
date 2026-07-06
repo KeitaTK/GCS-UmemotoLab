@@ -131,9 +131,6 @@ async def connect_to_drone(req: ConnectRequest, request: Request):
         from rtk_tools.telemetry_store import TelemetryStore
         from rtk_tools.command_dispatcher import CommandDispatcher
         from rtk_tools.guided_control import GuidedControl
-        from rtk_tools.rtcm_reader import RtcmReader
-        from rtk_tools.rtcm_injector import RtcmInjector
-
         config_path = req.config_path or resolve_config_path()
         logger.info(f"Config: {config_path}")
 
@@ -159,29 +156,12 @@ async def connect_to_drone(req: ConnectRequest, request: Request):
 
         threading.Thread(target=_request_streams, daemon=True).start()
 
-        rtcm_enabled = mav_conn.config.get("rtcm_enabled", True)
-        rtcm_host = mav_conn.config.get("rtcm_host", "127.0.0.1")
-        rtcm_port = mav_conn.config.get("rtcm_tcp_port", 15000)
-
-        rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
-        rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
-
-        def _send_rtcm_frame(frame_data):
-            try:
-                mav_conn.send_to_system(1, frame_data)
-                mav_conn.send_to_system(2, frame_data)
-            except Exception as e:
-                logger.error(f"RTCM send failed: {e}")
-
-        rtcm_injector.set_send_callback(_send_rtcm_frame)
-        rtcm_reader.register_callback(lambda data: rtcm_injector.inject(data))
-        rtcm_reader.start()
-
-        api_srv.init_api(telemetry_store, dispatcher, mav_conn, rtcm_reader)
+        api_srv.init_api(telemetry_store, dispatcher, mav_conn, None)
 
         app.state.mav_conn = mav_conn
         app.state.router = router
-        app.state.rtcm_reader = rtcm_reader
+        # Note: RTCM injection is handled by POST /api/base_station/start
+        # after base station configuration (F9P setup + observation) completes.
 
         conn_status = mav_conn.get_connection_status()
         logger.info("=== Backend connected ===")
@@ -212,12 +192,19 @@ async def disconnect_from_drone(request: Request):
 
     errors = []
 
-    if hasattr(app.state, "rtcm_reader") and app.state.rtcm_reader is not None:
+    if hasattr(app.state, "rtcm_serial_reader") and app.state.rtcm_serial_reader is not None:
         try:
-            app.state.rtcm_reader.stop()
+            app.state.rtcm_serial_reader.stop()
         except Exception as e:
-            errors.append(f"rtcm_reader: {e}")
-        app.state.rtcm_reader = None
+            errors.append(f"rtcm_serial_reader: {e}")
+        app.state.rtcm_serial_reader = None
+
+    if hasattr(app.state, "rtcm_logger") and app.state.rtcm_logger is not None:
+        try:
+            app.state.rtcm_logger.close()
+        except Exception as e:
+            errors.append(f"rtcm_logger: {e}")
+        app.state.rtcm_logger = None
 
     if hasattr(app.state, "router") and app.state.router is not None:
         try:
@@ -237,6 +224,7 @@ async def disconnect_from_drone(request: Request):
     api_srv.dispatcher = None
     api_srv.connection = None
     api_srv.rtcm_reader = None
+    api_srv.rtcm_logger = None
 
     logger.info("=== Backend disconnected ===")
     return {"status": "disconnected", "errors": errors if errors else None}
