@@ -1,128 +1,67 @@
-# GCS-UmemotoLab 総合ドキュメント
+# GCS-UmemotoLab ドキュメント
 
-この文書は、GCS-UmemotoLab の機能・構成・運用・検証を1か所にまとめた入口です。
+このディレクトリは、GCS-UmemotoLab プロジェクトの全ドキュメントを管理します。
 
-## プロジェクト概要
+## ディレクトリ構成
 
-GCS-UmemotoLab は、Windows 上で動作する ArduPilot 用カスタム GCS です。Raspberry Pi 5 を通信ブリッジとして使い、Pixhawk 系フライトコントローラと MAVLink v2 で通信します。RTK/RTCM 補正、マルチドローン識別、実機テレメトリー、コマンド送信をまとめて扱います。
-
-### 構成
-
-- Windows PC: GCS 本体、RTCM 配信元、UI 実行
-- Raspberry Pi 5: 中継・受信・RTCM 注入
-- Pixhawk / ArduPilot: 飛行制御とテレメトリー
-
-```text
-Windows PC -> TCP/Wi-Fi -> Raspberry Pi 5 -> Serial/USB -> Pixhawk
+```
+docs/
+├── README.md                    # このファイル（ドキュメントインデックス）
+├── DOCUMENTATION_GUIDE.md       # docstring 記述規約
+│
+├── 01-specification/            # 仕様・設計
+│   ├── spec.md                  # 機能要件・非機能要件
+│   ├── design.md                # システムアーキテクチャ設計
+│   ├── communication-architecture.md  # MAVLink通信経路・トポロジ
+│   ├── flight_roadmap.md        # 飛行試験ロードマップ
+│   ├── web-ui-spec.md           # Web UI 仕様
+│   └── multi-drone-dashboard-design.md  # マルチドローンUI設計
+│
+├── 02-development/              # 開発ガイド・履歴
+│   ├── dev_guide.md             # 開発環境構築ガイド
+│   └── development_history.md   # 全開発履歴（時系列）
+│
+├── 03-operations/               # 運用マニュアル
+│   ├── operations_manual.md     # 全体運用手順
+│   ├── multidrone_operations_guide.md  # マルチドローン運用手順
+│   ├── raspi-connection-setup.md  # Raspberry Pi 接続設定
+│   ├── rtk_setup_guide.md       # RTK セットアップガイド
+│   ├── rtk_integration_guide.md # RTK 統合ガイド
+│   └── troubleshooting_guide.md # トラブルシューティング
+│
+├── 04-testing/                  # テスト関連
+│   ├── test_cases.md            # テストケース一覧
+│   ├── 2026-07-03_test_report.md  # テストレポート
+│   └── test_rtcm_injection_20260424.md  # RTCM注入テスト
+│
+├── 05-implementation/           # 実装詳細
+│   ├── IMPLEMENTATION_DETAILS.md         # Observer/EKF 実装詳細
+│   ├── RTK_BASE_STATION_IMPLEMENTATION.md  # RTK基地局実装詳細
+│   ├── gps_comparison_sample1.md         # GPS比較分析
+│   └── sample5_rtk_fixed.png             # RTK FIX 画像
+│
+└── archive/                     # アーカイブ（陳腐化したレポート）
+    ├── PHASE1_COMPLETION_REPORT.md
+    ├── PHASE5_RTK_NEXT_STEPS.md
+    ├── PHASE7_PRODUCTION_TEST_START.md
+    ├── RTK_BASE_STATION_FINAL_REPORT.md
+    ├── progress_report_20260624.md
+    ├── troubleshooting_20260616_uart_udp_fix.md
+    └── project_presentation.md
 ```
 
-## 使い方の入口
+## 各カテゴリの説明
 
-### 1. 起動
+| カテゴリ | 内容 |
+|----------|------|
+| **01-specification** | システムの要件定義、アーキテクチャ設計、通信仕様など |
+| **02-development** | 開発環境のセットアップ手順、全開発履歴 |
+| **03-operations** | 実機の運用方法、RTK設定、トラブルシューティング |
+| **04-testing** | テストケース定義、テスト実行レポート |
+| **05-implementation** | 特定機能の詳細な実装ドキュメント |
+| **archive** | 過去の進捗レポート・完了報告（参照用、メンテナンス対象外） |
 
-#### v1（旧バージョン、デフォルト）
+## 関連ドキュメント
 
-```powershell
-# Windows 側
-python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0.0 --tcp-port 2101 --log-level INFO
-
-# Raspberry Pi 側
-ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
-```
-
-#### v2（F9P設定統合版）
-
-```powershell
-# Windows 側（config/base_station.json を使用）
-python rtk_tools/rtk_base_station_v2.py --config config/base_station.json --tcp-port 2101 --log-level INFO
-
-# Mac/Linux 側
-python rtk_tools/rtk_base_station_v2.py --config config/base_station.json --tcp-port 2101 --log-level INFO
-
-# Raspberry Pi 側
-ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python app/backend_server.py"
-```
-
-#### rtk_monitor.sh で切り替え
-
-```bash
-# v1（デフォルト）
-bash scripts/rtk_monitor.sh
-
-# v2
-bash scripts/rtk_monitor.sh --v2
-USE_V2=1 bash scripts/rtk_monitor.sh
-```
-
-### 2. 設定
-
-- `config/gcs.yml`: 標準設定
-- `config/gcs_local.yml`: ローカル実行用設定
-- `config/gcs.user.local.yml`: Git 管理外の個人設定
-- `config/rtk_forwarder.yml`: RTK 転送サービス設定
-- `config/base_station.json`: v2 基地局設定（シリアルポート・基準座標）
-
-### 3. 主要コンポーネント
-
-- `app/main.py`: GUI 実行の入口
-- `app/backend_server.py`: Raspberry Pi 用ヘッドレス実行
-- `rtk_base_station.py`: Windows 側 RTK 基地局 (v1)
-- `rtk_tools/rtk_base_station_v2.py`: F9P設定統合版 基地局 (v2)
-- `config/base_station.json`: v2 用 基地局設定ファイル
-- `app/mavlink/rtcm_reader.py`: RTCM 受信
-- `app/mavlink/rtcm_injector.py`: RTCM → GPS_RTCM_DATA 変換
-- `app/mavlink/message_router.py`: MAVLink メッセージ中継
-
-## RTK / RTCM
-
-RTK まわりの構成は、Windows 側で RTCM を受信して Raspberry Pi へ配信し、Pi 側で Pixhawk へ注入する流れです。
-
-### 標準フロー
-
-1. `rtk_base_station.py` が ublox から RTCM を受信
-2. TCP で Raspberry Pi に配信
-3. `backend_server.py` が RTCM を受信
-4. `RtcmInjector` が MAVLink `GPS_RTCM_DATA` に変換
-5. Pixhawk が RTK Fix に遷移
-
-### 実機確認ポイント
-
-- COM ポートは COM8
-- Raspberry Pi 側の `rtcm_host` は Windows PC の LAN IP に合わせる
-- `rtcm_enabled: true` を有効にする
-
-## テストと検証
-
-- ユニットテスト: `pytest tests/`
-- RTK 統合: `tests/test_rtk_integration.py`
-- 基地局統合: `tests/test_rtk_base_station_integration.py`
-- Phase C 統合: `tests/test_phase_c_integration.py`
-
-### 実行例
-
-```bash
-python tests/test_rtk_base_station_integration.py
-```
-
-```bash
-ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && source .venv/bin/activate && python tests/test_phase_c_integration.py"
-```
-
-## 運用メモ
-
-- Raspberry Pi では `app/backend_server.py` をヘッドレス実行する
-- 監視や常駐運用は `scripts/` 配下の補助スクリプトを使う
-- 詳細な履歴は `docs/development_history.md` を参照する
-
-## トラブルシューティング
-
-- `Connection refused`: Windows 側基地局または `rtcm_host` 設定を確認
-- `Permission denied (publickey)`: SSH 鍵設定を確認
-- `serial.SerialException`: COM ポートまたは接続ケーブルを確認
-- `RTK Fix が出ない`: u-center 側の RTCM 受信設定と注入ログを確認
-
-## 参照コード
-
-- [README](../README.md)
-- [RTK 基地局実装レポート](RTK_BASE_STATION_FINAL_REPORT.md)
-- [開発履歴](development_history.md)
+- [プロジェクト README](../README.md)
+- [Sphinx API ドキュメント](../docs_sphinx/)
