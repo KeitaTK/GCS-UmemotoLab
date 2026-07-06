@@ -275,7 +275,7 @@ class F9pConfigurator:
             and results['step3_check'].get('verified', False)
         )
 
-        status = "ALL OK ✅" if results['all_ok'] else "Some steps failed ⚠"
+        status = "ALL OK [OK]" if results['all_ok'] else "Some steps failed [WARN]"
         self.logger.info(f"F9P Configuration Result: {status}")
         self.logger.info("=" * 60)
 

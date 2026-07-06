@@ -226,7 +226,6 @@ class RtcmSerialReader:
         self.logger.info(f"Serial reader stopped. Stats: {self.stats}")
 
     def _read_loop(self):
-        import select
         ser = None
         try:
             ser = serial.Serial(
@@ -240,15 +239,14 @@ class RtcmSerialReader:
             )
 
             buffer = bytearray()
-            fd = ser.fileno()
 
             while self.running:
                 try:
-                    ready, _, _ = select.select([fd], [], [], 1.0)
-                    if not ready:
+                    if ser.in_waiting == 0:
+                        time.sleep(0.01)
                         continue
 
-                    data = ser.read(1024)
+                    data = ser.read(ser.in_waiting)
                     if not data:
                         continue
 
@@ -290,7 +288,6 @@ class RtcmSerialReader:
                             baudrate=self.config.baudrate,
                             timeout=0
                         )
-                        fd = ser.fileno()
                         self.logger.info(
                             f"Serial port reopened: {self.config.serial_port}"
                         )
@@ -687,7 +684,8 @@ def main():
 
     try:
         while True:
-            time.sleep(60)
+            for _ in range(60):
+                time.sleep(1)
             station.print_stats()
 
     except KeyboardInterrupt:
