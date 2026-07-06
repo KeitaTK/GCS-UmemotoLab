@@ -261,8 +261,16 @@ class RtcmSerialReader:
                             buffer.pop(0)
                             continue
 
-                        reserved = buffer[1] >> 6
-                        frame_len = ((buffer[1] & 0x3F) << 8) | buffer[2]
+                        reserved = buffer[1] >> 2
+                        if reserved != 0:
+                            # False preamble: reserved bits must be zero
+                            buffer.pop(0)
+                            continue
+                        frame_len = ((buffer[1] & 0x03) << 8) | buffer[2]
+                        if frame_len > 1023:
+                            # Invalid frame length (RTCM v3 max payload is 1023)
+                            buffer.pop(0)
+                            continue
                         total_len = 6 + frame_len
 
                         if len(buffer) < total_len:
