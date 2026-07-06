@@ -19,6 +19,7 @@ Usage:
 import argparse
 import logging
 import socket
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -33,7 +34,15 @@ try:
 except ModuleNotFoundError:
     from f9p_configurator import F9pConfigurator
 
-from rtk_tools.config_loader import load_hardware_config
+try:
+    from rtk_tools.standalone_obs import auto_detect_port, auto_observe_position
+except ModuleNotFoundError:
+    from standalone_obs import auto_detect_port, auto_observe_position
+
+try:
+    from rtk_tools.config_loader import load_hardware_config
+except ModuleNotFoundError:
+    from config_loader import load_hardware_config
 _hw_config = load_hardware_config()
 
 
@@ -68,34 +77,48 @@ class Config:
 
 
 def _merge_config(json_path: Optional[str], args: argparse.Namespace) -> Config:
-    """hardware.yml とCLI引数をマージして Config を生成する
+    """config.yml とCLI引数をマージして Config を生成する
 
-    優先順位: CLI引数 > hardware.yml > デフォルト値
+    優先順位: CLI引数 > config.yml > デフォルト値
+    
+    base_station.mode が "auto" の場合:
+      - USBポートを自動検出
+      - 60秒単独測位で基準座標を自動取得
     """
     config = Config()
-
-    # hardware.yml から設定を読み込む
     _hw = _hw_config
 
+    # base_station 設定を読み込み
+    bs_mode = "manual"
+    obs_duration = 60
+    if 'base_station' in _hw:
+        bs = _hw['base_station']
+        bs_mode = bs.get('mode', 'manual')
+        obs_duration = int(bs.get('auto_obs_duration', 60))
+        config.save_to_flash = bs.get('save_to_flash', config.save_to_flash)
+
+        if bs_mode == 'manual':
+            config.serial_port = bs.get('serial_port', config.serial_port)
+            config.fixed_lat = bs.get('fixed_lat')
+            config.fixed_lon = bs.get('fixed_lon')
+            config.fixed_alt = bs.get('fixed_alt')
+        # auto モードの場合は後処理で設定
+
+    # f9p 設定
     if 'f9p' in _hw:
         f9p = _hw['f9p']
-        config.serial_port = f9p.get('serial_port', config.serial_port)
+        if bs_mode == 'manual':
+            config.serial_port = f9p.get('serial_port', config.serial_port)
         config.baudrate = f9p.get('baudrate', config.baudrate)
         config.f9p_baudrate = f9p.get('baudrate', config.f9p_baudrate)
 
-    if 'base_station' in _hw:
-        bs = _hw['base_station']
-        config.fixed_lat = bs.get('fixed_lat')
-        config.fixed_lon = bs.get('fixed_lon')
-        config.fixed_alt = bs.get('fixed_alt')
-        config.save_to_flash = bs.get('save_to_flash', config.save_to_flash)
-
+    # forward 設定
     if 'forward' in _hw:
         fwd = _hw['forward']
         config.udp_broadcast_host = fwd.get('host', config.udp_broadcast_host)
         config.udp_broadcast_port = fwd.get('port', config.udp_broadcast_port)
 
-    # CLI 引数で上書き（JSONより優先）
+    # CLI 引数で上書き
     if hasattr(args, 'tcp_port') and args.tcp_port is not None:
         config.tcp_port = args.tcp_port
     if hasattr(args, 'log_level') and args.log_level is not None:
@@ -104,6 +127,35 @@ def _merge_config(json_path: Optional[str], args: argparse.Namespace) -> Config:
         config.log_file = args.log_file
     if hasattr(args, 'skip_f9p_config') and args.skip_f9p_config:
         config.skip_f9p_config = True
+
+    # ----- auto モード処理 -----
+    if bs_mode == 'auto':
+        print("\n" + "=" * 60)
+        print("  [AUTO MODE] USBポート自動検出 + 単独測位")
+        print("=" * 60)
+        
+        # 1. USBポート自動検出
+        print("\n【ステップ1/2】USBポートを検出中...")
+        config.serial_port = auto_detect_port()
+        
+        # 2. 単独測位で基準座標を取得
+        print(f"\n【ステップ2/2】単独測位で基準座標を取得中 ({obs_duration}秒)...")
+        obs_result = auto_observe_position(
+            port=config.serial_port,
+            baudrate=config.baudrate,
+            duration_sec=obs_duration,
+        )
+        
+        if obs_result and obs_result['samples'] > 0:
+            config.fixed_lat = obs_result['lat']
+            config.fixed_lon = obs_result['lon']
+            config.fixed_alt = obs_result['alt']
+            print(f"  → 基準座標を自動設定しました")
+            print(f"    lat={config.fixed_lat:.7f} lon={config.fixed_lon:.7f} "
+                  f"alt={config.fixed_alt:.2f}m (HAE)")
+        else:
+            print("  [WARN] 単独測位に失敗しました。manual モードで再試行してください。")
+            sys.exit(1)
 
     return config
 
@@ -171,13 +223,12 @@ class RtcmSerialReader:
         self.logger.info(f"Serial reader stopped. Stats: {self.stats}")
 
     def _read_loop(self):
-        import select
         ser = None
         try:
             ser = serial.Serial(
                 port=self.config.serial_port,
                 baudrate=self.config.baudrate,
-                timeout=0
+                timeout=0.1
             )
             self.logger.info(
                 f"Serial port opened: {self.config.serial_port} "
@@ -185,15 +236,15 @@ class RtcmSerialReader:
             )
 
             buffer = bytearray()
-            fd = ser.fileno()
 
             while self.running:
                 try:
-                    ready, _, _ = select.select([fd], [], [], 1.0)
-                    if not ready:
+                    # Windows互換: select＋fileno ではなく in_waiting でデータ有無を確認
+                    if ser.in_waiting == 0:
+                        time.sleep(0.05)
                         continue
 
-                    data = ser.read(1024)
+                    data = ser.read(ser.in_waiting)
                     if not data:
                         continue
 
@@ -233,9 +284,8 @@ class RtcmSerialReader:
                         ser = serial.Serial(
                             port=self.config.serial_port,
                             baudrate=self.config.baudrate,
-                            timeout=0
+                            timeout=0.1
                         )
-                        fd = ser.fileno()
                         self.logger.info(
                             f"Serial port reopened: {self.config.serial_port}"
                         )

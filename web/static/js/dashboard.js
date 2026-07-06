@@ -43,6 +43,9 @@ function updateDashboard() {
     // Also update graph and raw data panels
     if (typeof updateGraphs === 'function') updateGraphs();
     if (typeof updateRawData === 'function') updateRawData();
+
+    // Update RTK Base Station panel
+    if (typeof updateBaseStationUI === 'function') updateBaseStationUI();
 }
 
 /**

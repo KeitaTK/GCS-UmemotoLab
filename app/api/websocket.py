@@ -136,6 +136,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
         "connection": _build_connection_status(connection),
         "drones": {},
         "rtk": _build_rtk_status(rtcm_reader),
+        "base_station": _build_base_station_status(),
     }
 
     last_seen_all = {}
@@ -326,3 +327,100 @@ def _build_rtk_status(rtcm_reader) -> dict:
         }
     except Exception:
         return {"enabled": False, "messages_received": 0, "connections": 0, "reconnects": 0}
+
+
+# ── Base Station status (from app.state.base_station) ────────────────────
+
+def _build_base_station_status() -> dict:
+    """Build base station status from app.state.base_station (if running)."""
+    try:
+        import api.server as api_srv
+    except ImportError:
+        return {"running": False}
+
+    if not hasattr(api_srv, "app"):
+        return {"running": False}
+    phase = getattr(api_srv.app.state, "bs_phase", "idle")
+    station = getattr(api_srv.app.state, "base_station", None)
+    if station is None:
+        # Report starting/error phase even without station instance
+        if phase in ("starting", "error"):
+            try:
+                from rtk_tools.config_loader import load_hardware_config
+                hw = load_hardware_config()
+                mode = hw.get('base_station', {}).get('mode', 'manual')
+            except Exception:
+                mode = 'manual'
+            result = {"running": False, "mode": mode, "phase": phase}
+            if phase == "starting":
+                progress = getattr(api_srv.app.state, "bs_progress", None)
+                if progress:
+                    result["progress"] = progress
+            return result
+        return {"running": False}
+
+    try:
+        # Read config mode from the station
+        mode = 'manual'
+        if hasattr(station, 'config') and hasattr(station.config, 'serial_port'):
+            # Determine mode from config via load_hardware_config
+            try:
+                from rtk_tools.config_loader import load_hardware_config
+                hw = load_hardware_config()
+                mode = hw.get('base_station', {}).get('mode', 'manual')
+            except Exception:
+                pass
+
+        gps_status = None
+        try:
+            gps_status = station._read_gps_status()
+        except Exception:
+            pass
+
+        serial_stats = None
+        try:
+            ss = station.serial_reader.stats
+            if ss:
+                serial_stats = {
+                    "bytes_read": ss.get("bytes_read", 0),
+                    "frames_received": ss.get("frames_received", 0),
+                    "read_errors": ss.get("read_errors", 0),
+                }
+        except Exception:
+            pass
+
+        tcp_stats = None
+        try:
+            ts = station.tcp_server.stats
+            if ts:
+                tcp_stats = {
+                    "connections": ts.get("connections", 0),
+                    "frames_sent": ts.get("frames_sent", 0),
+                    "bytes_sent": ts.get("bytes_sent", 0),
+                    "active_clients": len(ts.get("clients", [])),
+                }
+        except Exception:
+            pass
+
+        udp_stats = None
+        try:
+            us = station.udp_broadcaster.stats
+            if us:
+                udp_stats = {
+                    "frames_sent": us.get("frames_sent", 0),
+                    "bytes_sent": us.get("bytes_sent", 0),
+                }
+        except Exception:
+            pass
+
+        return {
+            "running": True,
+            "mode": mode,
+            "phase": "running",
+            "gps": gps_status,
+            "serial": serial_stats,
+            "tcp": tcp_stats,
+            "udp": udp_stats,
+        }
+    except Exception:
+        return {"running": False}

@@ -883,3 +883,129 @@ body {
         height: 250px;
     }
 }
+
+/* ==========================================================================
+ * RTK Base Station Panel
+ * ========================================================================== */
+.base-station-panel {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    margin: 8px 16px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+}
+
+.bs-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.bs-title {
+    font-weight: 700;
+    font-size: 14px;
+    color: #e0e0e0;
+}
+
+.bs-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 3px;
+}
+.bs-status.bs-stopped {
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+.bs-status.bs-running {
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
+}
+.bs-status.bs-starting {
+    color: #f39c12;
+    border: 1px solid #f39c12;
+    animation: pulse-bs 1s infinite;
+}
+.bs-status.bs-error {
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.15);
+    border: 1px solid #e74c3c;
+}
+
+@keyframes pulse-bs {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.bs-phase {
+    font-size: 11px;
+    color: #95a5a6;
+    margin-left: auto;
+}
+
+.bs-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.bs-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.bs-label {
+    color: #7f8c8d;
+    font-weight: 600;
+    min-width: 60px;
+}
+
+.bs-value {
+    color: #ecf0f1;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.bs-value.bs-pos {
+    font-size: 11px;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bs-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.btn-start-bs {
+    background: #27ae60;
+    color: #fff;
+    border: none;
+    padding: 4px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+}
+.btn-start-bs:hover { background: #2ecc71; }
+.btn-start-bs:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-stop-bs {
+    background: #e74c3c;
+    color: #fff;
+    border: none;
+    padding: 4px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+}
+.btn-stop-bs:hover { background: #c0392b; }
+.btn-stop-bs:disabled { opacity: 0.5; cursor: not-allowed; }

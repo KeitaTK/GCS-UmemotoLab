@@ -116,7 +116,9 @@ class GpsSample:
     fix_type: int
     latitude: float
     longitude: float
-    altitude: float
+    altitude: float       # 楕円体高 (HAE) = MSL + ジオイド分離量
+    geoid_sep: float      # ジオイド分離量 [m]
+    altitude_msl: float   # 平均海面高 [m]
     satellites_used: int
     hdop: float
     timestamp: float
@@ -176,16 +178,21 @@ def parse_nmea_gga(line: str) -> Optional[GpsSample]:
         if parts[5] == "W":
             lon = -lon
 
-        alt = float(parts[9]) if parts[9] else 0.0
+        # GGA: field6=fix, field7=sats, field8=hdop, field9=alt(MSL), field10=M, field11=geoid_sep
         fix_type = int(parts[6]) if parts[6] else 0
         sats = int(parts[7]) if parts[7] else 0
         hdop = float(parts[8]) if parts[8] else 99.9
+        alt_msl = float(parts[9]) if parts[9] else 0.0
+        geoid_sep = float(parts[11]) if len(parts) > 11 and parts[11] else 0.0
+        alt_hae = alt_msl + geoid_sep  # 楕円体高 = MSL + ジオイド分離量
 
         return GpsSample(
             fix_type=fix_type,
             latitude=lat,
             longitude=lon,
-            altitude=alt,
+            altitude=alt_hae,        # HAE (楕円体高)
+            geoid_sep=geoid_sep,
+            altitude_msl=alt_msl,
             satellites_used=sats,
             hdop=hdop,
             timestamp=time.time(),
@@ -202,7 +209,8 @@ class StandaloneObserver:
 
     def __init__(self, port: str, baudrate: int, duration_sec: int,
                  show_csv: bool = False, set_rover: bool = True,
-                 save_csv: bool = False, output_path: Optional[str] = None):
+                 save_csv: bool = False, output_path: Optional[str] = None,
+                 progress_callback: Optional[callable] = None):
         self.port = port
         self.baudrate = baudrate
         self.duration_sec = duration_sec
@@ -213,10 +221,13 @@ class StandaloneObserver:
         self.samples: list[GpsSample] = []
         self.best_fix_seen = 0
         self._interrupted = False
-        signal.signal(signal.SIGINT, self._sigint_handler)
+        self._orig_sigint = signal.signal(signal.SIGINT, self._sigint_handler)
+        self.progress_callback = progress_callback
 
     def _sigint_handler(self, signum, frame):
         self._interrupted = True
+        # 元のSIGINTハンドラを復元し、KeyboardInterrupt が再び発生するようにする
+        signal.signal(signal.SIGINT, self._orig_sigint)
 
     def _open_serial(self):
         """シリアルポートを開く"""
@@ -232,13 +243,14 @@ class StandaloneObserver:
     def _set_rover_mode(self, ser: serial.Serial) -> bool:
         """F9Pを移動局（Rover）モードに設定する
 
-        CFG_TMODE_MODE を 0（Disabled）に設定し、
-        RAM + FLASH に永続化する。
+        CFG_TMODE_MODE を 0（Disabled）に設定する（RAMのみ）。
+        後続の F9pConfigurator で FLASH に TMODE3 Fixed を上書きするため、
+        ここでは FLASH に保存しない（リブート回避）。
         ACK/NAK を確認して成功/失敗を返す。
         """
         print("\n[ROVER] F9P を移動局モードに設定中...")
         msg = UBXMessage.config_set(
-            layers=0x05,  # RAM + FLASH
+            layers=0x01,  # RAM のみ（FLASH保存なし＝リブートしない）
             transaction=0,
             cfgData=[("CFG_TMODE_MODE", 0)],  # 0 = Disabled (Rover mode)
         )
@@ -280,6 +292,23 @@ class StandaloneObserver:
         sys.stdout.write(line.ljust(100))
         sys.stdout.flush()
 
+        # Callback for Web progress display
+        if self.progress_callback:
+            try:
+                last_sample = sample or (self.samples[-1] if self.samples else None)
+                self.progress_callback({
+                    "remaining_sec": int(remaining),
+                    "fix_name": self._format_fix(sample.fix_type) if sample else "---",
+                    "fix_type": sample.fix_type if sample else 0,
+                    "samples": len(self.samples),
+                    "best_fix_name": self._format_fix(self.best_fix_seen),
+                    "best_fix_type": self.best_fix_seen,
+                    "satellites": last_sample.satellites_used if last_sample else 0,
+                    "hdop": last_sample.hdop if last_sample else 0,
+                })
+            except Exception:
+                pass
+
     def _lon_scale(self, lat_deg: float) -> float:
         """指定緯度での経度1度あたりの距離 [m]"""
         return METERS_PER_DEG_LAT * math.cos(math.radians(lat_deg))
@@ -320,7 +349,7 @@ class StandaloneObserver:
         print(f"{'='*60}")
         print(f"  平均緯度:       {mean_lat:.7f} °")
         print(f"  平均経度:       {mean_lon:.7f} °")
-        print(f"  平均高度(MSL):  {mean_alt:.2f} m")
+        print(f"  平均高度(HAE):  {mean_alt:.2f} m（楕円体高）")
         print(f"  標準偏差(緯度): {std_lat_deg:.7f}°  ({std_lat_m:.3f} m)")
         print(f"  標準偏差(経度): {std_lon_deg:.7f}°  ({std_lon_m:.3f} m)")
         print(f"  標準偏差(高度): {std_alt:.2f} m")
@@ -484,6 +513,92 @@ class StandaloneObserver:
             self._save_csv_file()
 
         print()
+
+
+# ---------------------------------------------------------------------------
+# 公開API（他のモジュールからの再利用用）
+# ---------------------------------------------------------------------------
+def auto_detect_port() -> str:
+    """外部から呼び出し可能な USB ポート自動検出"""
+    return _auto_detect_port()
+
+
+def auto_observe_position(port: str, baudrate: int = 115200,
+                          duration_sec: int = 60) -> Optional[dict]:
+    """指定ポートで単独測位し、最良Fix品質グループの平均座標を返す。
+
+    Returns:
+        {'lat': float, 'lon': float, 'alt': float(HAE),
+         'alt_msl': float, 'geoid_sep': float, 'fix_type': int,
+         'samples': int, 'std_lat_m': float, 'std_lon_m': float, 'std_alt': float}
+        または None（データ不足時）
+    """
+    observer = StandaloneObserver(
+        port=port, baudrate=baudrate, duration_sec=duration_sec,
+        set_rover=True, show_csv=False, save_csv=False,
+    )
+    observer.run()
+
+    if not observer.samples:
+        return None
+
+    # 最良Fix品質のグループを抽出
+    counts: dict[int, int] = {}
+    for s in observer.samples:
+        counts[s.fix_type] = counts.get(s.fix_type, 0) + 1
+    best_fix = max(counts.keys(), key=lambda ft: FIX_PRIORITY.get(ft, -1))
+    best_samples = [s for s in observer.samples if s.fix_type == best_fix]
+
+    if not best_samples:
+        return None
+
+    n = len(best_samples)
+    lats = [s.latitude for s in best_samples]
+    lons = [s.longitude for s in best_samples]
+    alts = [s.altitude for s in best_samples]
+
+    mean_lat = sum(lats) / n
+    mean_lon = sum(lons) / n
+    mean_alt = sum(alts) / n
+
+    def _stdev(values, mean):
+        if n < 2:
+            return 0.0
+        return math.sqrt(sum((v - mean) ** 2 for v in values) / (n - 1))
+
+    std_lat_m = _stdev(lats, mean_lat) * METERS_PER_DEG_LAT
+    std_lon_m = _stdev(lons, mean_lon) * (METERS_PER_DEG_LAT * math.cos(math.radians(mean_lat)))
+    std_alt = _stdev(alts, mean_alt)
+
+    # 標高表示用（サンプル0番目のgeoid_sepを参考表示）
+    geoid_sep = best_samples[0].geoid_sep
+    alt_msl = best_samples[0].altitude_msl
+
+    print(f"\n{'='*60}")
+    print(f"  ★ 自動測位結果（最良Fix品質グループ）")
+    print(f"{'='*60}")
+    print(f"  Fix品質:    {FIX_NAMES.get(best_fix, f'UNKNOWN({best_fix})')}")
+    print(f"  平均緯度:   {mean_lat:.7f} °")
+    print(f"  平均経度:   {mean_lon:.7f} °")
+    print(f"  平均高度:   {mean_alt:.2f} m (楕円体高 HAE)")
+    print(f"  平均高度:   {alt_msl:.2f} m (海抜 MSL)")
+    print(f"  ジオイド分離量: {geoid_sep:.2f} m")
+    print(f"  標準偏差:   緯度{std_lat_m:.3f}m / 経度{std_lon_m:.3f}m / 高度{std_alt:.2f}m")
+    print(f"  サンプル数: {n}")
+    print()
+
+    return {
+        'lat': mean_lat,
+        'lon': mean_lon,
+        'alt': mean_alt,          # 楕円体高 (HAE)
+        'alt_msl': alt_msl,
+        'geoid_sep': geoid_sep,
+        'fix_type': best_fix,
+        'samples': n,
+        'std_lat_m': std_lat_m,
+        'std_lon_m': std_lon_m,
+        'std_alt': std_alt,
+    }
 
 
 # ---------------------------------------------------------------------------

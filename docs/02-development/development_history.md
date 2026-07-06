@@ -3,6 +3,30 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-07-06 18:25: [RTK基地局 起動進捗表示（GPS測位ログ＋残り秒数）]
+- 問題: autoモードで基地局起動中、バックグラウンドの測位進捗が画面に一切表示されず、「起動中...」のまま何が起こっているか分からなかった。
+- 試行:
+  - rtk_tools/standalone_obs.py の StandaloneObserver に progress_callback パラメータを追加。_print_realtime() 内で1秒ごとにコールバックを呼び出すよう拡張
+  - app/api/base_station_routes.py の _run_initialization() を完全書き換え：_merge_config() 依存を排除し、直接 hardware config を読み込む形に変更。autoモード時に progress_callback を設定した StandaloneObserver を起動し、進捗を app.state.bs_progress に書き込む
+  - GET /api/base_station/status に progress フィールドを追加（remaining_sec, fix_name, samples, best_fix_name, satellites, hdop）
+  - api/websocket.py の _build_base_station_status() で starting フェーズ時に progress を WebSocket ブロードキャストに含める
+  - base_station.js で progress を画面に表示（残り秒数、Fix種類、サンプル数、最高Fix品質）
+- 結果: 「起動中... 残り45秒 | Fix=GPS(1) | 72サンプル | 最高=DGPS(2)」のように、測位中のリアルタイムログがWeb UIに表示されるようになった。manualモード時は即座に起動完了。
+- 備考: _merge_config() を経由せず直接 config 構築するように変更したことで、起動処理全体がスレッド化されイベントループをブロックしなくなった。
+
+### 2026-07-06 18:00: [RTK基地局 Web制御 API + フロントエンド追加]
+- 問題: RTK基地局（rtk_tools/rtk_base_station_v2.py）がCLI専用で、Web UIから制御できなかった。起動・停止・状態監視をWebブラウザから行いたい要望があった。
+- 試行:
+  - app/api/base_station_routes.py 新規作成（POST /api/base_station/start, /stop, GET /api/base_station/status）
+  - app/api/websocket.py に _build_base_station_status() を追加し、WebSocketブロードキャストに基地局情報（GPS fix、RTCM統計、TCP接続状況）を含めるよう拡張
+  - app/server.py に bs_router のインポートと app.include_router を追加、on_shutdown で基地局停止処理を追加
+  - web/static/index.html に RTK基地局操作用パネル（起動/停止ボタン、GPS Fix表示、RTCMフレーム数、TCPクライアント数）を追加
+  - web/static/js/base_station.js 新規作成（start/stop API呼び出し、WebSocket経由のリアルタイムUI更新）
+  - web/static/js/dashboard.js の updateDashboard() に updateBaseStationUI() 呼び出しを追加
+  - web/static/css/style.css に基地局パネル用スタイルを追加
+- 結果: Web UIからRTK基地局の起動（auto/manualモード対応）・停止・リアルタイム状態監視が可能になった。config.yml の base_station.mode を参照し、autoモード時はUSB自動検出+単独測位->基地局モード遷移をバックグラウンドスレッドで実行。Webページリロード後もバックエンドで稼働継続。
+- 備考: シリアルポート排他に注意（Pixhawk接続とF9P接続でポート重複防止はconfig.ymlで分離済み）。_merge_config() のCLI引数依存は空のargparse.Namespaceで対応。
+
 ### 2026-07-06 11:42: [config/ 完全統合 — config.yml 一元化 + raspi/ 移行完了]
 - 問題: config/ ディレクトリに8つの設定ファイルが散在し、PC側（gcs.yml / hardware.yml）とラズパイ側（gcs_drone.yml / gcs_local.yml）の設定が混在していた。CLI引数のデフォルト値も別管理で、変更時の追従漏れが起きやすかった。
 - 試行:

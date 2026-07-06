@@ -119,11 +119,51 @@
     </div>
 </div>
 
+<!-- ====== RTK BASE STATION PANEL ====== -->
+<div class="base-station-panel" id="base-station-panel">
+    <div class="bs-header">
+        <span class="bs-title">&#127938; RTK 基地局</span>
+        <span class="bs-status bs-stopped" id="bs-running">停止中</span>
+        <span class="bs-phase" id="bs-phase"></span>
+    </div>
+    <div class="bs-body">
+        <div class="bs-row">
+            <span class="bs-label">Fix:</span>
+            <span class="bs-value" id="bs-gps-fix">--</span>
+            <span class="bs-label">Sats:</span>
+            <span class="bs-value" id="bs-gps-sats">--</span>
+        </div>
+        <div class="bs-row">
+            <span class="bs-label">Pos:</span>
+            <span class="bs-value bs-pos" id="bs-gps-pos">--</span>
+        </div>
+        <div class="bs-row">
+            <span class="bs-label">RTCM:</span>
+            <span class="bs-value" id="bs-rtcm-frames">--</span>
+        </div>
+        <div class="bs-row">
+            <span class="bs-label">TCP 接続:</span>
+            <span class="bs-value" id="bs-tcp-clients">--</span>
+            <span class="bs-label">送信:</span>
+            <span class="bs-value" id="bs-tcp-frames">--</span>
+        </div>
+        <div class="bs-row">
+            <span class="bs-label">UDP:</span>
+            <span class="bs-value" id="bs-udp-frames">--</span>
+        </div>
+        <div class="bs-actions">
+            <button class="btn-sm btn-start-bs" id="bs-btn-start">&#9654; 起動</button>
+            <button class="btn-sm btn-stop-bs" id="bs-btn-stop" style="display:none;">&#9632; 停止</button>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts: load order matters -->
 <script src="/static/js/websocket.js"></script>
 <script src="/static/js/dashboard.js"></script>
 <script src="/static/js/controls.js"></script>
 <script src="/static/js/graph.js"></script>
 <script src="/static/js/rawdata.js"></script>
+<script src="/static/js/base_station.js"></script>
 </body>
 </html>

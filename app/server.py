@@ -33,6 +33,9 @@ from api.websocket import router as ws_router, broadcast_loop
 # -- Import the REST API command router ----------------------------------
 from api.routes import router as cmd_router
 
+# -- Import the RTK Base Station API router ------------------------------
+from api.base_station_routes import router as bs_router
+
 # -- CORS middleware (allow Tailscale + local access) ---------------------
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +57,9 @@ app.include_router(ws_router)
 
 # -- REST API command router ---------------------------------------------
 app.include_router(cmd_router)
+
+# -- RTK Base Station API ------------------------------------------------
+app.include_router(bs_router)
 
 logger = logging.getLogger("server")
 
@@ -101,6 +107,11 @@ async def on_shutdown():
             app.state.rtcm_reader.stop()
         except Exception as e:
             logger.warning(f"rtcm_reader.stop() failed: {e}")
+    if hasattr(app.state, "base_station"):
+        try:
+            app.state.base_station.stop()
+        except Exception as e:
+            logger.warning(f"base_station.stop() failed: {e}")
 
     logger.info("=== Server shutdown complete ===")
 
