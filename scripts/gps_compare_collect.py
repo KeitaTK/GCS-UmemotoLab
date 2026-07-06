@@ -11,7 +11,7 @@ u-blox (NMEA serial) と Pixhawk (GCS API/MAVLink) のGPSデータを
 
 【使用例】
   python scripts/gps_compare_collect.py \
-      --ublox /dev/tty.usbmodem113301 \
+      --ublox COM8 \
       --gcs-url http://100.75.83.95:8000 \
       --output logs/compare_sample4.csv \
       --count 20
@@ -414,7 +414,7 @@ def main():
         description="GPS Comparison Data Collector — Sample 4 Rapid Collection",
     )
     parser.add_argument("--ublox", "-u", required=True,
-                        help="u-blox serial port (e.g. /dev/tty.usbmodem113301)")
+                        help="u-blox serial port (e.g. COM8)")
     parser.add_argument("--ublox-baud", type=int, default=38400,
                         help="u-blox baud rate (default: 38400)")
     parser.add_argument("--gcs-url", default="http://100.75.83.95:8000",

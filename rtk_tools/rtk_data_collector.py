@@ -406,7 +406,7 @@ class RtkDataCollector:
         "delta_lat_m", "delta_lon_m", "delta_alt_m", "horizontal_error_m",
     ]
 
-    def __init__(self, ublox_port="/dev/tty.usbmodem113301", ublox_baud=38400,
+    def __init__(self, ublox_port="COM8", ublox_baud=115200,
                  gcs_url="http://localhost:8000", system_id=1,
                  duration_sec=60, interval_sec=1.0, simulate=False,
                  output_csv=None, output_json=None):
@@ -662,8 +662,8 @@ def main():
         epilog="使用例:\n  python rtk_tools/rtk_data_collector.py\n"
                "  python rtk_tools/rtk_data_collector.py --duration 120\n"
                "  python rtk_tools/rtk_data_collector.py --simulate")
-    p.add_argument("--ublox-port", "-u", default="/dev/tty.usbmodem113301", help="u-blox シリアルポート")
-    p.add_argument("--ublox-baud", type=int, default=38400, help="u-blox ボーレート")
+    p.add_argument("--ublox-port", "-u", default="COM8", help="u-blox シリアルポート")
+    p.add_argument("--ublox-baud", type=int, default=115200, help="u-blox ボーレート")
     p.add_argument("--gcs-url", default="http://localhost:8000", help="GCS WebSocket URL")
     p.add_argument("--system-id", type=int, default=1, help="Pixhawk MAVLink System ID")
     p.add_argument("--duration", "-d", type=int, default=60, help="収集時間 [秒] (デフォルト: 60)")

@@ -444,8 +444,8 @@ def main():
     )
     parser.add_argument(
         "--port",
-        default="/dev/tty.usbmodem113301",
-        help="シリアルポート (デフォルト: /dev/tty.usbmodem113301)",
+        default="COM8",
+        help="シリアルポート (デフォルト: COM8)",
     )
     parser.add_argument(
         "--baudrate",

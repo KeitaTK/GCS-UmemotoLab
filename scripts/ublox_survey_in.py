@@ -7,7 +7,7 @@ outputs RTCM with a precisely known base position, enabling RTK Fixed (fix=6)
 on the rover.
 
 Usage:
-  python scripts/ublox_survey_in.py [--port /dev/tty.usbmodemXXXX] [--min-time 120] [--target-acc 2.0]
+  python scripts/ublox_survey_in.py [--port COM8] [--min-time 120] [--target-acc 2.0]
 """
 
 import argparse, struct, serial, time
@@ -46,7 +46,7 @@ def read_ubx(ser: serial.Serial, cls: int, mid: int, timeout: float = 3.0) -> by
 
 def main():
     parser = argparse.ArgumentParser(description='u-blox Survey-In configuration')
-    parser.add_argument('--port', default='/dev/tty.usbmodem113301', help='Serial port')
+    parser.add_argument('--port', default='COM8', help='Serial port (e.g. COM8)')
     parser.add_argument('--baud', type=int, default=115200, help='Baud rate')
     parser.add_argument('--min-time', type=int, default=120, help='Minimum observation time (seconds)')
     parser.add_argument('--target-acc', type=float, default=2.0, help='Target accuracy (meters)')

@@ -432,7 +432,7 @@ python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0
   "fixed_lon": 139.767125,
   "fixed_alt": 42.0,
   "baudrate": 38400,
-  "serial_port": "/dev/tty.usbmodem113301"
+  "serial_port": "COM8"
 }
 ```
 
