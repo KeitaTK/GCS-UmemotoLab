@@ -372,14 +372,87 @@ graph TD
 
 ### RTCM/RTK データフロー
 
+RTK 補正データは以下のパイプラインで F9P 基地局から Pixhawk まで到達する。
+
 ```mermaid
 graph LR
-    Source["RTCM TCP Source<br/>(e.g. NTRIP caster, rtk_base_station.py)"]
-    Reader["RtcmReader<br/>(_read_loop, daemon thread)<br/>RTCM v3 frame parsing (0xD3 preamble)<br/>callback(on_rtcm_data)"]
-    Injector["RtcmInjector.inject(rtcm_data)<br/>convert to GPS_RTCM_DATA (msgid=67)"]
+    subgraph F9P[F9P GPS受信機]
+        HW["u-blox ZED-F9P<br/>Survey-in / Fixed Mode"]
+    end
 
-    Source -->|"TCP (default port: 2101)"| Reader
-    Reader --> Injector
+    subgraph PC["PC/Mac（基地局）"]
+        Config["F9pConfigurator<br/>CFG-VALSET: TMODE=Fixed<br/>UART1: RTCM3出力有効化<br/>(1005,1074,1084,1094,1124,1230)"]
+        SerialR["RtcmSerialReader<br/>USBシリアル 38400bps<br/>0xD3 フレーム境界検出"]
+        TCPS["TCP Server :2101<br/>全接続クライアントに<br/>ブロードキャスト"]
+    end
+
+    subgraph Raspi[Raspberry Pi 5]
+        TCPC["RtcmReader<br/>TCPクライアント接続<br/>RTCM v3 frame解析"]
+        Inject["RtcmInjector<br/>RTCM → GPS_RTCM_DATA<br/>(msgid=233, 180byte分割)"]
+    end
+
+    subgraph Pix["Pixhawk"]
+        FC["ArduPilot<br/>GPS_RTCM_DATA受信<br/>→ RTK Fixed"]
+    end
+
+    HW -->|"USB"| SerialR
+    Config -.->|"起動時自動設定"| HW
+    SerialR -->|"RTCM frame"| TCPS
+    TCPS -->|"TCP :2101"| TCPC
+    TCPC -->|"RTCM bytes"| Inject
+    Inject -->|"MAVLink v2<br/>シリアル /dev/ttyACM0"| FC
+```
+
+#### パイプライン詳細
+
+| 段階 | 担当モジュール | 実行場所 | データ形式 | 説明 |
+|------|---------------|----------|-----------|------|
+| **① F9P設定** | `F9pConfigurator` (rtk_tools/f9p_configurator.py) | PC/Mac | CFG-VALSET (UBX) | Fixed Mode設定、RTCM3出力メッセージ有効化。`rtk_base_station_v2.py`が起動時に自動実行 |
+| **② RTCM受信** | `RtcmSerialReader` (rtk_base_station_v2.py) | PC/Mac | RTCM3 frame | F9PからUSBシリアル経由でRTCM3フレーム受信。先頭バイト0xD3でフレーム境界検出 |
+| **③ TCP転送** | TCP Server (rtk_base_station_v2.py) | PC/Mac | RTCM3 frame | 受信フレームをTCP:2101に接続した全クライアントにブロードキャスト |
+| **④ RTCM受信(Raspi)** | `RtcmReader` (app/rtk_tools/rtcm_reader.py) | Raspi | RTCM3 frame | TCP:2101にクライアント接続しRTCM3フレーム受信。CRC-24簡易検証 |
+| **⑤ MAVLink変換** | `RtcmInjector` (app/rtk_tools/rtcm_injector.py) | Raspi | GPS_RTCM_DATA (msgid=233) | RTCMバイト列→MAVLink v2 GPS_RTCM_DATAフレーム（180byte/フレーム自動分割、CRC-16 CCITT付与） |
+| **⑥ Pixhawk注入** | `MavlinkConnection.send_to_system()` | Raspi | MAVLink v2 | シリアル /dev/ttyACM0 経由でPixhawkに送信。全System IDにブロードキャスト |
+
+#### 基地局起動方法
+
+```bash
+# v2（推奨）: F9P自動設定統合版
+python rtk_tools/rtk_base_station_v2.py --config config/base_station.json --tcp-port 2101
+
+# v1: 手動F9P設定前提
+python rtk_base_station.py --serial-port COM8 --baudrate 115200 --tcp-host 0.0.0.0 --tcp-port 2101
+```
+
+#### 設定ファイル（config/base_station.json）
+
+```json
+{
+  "fixed_lat": 35.681236,
+  "fixed_lon": 139.767125,
+  "fixed_alt": 42.0,
+  "baudrate": 38400,
+  "serial_port": "/dev/tty.usbmodem113301"
+}
+```
+
+#### コードパス（backend_server.py の連携）
+
+```python
+# 受信→注入→送信のコールバック連鎖
+rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
+rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
+
+def on_rtcm_data(data):
+    rtcm_injector.inject(data)          # RTCM → MAVLink GPS_RTCM_DATA
+
+def send_rtcm_message(frame_data):
+    mav_conn.send_to_system(1, frame_data)  # Drone 1 へ送信
+    mav_conn.send_to_system(2, frame_data)  # Drone 2 へ送信（マルチドローン）
+
+rtcm_injector.set_send_callback(send_rtcm_message)  # 注入→送信
+rtcm_reader.register_callback(on_rtcm_data)          # 受信→注入
+rtcm_reader.start()                                   # 受信開始
 ```
 
 ---

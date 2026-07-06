@@ -3,6 +3,17 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-07-06 10:30: [ドキュメント整理: カテゴリ分け・重複解消・RTKパイプライン詳細追記]
+- 問題: docs/ ディレクトリに33ファイルがフラットに配置され、進捗レポート・設計書・運用マニュアルが混在。重複ドキュメントも複数存在し、メンテナンス性が低下していた。
+- 調査: 全33ファイルを精査し、5組の重複ペア（spec↔design, operations↔multidrone_operations, rtk_setup↔rtk_integration, RTK_BASE_STATION_IMPLEMENTATION↔RTK_BASE_STATION_FINAL_REPORT, progress_report↔gps_comparison）を特定。
+- 試行:
+  - 6カテゴリに分類: `01-specification/`（6）, `02-development/`（2）, `03-operations/`（4）, `04-testing/`（3）, `05-implementation/`（4）, `archive/`（6）
+  - 重複解消: `multidrone_operations_guide` → `operations_manual` に統合、`rtk_setup_guide` → `rtk_integration_guide` に統合（クイックスタートセクションとして先頭に追加）
+  - 削除: `IMPLEMENTATION_FEATURES.md`（空）, `issue_body.md`, `task_20260701.md`, `task_breakdown.md`, `archive/RTK_BASE_STATION_FINAL_REPORT.md`（IMPLEMENTATIONと重複）
+  - コードベース調査で実装機能一覧を全取得し、RTKパイプライン（F9P→基地局→TCP:2101→Raspi→GPS_RTCM_DATA→Pixhawk）の完全なデータフローを `communication-architecture.md` に詳細追記
+- 結果: docs/ が 33→27 ファイルに削減され、カテゴリ構造で目的のドキュメントを見つけやすくなった。RTKパイプラインの6段階（F9P設定→RTCM受信→TCP転送→RTCM受信(Raspi)→MAVLink変換→Pixhawk注入）がアーキテクチャ図・コードパス・設定ファイルと共に明文化された。
+- 備考: `spec.md` ↔ `design.md` は WHAT vs HOW で役割が異なるため統合せず維持。
+
 ### 2026-07-01 12:45: [進捗報告書: Survey-In / TIME mode 解説 + サンプル5グラフ追加]
 - 問題: サンプル1〜3では水平誤差を算出できたが、サンプル4〜5では「算出不可」となっている理由が不明瞭だった。
 - 調査: u-blox ZED-F9P の動作モード（Survey-In mode vs TIME mode）の違いを調査。TIME mode では NMEA 出力が停止するため、基準局座標が取得できず誤差計算が不可能になることを確認。
