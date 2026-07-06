@@ -125,7 +125,9 @@ function updateAllNominal(drones, conn) {
     // Count online drones
     let onlineCount = 0;
     for (const sysid of Object.keys(drones)) {
-        if (isDroneOnline(parseInt(sysid))) onlineCount++;
+        const id = parseInt(sysid, 10);
+        if (id === 0) continue;
+        if (isDroneOnline(id)) onlineCount++;
     }
     el.textContent = onlineCount + ' drone(s) online';
 }
@@ -150,8 +152,12 @@ function updateAlertBar(drones, conn) {
     const alerts = [];
 
     for (const sysid of Object.keys(drones)) {
+        // system_id 0 はブロードキャスト用、n >= 5 はMAX_SLOTS範囲外 → 警告不要
+        const id = parseInt(sysid, 10);
+        if (id === 0 || id > MAX_SLOTS) continue;
+
         const drone = drones[sysid];
-        const online = isDroneOnline(parseInt(sysid));
+        const online = isDroneOnline(id);
         const hb = drone.heartbeat;
         const bat = drone.battery;
         const gps = drone.gps;

@@ -209,12 +209,39 @@ class RtcmSerialReader:
             'read_errors': 0,
             'last_read_time': None
         }
+        # GPS status cache (updated from NMEA in serial stream, avoids separate serial open)
+        self.last_gps_status = None
 
     def start(self):
         self.running = True
         self.thread = threading.Thread(target=self._read_loop, daemon=True)
         self.thread.start()
         self.logger.info(f"Serial reader started on {self.config.serial_port}")
+
+    def _parse_nmea_gga(self, line: str) -> Optional[dict]:
+        """Parse $GNGGA NMEA sentence for GPS status."""
+        try:
+            parts = line.split(',')
+            if len(parts) < 10 or not parts[2]:
+                return None
+            lat_r = float(parts[2])
+            lat_deg = int(lat_r / 100)
+            lat = lat_deg + (lat_r - lat_deg * 100) / 60
+            lon_r = float(parts[4])
+            lon_deg = int(lon_r / 100)
+            lon = lon_deg + (lon_r - lon_deg * 100) / 60
+            alt = float(parts[9]) if parts[9] else 0
+            fix = int(parts[6]) if parts[6] else 0
+            sats = int(parts[7]) if parts[7] else 0
+            hdop = float(parts[8]) if parts[8] else 0
+            fix_names = {0: 'NoFix', 1: 'GPS', 2: 'DGPS', 4: 'RTK_FIXED', 5: 'RTK_FLOAT'}
+            return {
+                'lat': lat, 'lon': lon, 'alt': alt,
+                'fix': fix, 'sats': sats, 'hdop': hdop,
+                'fix_name': fix_names.get(fix, f'({fix})')
+            }
+        except (ValueError, IndexError):
+            return None
 
     def stop(self):
         self.running = False
@@ -251,6 +278,19 @@ class RtcmSerialReader:
                     buffer.extend(data)
                     self.stats['bytes_read'] += len(data)
                     self.stats['last_read_time'] = time.time()
+
+                    # Parse NMEA $GNGGA lines from data for GPS status cache
+                    # (NMEA comes interleaved with RTCM from F9P in some configurations)
+                    try:
+                        text = data.decode('ascii', errors='replace')
+                        for raw_line in text.split('\n'):
+                            line = raw_line.strip()
+                            if line.startswith('$GNGGA') or line.startswith('$GPGGA'):
+                                parsed = self._parse_nmea_gga(line)
+                                if parsed:
+                                    self.last_gps_status = parsed
+                    except Exception:
+                        pass
 
                     # RTCM v3フレーム（0xD3で開始）を抽出
                     while len(buffer) >= 6:
@@ -494,7 +534,7 @@ class RtkBaseStation:
         self.logger = logging.getLogger("RtkBaseStation")
         self._setup_logging()
 
-        self.rtcm_queue = Queue(maxsize=100)
+        self.rtcm_queue = Queue()
 
         self.serial_reader = RtcmSerialReader(config, self.rtcm_queue)
         self.tcp_server = TcpServer(config, self.rtcm_queue)

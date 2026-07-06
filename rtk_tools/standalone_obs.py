@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import threading
+
 import serial
 from pyubx2 import UBXMessage, SET
 
@@ -221,7 +223,12 @@ class StandaloneObserver:
         self.samples: list[GpsSample] = []
         self.best_fix_seen = 0
         self._interrupted = False
-        self._orig_sigint = signal.signal(signal.SIGINT, self._sigint_handler)
+        # signal.signal() はメインスレッドでのみ使用可能。
+        # バックグラウンドスレッド（Web API経由）ではスキップ。
+        if threading.current_thread() is threading.main_thread():
+            self._orig_sigint = signal.signal(signal.SIGINT, self._sigint_handler)
+        else:
+            self._orig_sigint = None
         self.progress_callback = progress_callback
 
     def _sigint_handler(self, signum, frame):

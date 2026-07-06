@@ -118,16 +118,13 @@ _COPTER_MODES = {
 OFFLINE_TIMEOUT = 10.0  # seconds without telemetry → consider drone offline
 
 
-def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict | None:
+def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict:
     """Build the complete telemetry payload for broadcast.
 
-    Drones that haven't sent any telemetry in OFFLINE_TIMEOUT seconds
-    are flagged with ``online: false`` so the frontend can immediately
-    show them as offline.
+    Always includes base_station status even when backend (telemetry_store) is
+    not connected. Drones that haven't sent any telemetry in OFFLINE_TIMEOUT
+    seconds are flagged with ``online: false``.
     """
-    if telemetry_store is None:
-        return None
-
     t_now = time.time()
 
     payload: dict = {
@@ -138,6 +135,9 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
         "rtk": _build_rtk_status(rtcm_reader),
         "base_station": _build_base_station_status(),
     }
+
+    if telemetry_store is None:
+        return payload  # base_station info included even without backend
 
     last_seen_all = {}
     if hasattr(telemetry_store, "get_last_seen_all"):
@@ -371,9 +371,20 @@ def _build_base_station_status() -> dict:
             except Exception:
                 pass
 
+        # Use cached GPS status from serial reader (avoids separate serial open)
         gps_status = None
         try:
-            gps_status = station._read_gps_status()
+            gps_cache = station.serial_reader.last_gps_status if hasattr(station, 'serial_reader') else None
+            if gps_cache:
+                gps_status = {
+                    "fix_name": gps_cache.get('fix_name', 'N/A'),
+                    "fix": gps_cache.get('fix', 0),
+                    "sats": gps_cache.get('sats', 0),
+                    "lat": gps_cache.get('lat'),
+                    "lon": gps_cache.get('lon'),
+                    "alt": gps_cache.get('alt'),
+                    "hdop": gps_cache.get('hdop'),
+                }
         except Exception:
             pass
 
