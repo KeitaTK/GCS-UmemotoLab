@@ -947,41 +947,46 @@ body {
 
 .bs-body {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 10px;
 }
 
 .bs-row {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
+    gap: 3px;
+    font-size: 11px;
+    flex-wrap: nowrap;
 }
 
 .bs-label {
     color: #7f8c8d;
     font-weight: 600;
-    min-width: 60px;
+    min-width: auto;
+    margin-right: 1px;
 }
 
 .bs-value {
     color: #ecf0f1;
     font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 11px;
+    white-space: nowrap;
 }
 
 .bs-value.bs-pos {
     font-size: 11px;
-    max-width: 320px;
+    max-width: 260px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .bs-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
+    display: inline-flex;
+    gap: 6px;
+    margin-left: 4px;
 }
 
 .btn-start-bs {
