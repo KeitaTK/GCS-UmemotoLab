@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import logging
+import multiprocessing
 import socket
 import threading
 import time
@@ -659,8 +660,30 @@ class RtkBaseStation:
         print("=" * 70 + "\n")
 
 
+def _run_station_worker(config: Config, stop_event: multiprocessing.Event):
+    """子プロセス: RTK基地局の実行本体"""
+    station = RtkBaseStation(config)
+    station.start()
+
+    try:
+        while not stop_event.is_set():
+            for _ in range(10):
+                if stop_event.is_set():
+                    break
+                time.sleep(1)
+            if not stop_event.is_set():
+                station.print_stats()
+
+    except KeyboardInterrupt:
+        print("\n[INFO] Interrupted by user (child process)")
+
+    finally:
+        station.stop()
+        print("[INFO] Child process cleanup completed.")
+
+
 def main():
-    """メイン関数"""
+    """メイン関数 - multiprocessing で Ctrl+C 即停止を実現"""
     args = parse_args()
 
     config = _merge_config(args.config, args)
@@ -679,22 +702,47 @@ def main():
     print(f"  Log level: {config.log_level}")
     print()
 
-    station = RtkBaseStation(config)
-    station.start()
+    stop_event = multiprocessing.Event()
+    proc = multiprocessing.Process(
+        target=_run_station_worker,
+        args=(config, stop_event),
+        name="RtkBaseStation",
+    )
+    proc.start()
+    print(f"[INFO] Base station started (PID: {proc.pid})")
 
     try:
-        while True:
-            for _ in range(60):
-                time.sleep(1)
-            station.print_stats()
+        # 子プロセスが生きている間、0.5秒間隔で監視
+        while proc.is_alive():
+            proc.join(timeout=0.5)
 
     except KeyboardInterrupt:
-        print("\n[INFO] Interrupted by user")
+        print("\n[INFO] Ctrl+C detected - stopping immediately...")
+        stop_event.set()
 
-    finally:
-        station.stop()
+        # まず3秒間クリーンシャットダウンを待つ
+        proc.join(timeout=3)
+        if proc.is_alive():
+            print("[INFO] Graceful shutdown timed out. Force terminating...")
+            proc.terminate()
+            proc.join(timeout=2)
+            if proc.is_alive():
+                print("[INFO] Force kill...")
+                proc.kill()
+                proc.join()
+
+        print("[INFO] Base station stopped.")
+
+    else:
+        # 子プロセスが自発的に終了した場合
+        exit_code = proc.exitcode
+        print(f"[INFO] Base station exited with code {exit_code}")
+        if exit_code and exit_code != 0:
+            sys.exit(exit_code)
 
 
 if __name__ == "__main__":
+    # Windows の spawn モード対策: エントリポイントを明示的に保護
+    multiprocessing.freeze_support()
     main()
 
