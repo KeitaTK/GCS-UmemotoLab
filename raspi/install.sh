@@ -75,15 +75,34 @@ else
 fi
 
 # --------------------------------------------------
-# 4. mavlink-router インストールと設定
+# 4. mavlink-router ソースビルドとインストール
 # --------------------------------------------------
-echo "[4/5] Installing mavlink-router..."
-if dpkg -l mavlink-router 2>/dev/null | grep -q '^ii'; then
+echo "[4/5] Building mavlink-router from source..."
+MAVLINK_BUILD_DIR="/tmp/mavlink-router-build"
+
+if command -v mavlink-routerd &>/dev/null; then
     echo "  mavlink-router already installed"
 else
+    # ビルドに必要なパッケージをインストール
     sudo apt update -qq
-    sudo apt install mavlink-router -y -qq
-    echo "  mavlink-router installed"
+    sudo apt install -y -qq git build-essential autoconf automake libtool pkg-config python3-pip 2>&1 | tail -1
+
+    # ソースをクローン（--depth 1 で高速化）
+    if [ ! -d "$MAVLINK_BUILD_DIR" ]; then
+        git clone --depth 1 https://github.com/mavlink-router/mavlink-router.git "$MAVLINK_BUILD_DIR"
+    fi
+
+    cd "$MAVLINK_BUILD_DIR"
+    git submodule update --init --recursive
+
+    # ビルド & インストール
+    ./autogen.sh
+    ./configure --prefix=/usr --sysconfdir=/etc
+    make -j$(nproc)
+    sudo make install
+
+    cd "$REPO_DIR"
+    echo "  mavlink-router built and installed"
 fi
 
 MLR_CONF="/etc/mavlink-router/main.conf"
