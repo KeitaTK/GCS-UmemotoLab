@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-GCS Backend Server (headless)
+[DEPRECATED] GCS Backend Server (headless)
+Use raspi/backend_server.py instead.
+
+This file is kept for backward compatibility.
+New deployments should use raspi/  directory.
+
 Runs on Raspberry Pi and forwards MAVLink messages from Pixhawk to remote GCS.
 """
 

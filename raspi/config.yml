@@ -1,0 +1,39 @@
+# raspi/config.yml — Raspberry Pi 5 用 GCS Backend 設定
+#
+# 使用方法:
+#   cd ~/GCS-UmemotoLab/raspi
+#   python backend_server.py
+#
+# 環境変数で設定ファイルを切り替え:
+#   RASPI_CONFIG_PATH=/path/to/custom.yml python backend_server.py
+
+# ============================================================================
+# MAVLink 接続設定
+# ============================================================================
+connection:
+  type: serial                  # serial または udp
+  serial_port: /dev/ttyAMA0     # Pixhawk シリアルデバイス（UART GPIO: Pin 8/10）
+  serial_baudrate: 115200       # Pixhawk TELEM1 とのボーレート
+  udp_listen_port: 14550        # UDPモード時の待受ポート
+
+# ============================================================================
+# RTCM/RTK 補正データ設定
+# ============================================================================
+rtcm:
+  enabled: true                 # RTK補正データ注入を有効化
+  host: 127.0.0.1               # PC側 RTK基地局（rtk_base_station.py）のIP
+  port: 2101                    # PC側 TCPサーバーポート（rtk_base_station の --tcp-port）
+
+# ============================================================================
+# ドローン設定
+# ============================================================================
+drones:
+  - system_id: 1
+    name: "Pixhawk6C Main"
+
+# ============================================================================
+# ログ設定
+# ============================================================================
+log:
+  level: INFO                   # DEBUG / INFO / WARNING / ERROR
+  stats_interval_sec: 5         # 統計ログ出力間隔

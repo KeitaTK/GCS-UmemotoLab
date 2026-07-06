@@ -29,6 +29,13 @@ import sys
 import time
 from pathlib import Path
 
+# リポジトリルートを sys.path に追加して config_loader をインポート可能にする
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
+
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s %(message)s',
@@ -81,9 +88,6 @@ def parse_nmea_gga(line: str) -> dict | None:
         if alt_str:
             alt_m = float(alt_str)
 
-        # Map NMEA fix_quality to MAVLink-like fix_type
-        # NMEA: 0=None, 1=GPS, 2=DGPS, 4=RTK Fixed, 5=RTK Float
-        # MAVLink: 0=NO_GPS, 3=3D_FIX, 4=DGPS, 5=RTK_FLOAT, 6=RTK_FIXED
         fix_map = {0: 0, 1: 3, 2: 4, 4: 6, 5: 5}
         fix_type = fix_map.get(fix_quality, fix_quality)
 
@@ -119,7 +123,6 @@ class UbloxReader:
             self._ser.close()
 
     def poll(self, timeout_s: float = 3.0) -> dict | None:
-        """Read until a valid GGA sentence is found (or timeout)."""
         import serial as _serial
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
@@ -133,6 +136,8 @@ class UbloxReader:
                 break
             except Exception as e:
                 logger.debug(f"u-blox read: {e}")
+
+
 class GcsPoller:
     """Poll Pixhawk GPS data via GCS HTTP API/WebSocket."""
 
@@ -141,10 +146,6 @@ class GcsPoller:
         self.system_id = system_id
 
     def get_telemetry(self) -> dict | None:
-        """Get drone telemetry via GCS WebSocket.
-
-        Returns dict with fix_type, satellites, lat, lon, alt or None.
-        """
         import socket
         import threading
 
@@ -220,7 +221,6 @@ class GcsPoller:
 
     @staticmethod
     def _ws_extract_text(buffer: bytes) -> list[str]:
-        """Extract text payloads from WebSocket frames."""
         messages = []
         pos = 0
         while pos + 2 <= len(buffer):
@@ -265,7 +265,6 @@ class GcsPoller:
         return messages
 
     def _find_gps(self, msg: dict) -> dict | None:
-        """Find GPS_RAW_INT-like fields in a telemetry message."""
         if "GPS_RAW_INT" in msg:
             gps = msg["GPS_RAW_INT"]
         elif "gps_raw_int" in msg:
@@ -327,7 +326,6 @@ def collect_samples(
     interval: float = 2.0,
     max_duration: float = 60.0,
 ) -> list[dict]:
-    """Collect synchronized GPS samples from u-blox and Pixhawk."""
     rows = []
     start_time = time.monotonic()
     deadline = start_time + max_duration
@@ -386,7 +384,6 @@ def collect_samples(
 
 
 def write_csv(rows: list[dict], output_path: str):
-    """Write collected rows to CSV file."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
@@ -413,10 +410,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="GPS Comparison Data Collector — Sample 4 Rapid Collection",
     )
-    parser.add_argument("--ublox", "-u", required=True,
-                        help="u-blox serial port (e.g. COM8)")
-    parser.add_argument("--ublox-baud", type=int, default=38400,
-                        help="u-blox baud rate (default: 38400)")
+    parser.add_argument("--ublox", "-u",
+                        default=_hw_config['f9p']['serial_port'],
+                        help="u-blox serial port")
+    parser.add_argument("--ublox-baud", type=int,
+                        default=_hw_config['f9p']['baudrate'],
+                        help="u-blox baud rate")
     parser.add_argument("--gcs-url", default="http://100.75.83.95:8000",
                         help="GCS API base URL")
     parser.add_argument("--output", "-o", default="logs/compare_sample4.csv",

@@ -10,7 +10,20 @@ Usage:
   python scripts/ublox_survey_in.py [--port COM8] [--min-time 120] [--target-acc 2.0]
 """
 
-import argparse, struct, serial, time
+import argparse
+import struct
+import serial
+import time
+import sys
+from pathlib import Path
+
+# リポジトリルートを sys.path に追加して config_loader をインポート可能にする
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
+
 
 def ubx_checksum(msg: bytes) -> bytes:
     ck_a = ck_b = 0
@@ -19,6 +32,7 @@ def ubx_checksum(msg: bytes) -> bytes:
         ck_b = (ck_b + ck_a) & 0xFF
     return bytes([ck_a, ck_b])
 
+
 def send_ubx(ser: serial.Serial, cls: int, mid: int, payload: bytes = b''):
     header = struct.pack('<BBBB', 0xB5, 0x62, cls, mid)
     body = header[2:] + payload
@@ -26,6 +40,7 @@ def send_ubx(ser: serial.Serial, cls: int, mid: int, payload: bytes = b''):
     pkt = header + payload + ck
     ser.write(pkt)
     return pkt
+
 
 def read_ubx(ser: serial.Serial, cls: int, mid: int, timeout: float = 3.0) -> bytes | None:
     start = time.time()
@@ -44,12 +59,17 @@ def read_ubx(ser: serial.Serial, cls: int, mid: int, timeout: float = 3.0) -> by
         time.sleep(0.05)
     return None
 
+
 def main():
     parser = argparse.ArgumentParser(description='u-blox Survey-In configuration')
-    parser.add_argument('--port', default='COM8', help='Serial port (e.g. COM8)')
-    parser.add_argument('--baud', type=int, default=115200, help='Baud rate')
-    parser.add_argument('--min-time', type=int, default=120, help='Minimum observation time (seconds)')
-    parser.add_argument('--target-acc', type=float, default=2.0, help='Target accuracy (meters)')
+    parser.add_argument('--port', default=_hw_config['f9p']['serial_port'],
+                        help=f'Serial port (default: {_hw_config["f9p"]["serial_port"]})')
+    parser.add_argument('--baud', type=int, default=_hw_config['f9p']['baudrate'],
+                        help=f'Baud rate (default: {_hw_config["f9p"]["baudrate"]})')
+    parser.add_argument('--min-time', type=int, default=120,
+                        help='Minimum observation time (seconds)')
+    parser.add_argument('--target-acc', type=float, default=2.0,
+                        help='Target accuracy (meters)')
     args = parser.parse_args()
 
     print(f'Opening {args.port} @ {args.baud}...')
@@ -75,7 +95,6 @@ def main():
     print(f'Survey-In configured: min_time={args.min_time}s, target_acc={args.target_acc}m')
 
     # --- Enable RTCM output on port ---
-    # Enable RTCM 1074,1084,1094,1124 (MSM4 for GPS,GLONASS,Galileo,BeiDou) + 1005,1230
     rtcm_msgs = [
         struct.pack('<BBBBB', 0, 1, 0, 1, 1),  # 1005 - station coordinates
         struct.pack('<BBBBB', 0, 2, 0, 1, 1),  # 1074 - GPS MSM4
@@ -115,6 +134,7 @@ def main():
         print('\nMonitoring stopped.')
 
     ser.close()
+
 
 if __name__ == '__main__':
     main()

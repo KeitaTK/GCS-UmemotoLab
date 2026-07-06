@@ -1,0 +1,7 @@
+# config/config.mac.yml — macOS用 設定上書き
+# config.yml の値をこのファイルの値で上書きする
+connection:
+  serial_port: "/dev/tty.usbmodem113301"
+
+f9p:
+  serial_port: "/dev/tty.usbmodem113301"

@@ -60,8 +60,11 @@ class MavlinkConnection:
         self.recv_callback = None
         self._tx_seq = 0
 
-    def _load_config(self, path):
-        with open(path, 'r') as f:
+    def _load_config(self, config_or_path):
+        """Load config from a YAML file path or use a dict directly."""
+        if isinstance(config_or_path, dict):
+            return config_or_path
+        with open(config_or_path, 'r') as f:
             return yaml.safe_load(f)
 
     def register_error_callback(self, callback):

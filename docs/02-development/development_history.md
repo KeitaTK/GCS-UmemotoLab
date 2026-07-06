@@ -3,6 +3,57 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-07-06 11:42: [config/ 完全統合 — config.yml 一元化 + raspi/ 移行完了]
+- 問題: config/ ディレクトリに8つの設定ファイルが散在し、PC側（gcs.yml / hardware.yml）とラズパイ側（gcs_drone.yml / gcs_local.yml）の設定が混在していた。CLI引数のデフォルト値も別管理で、変更時の追従漏れが起きやすかった。
+- 試行:
+  - config/config.yml を作成（gcs.yml + hardware.yml を統合。connection / drones / f9p / base_station / forward / rtcm / log / retry の8セクション）
+  - config/config.win.yml / config.mac.yml 作成（OS自動判定で上書き）
+  - config/config.local.example.yml 作成（SSH Tunnel / 手動トンネル / マルチドローンの3例）
+  - rtk_tools/config_loader.py を load_config() に統一（後方互換エイリアス付き）
+  - app/mavlink/connection.py の _load_config() を str / dict 両対応に
+  - app/main.py を load_config() + dict 直接受け取りに変更
+  - raspi/backend_server.py も load_config() 使用に統一
+  - 旧ファイル8つを config/archive/ に移動（gcs.yml, gcs_local.yml, gcs_production.yml, gcs_drone.yml, hardware.yml, hardware.win.yml, hardware.mac.yml, launch_gcs_tailscale.sh）
+  - .gitignore を config.local.yml に更新
+  - docs/01-specification/communication-architecture.md を更新
+- 結果: config/ が 4ファイル（config.yml + win + mac + local.example）+ マルチドローン例 + archive に整理。全ツールが load_config() 1本で設定を解決する。
+- 備考: gcs_multidrone_example.yml は運用例として維持。raspi/ ディレクトリも同時に稼働中。
+
+### 2026-07-06 11:28: [Raspberry Pi 用ディレクトリ `raspi/` 新設]
+- 問題: ラズパイ用の設定ファイル（gcs_local.yml / gcs_drone.yml）やスクリプト（rtk_tools/backend_server.py）がプロジェクト全体に散在し、PC側の設定と混在していた。requirements_raspi.txt もルート直下にあり、ラズパイ用のリソースが一箇所にまとまっていなかった。
+- 調査: 既存の backend_server.py が参照しているモジュールと設定ファイルを洗い出し、ラズパイ上での全セットアップ手順を確認。
+- 試行:
+  - raspi/ ディレクトリを作成し、以下のファイルを集約:
+    - raspi/config.yml — 単一設定ファイル（connection/rtcm/drones/log セクション）
+    - raspi/config_loader.py — RASPI_CONFIG_PATH 環境変数対応の設定ローダー
+    - raspi/backend_server.py — raspi/config.yml を読み、GCS互換設定に変換して実行
+    - raspi/requirements.txt — requirements_raspi.txt から移設
+    - raspi/install.sh — .venv作成・pip install・systemd登録・mavlink-router確認
+    - raspi/README.md — 設定・運用マニュアル
+  - rtk_tools/backend_server.py に [DEPRECATED] 注意書きを追加
+  - docs/03-operations/raspi-connection-setup.md に raspi/README.md への参照を追記
+- 結果: ラズパイ用の全リソースが raspi/ に集約され、`raspi/config.yml` 1ファイルの編集だけで運用できるようになった。
+- 備考: 既存の rtk_tools/backend_server.py は暫定維持。systemd サービス名は gcs-backend。
+
+### 2026-07-06 11:17: [設定ファイル一元化 — hardware.yml 導入]
+- 問題: F9Pシリアルポート・ボーレート・基準局座標・forward設定が各スクリプトのデフォルト引数や config/base_station.json / config/rtk_forwarder.yml に重複してハードコードされており、変更時に追従漏れが発生しやすかった。
+- 調査: 計画書 docs/01-specification/config-consolidation-plan.md に基づき、全スクリプトのデフォルト値と設定ファイルを洗い出し。
+- 試行:
+  - config/hardware.yml, hardware.win.yml, hardware.mac.yml を作成（F9P + 基準局 + forward + retry + log）。
+  - rtk_tools/config_loader.py に load_hardware_config() を実装（環境変数 GCS_HARDWARE_CONFIG → hardware.local.yml → OS自動判定 → hardware.yml の優先順位で deep merge）。
+  - 7スクリプトのデフォルト値を hardware.yml 参照に変更:
+    - rtk_tools/rtk_base_station.py: --serial-port, --baudrate
+    - rtk_tools/rtk_base_station_v2.py: _merge_config() を hardware.yml ベースに書き換え（JSON読込削除）
+    - rtk_tools/rtk_data_collector.py: --ublox-port, --ublox-baud
+    - rtk_tools/standalone_obs.py: --port, --baudrate
+    - rtk_tools/rtk_forwarder_service.py: load_config() を hardware.yml ベースに書き換え
+    - scripts/ublox_survey_in.py: --port, --baud
+    - scripts/gps_compare_collect.py: --ublox, --ublox-baud
+  - config/base_station.json, config/rtk_forwarder.yml を削除。
+  - config/hardware.local.yml を .gitignore に追加。
+- 結果: 全ハードウェア設定が hardware.yml 1ファイルに集約された。各スクリプトは CLI 引数が明示指定された場合は引数を優先、省略時は hardware.yml から自動解決する。
+- 備考: NTRIP設定（host/port/mountpoint/password）は環境依存が強く、hardware.yml には含めず既存の rtk_forwarder.yml（削除）または gcs_local.yml で管理。hardware.yml の forward.host/port は UDP転送先の指定。
+
 ### 2026-07-06 11:08: [不要ファイルのアーカイブ + .clineignore 作成]
 - 問題: プロジェクトルート直下に旧バージョン・重複・特殊用途のファイルが散在し、アクティブに使うファイルが見分けづらかった。
 - 調査: 各ディレクトリ内の全ファイルを精査し、重複（rtk_tools/test_rtk_integration.py ↔ tests/test_rtk_integration.py）、旧バージョン（command_sender.py → command_dispatcher.py）、一度限り（generate_sample5_graph.py）を特定。空ファイル（test_rtcm.py）も確認。

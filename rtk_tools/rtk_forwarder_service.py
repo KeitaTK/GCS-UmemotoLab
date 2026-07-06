@@ -4,9 +4,13 @@ import logging
 import socket
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import serial
 import yaml
+
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
 
 
 @dataclass
@@ -195,35 +199,83 @@ class RtcmForwarderService:
 
 
 def load_config(path: str) -> ServiceConfig:
-    with open(path, "r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
+    """設定ファイルを読み込む。hardware.yml がベース。
 
-    source_raw = raw.get("source", {})
-    forward_raw = raw.get("forward", {})
-    retry_raw = raw.get("retry", {})
-    log_raw = raw.get("log", {})
+    YAML設定ファイルが存在する場合はそれを読み込み、
+    hardware.yml の値で上書きする。
+    """
+    # hardware.yml からデフォルト値を取得
+    _hw = _hw_config
 
+    # ベース設定の構築
     source = SourceConfig(
-        source_type=source_raw.get("source_type", "ntrip"),
-        host=source_raw.get("host", "127.0.0.1"),
-        port=int(source_raw.get("port", 2101)),
-        mountpoint=source_raw.get("mountpoint", "UBLOX_EVK_F9P"),
-        user_agent=source_raw.get("user_agent", "NTRIP PythonClient"),
-        username=source_raw.get("username", ""),
-        password=source_raw.get("password", ""),
-        serial_port=source_raw.get("serial_port", "COM8"),
-        baudrate=int(source_raw.get("baudrate", 115200)),
-        timeout_sec=float(source_raw.get("timeout_sec", 2.0)),
+        source_type="ntrip",
+        host=_hw.get('forward', {}).get('host', '127.0.0.1'),
+        port=2101,  # NTRIP caster default port
+        mountpoint="UBLOX_EVK_F9P",
+        user_agent="NTRIP PythonClient",
+        username="",
+        password="",
+        serial_port=_hw.get('f9p', {}).get('serial_port', 'COM8'),
+        baudrate=_hw.get('f9p', {}).get('baudrate', 115200),
+        timeout_sec=2.0,
     )
     forward = ForwardConfig(
-        host=forward_raw.get("host", "127.0.0.1"),
-        port=int(forward_raw.get("port", 50010)),
+        host=_hw.get('forward', {}).get('host', '127.0.0.1'),
+        port=_hw.get('forward', {}).get('port', 50010),
     )
-    retry = RetryConfig(reconnect_sec=float(retry_raw.get("reconnect_sec", 3.0)))
+    retry = RetryConfig(
+        reconnect_sec=_hw.get('retry', {}).get('reconnect_sec', 3.0),
+    )
     log = LogConfig(
-        level=str(log_raw.get("level", "INFO")).upper(),
-        stats_interval_sec=int(log_raw.get("stats_interval_sec", 5)),
+        level=str(_hw.get('log', {}).get('level', 'INFO')).upper(),
+        stats_interval_sec=int(_hw.get('log', {}).get('stats_interval_sec', 5)),
     )
+
+    # YAMLファイルが存在する場合は読み込んで上書き
+    if path and Path(path).exists():
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+
+        source_raw = raw.get("source", {})
+        forward_raw = raw.get("forward", {})
+        retry_raw = raw.get("retry", {})
+        log_raw = raw.get("log", {})
+
+        if source_raw.get("source_type"):
+            source.source_type = source_raw["source_type"]
+        if source_raw.get("host"):
+            source.host = source_raw["host"]
+        if source_raw.get("port"):
+            source.port = int(source_raw["port"])
+        if source_raw.get("mountpoint"):
+            source.mountpoint = source_raw["mountpoint"]
+        if source_raw.get("user_agent"):
+            source.user_agent = source_raw["user_agent"]
+        if source_raw.get("username"):
+            source.username = source_raw["username"]
+        if source_raw.get("password"):
+            source.password = source_raw["password"]
+        if source_raw.get("serial_port"):
+            source.serial_port = source_raw["serial_port"]
+        if source_raw.get("baudrate"):
+            source.baudrate = int(source_raw["baudrate"])
+        if source_raw.get("timeout_sec"):
+            source.timeout_sec = float(source_raw["timeout_sec"])
+
+        if forward_raw.get("host"):
+            forward.host = forward_raw["host"]
+        if forward_raw.get("port"):
+            forward.port = int(forward_raw["port"])
+
+        if retry_raw.get("reconnect_sec"):
+            retry.reconnect_sec = float(retry_raw["reconnect_sec"])
+
+        if log_raw.get("level"):
+            log.level = str(log_raw["level"]).upper()
+        if log_raw.get("stats_interval_sec"):
+            log.stats_interval_sec = int(log_raw["stats_interval_sec"])
+
     return ServiceConfig(source=source, forward=forward, retry=retry, log=log)
 
 

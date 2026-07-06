@@ -16,6 +16,9 @@ from pathlib import Path
 
 import serial
 
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
+
 
 @dataclass
 class Config:
@@ -458,14 +461,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--serial-port",
-        default="COM8",
-        help="ublox シリアルポート (default: COM8)"
+        default=_hw_config['f9p']['serial_port'],
+        help=f"ublox シリアルポート (default: {_hw_config['f9p']['serial_port']})"
     )
     parser.add_argument(
         "--baudrate",
         type=int,
-        default=115200,
-        help="ボーレート (default: 115200)"
+        default=_hw_config['f9p']['baudrate'],
+        help=f"ボーレート (default: {_hw_config['f9p']['baudrate']})"
     )
     parser.add_argument(
         "--tcp-host",

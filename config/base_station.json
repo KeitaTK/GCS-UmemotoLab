@@ -1,8 +1,0 @@
-{
-    "serial_port": "COM8",
-    "baudrate": 115200,
-    "fixed_lat": 35.681236,
-    "fixed_lon": 139.767125,
-    "fixed_alt": 42.0,
-    "save_to_flash": true
-}

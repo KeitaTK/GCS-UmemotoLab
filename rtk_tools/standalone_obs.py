@@ -27,6 +27,9 @@ from typing import Optional
 import serial
 from pyubx2 import UBXMessage, SET
 
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
+
 # ---------------------------------------------------------------------------
 # 定数
 # ---------------------------------------------------------------------------
@@ -444,14 +447,14 @@ def main():
     )
     parser.add_argument(
         "--port",
-        default="COM8",
-        help="シリアルポート (デフォルト: COM8)",
+        default=_hw_config['f9p']['serial_port'],
+        help=f"シリアルポート (デフォルト: {_hw_config['f9p']['serial_port']})",
     )
     parser.add_argument(
         "--baudrate",
         type=int,
-        default=38400,
-        help="ボーレート (デフォルト: 38400)",
+        default=_hw_config['f9p']['baudrate'],
+        help=f"ボーレート (デフォルト: {_hw_config['f9p']['baudrate']})",
     )
     parser.add_argument(
         "--duration",

@@ -127,7 +127,7 @@ if __name__ == "__main__":
         # =====================================================================
         logger.info("GCSアプリケーションが起動しました。（GUIモード）")
 
-        from rtk_tools.config_loader import resolve_config_path
+        from rtk_tools.config_loader import load_config
         from mavlink.connection import MavlinkConnection
         from mavlink.message_router import MessageRouter
         from rtk_tools.telemetry_store import TelemetryStore
@@ -135,17 +135,14 @@ if __name__ == "__main__":
         from rtk_tools.rtcm_injector import RtcmInjector
         import threading
 
-        config_path = resolve_config_path()
-        logger.info(f"設定ファイルを使用します: {config_path}")
+        config = load_config()
+        logger.info(f"設定を読み込みました: connection.type={config.get('connection', {}).get('type', 'udp')}")
         telemetry_store = TelemetryStore()
 
-        import yaml
-        with open(config_path, 'r') as f:
-            raw_config = yaml.safe_load(f)
-        _setup_tailscale_tunnel(raw_config, logger)
+        _setup_tailscale_tunnel(config, logger)
         atexit.register(_cleanup_tunnel)
 
-        mav_conn = MavlinkConnection(config_path)
+        mav_conn = MavlinkConnection(config)
 
         from rtk_tools.command_dispatcher import CommandDispatcher
         from rtk_tools.guided_control import GuidedControl
@@ -171,9 +168,10 @@ if __name__ == "__main__":
 
         threading.Thread(target=request_streams, daemon=True).start()
 
-        rtcm_enabled = mav_conn.config.get('rtcm_enabled', True)
-        rtcm_host = mav_conn.config.get('rtcm_host', '127.0.0.1')
-        rtcm_port = mav_conn.config.get('rtcm_tcp_port', 15000)
+        rtcm_cfg = config.get('rtcm', {})
+        rtcm_enabled = rtcm_cfg.get('enabled', True)
+        rtcm_host = rtcm_cfg.get('host', '127.0.0.1')
+        rtcm_port = rtcm_cfg.get('port', 2101)
 
         rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
         rtcm_injector = RtcmInjector(enabled=rtcm_enabled)

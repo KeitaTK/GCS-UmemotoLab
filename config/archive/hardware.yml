@@ -1,0 +1,24 @@
+# config/hardware.yml — 全ツール共通のハードウェア設定
+# デフォルト設定（Windows PC / F9P 基地局環境用）
+# 環境別の上書きは hardware.win.yml / hardware.mac.yml / hardware.local.yml
+
+f9p:
+  serial_port: "COM8"       # F9P 接続シリアルポート
+  baudrate: 115200           # F9P ボーレート
+
+base_station:
+  fixed_lat: 35.681236       # 固定基準局 緯度
+  fixed_lon: 139.767125      # 固定基準局 経度
+  fixed_alt: 42.0            # 固定基準局 高度
+  save_to_flash: true        # F9P設定をフラッシュに保存
+
+forward:
+  host: 127.0.0.1            # RTCM転送先ホスト
+  port: 50010                # RTCM転送先ポート
+
+retry:
+  reconnect_sec: 3.0         # 再接続間隔
+
+log:
+  level: INFO
+  stats_interval_sec: 5

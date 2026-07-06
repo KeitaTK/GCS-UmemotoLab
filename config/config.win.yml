@@ -1,0 +1,7 @@
+# config/config.win.yml — Windows用 設定上書き
+# config.yml の値をこのファイルの値で上書きする
+connection:
+  serial_port: "COM8"
+
+f9p:
+  serial_port: "COM8"

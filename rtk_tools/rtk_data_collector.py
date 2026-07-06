@@ -33,6 +33,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
+
 # ============================================================================
 # 定数
 # ============================================================================
@@ -662,8 +665,8 @@ def main():
         epilog="使用例:\n  python rtk_tools/rtk_data_collector.py\n"
                "  python rtk_tools/rtk_data_collector.py --duration 120\n"
                "  python rtk_tools/rtk_data_collector.py --simulate")
-    p.add_argument("--ublox-port", "-u", default="COM8", help="u-blox シリアルポート")
-    p.add_argument("--ublox-baud", type=int, default=115200, help="u-blox ボーレート")
+    p.add_argument("--ublox-port", "-u", default=_hw_config['f9p']['serial_port'], help="u-blox シリアルポート")
+    p.add_argument("--ublox-baud", type=int, default=_hw_config['f9p']['baudrate'], help="u-blox ボーレート")
     p.add_argument("--gcs-url", default="http://localhost:8000", help="GCS WebSocket URL")
     p.add_argument("--system-id", type=int, default=1, help="Pixhawk MAVLink System ID")
     p.add_argument("--duration", "-d", type=int, default=60, help="収集時間 [秒] (デフォルト: 60)")

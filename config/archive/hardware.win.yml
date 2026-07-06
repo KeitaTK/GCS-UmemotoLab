@@ -1,0 +1,6 @@
+# config/hardware.win.yml — Windows用 ハードウェア設定上書き
+# hardware.yml の値をこのファイルの値で上書きする
+
+f9p:
+  serial_port: "COM8"
+  baudrate: 115200

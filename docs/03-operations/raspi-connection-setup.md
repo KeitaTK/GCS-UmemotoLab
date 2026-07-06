@@ -1,5 +1,8 @@
 # Raspi接続設定 (mavlink-router)
 
+> **2026-07-06 更新**: ラズパイ用設定・スクリプトは `raspi/` ディレクトリに集約されました。
+> 詳細は `raspi/README.md` を参照してください。
+
 ## 現在の状態
 
 現在のRaspi側 `/etc/mavlink-router/main.conf`:

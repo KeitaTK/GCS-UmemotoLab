@@ -1,0 +1,7 @@
+# Raspberry Pi 5 用 依存パッケージ
+# PC側では使用しません。ラズパイ上で `pip install -r requirements.txt` してください。
+pymavlink
+PyYAML
+pyserial
+pytest
+pytest-mock

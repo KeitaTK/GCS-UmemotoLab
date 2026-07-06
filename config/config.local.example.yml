@@ -1,0 +1,66 @@
+# config/config.local.example.yml — config.local.yml の記述例
+# このファイルを config.local.yml にコピーして編集してください。
+# config.local.yml は .gitignore 対象です。
+
+# ============================================================================
+# 例1: SSH Tunnel + Tailscale 接続（本番用）
+# ============================================================================
+#connection:
+#  type: udp
+#  udp_listen_port: 14550
+#
+#drones:
+#  drone1:
+#    system_id: 1
+#    endpoint: "127.0.0.1:14552"
+#    name: "Pixhawk6C Main"
+#  drone2:
+#    system_id: 2
+#    endpoint: "127.0.0.1:14552"
+#    name: "Pixhawk6C (sysid=2)"
+#
+#rtcm:
+#  enabled: true
+#  host: 127.0.0.1
+#  port: 2101
+
+# ============================================================================
+# 例2: 手動SSHトンネル接続
+# ============================================================================
+#connection:
+#  type: udp
+#  udp_listen_port: 14551
+#
+#drones:
+#  drone1:
+#    system_id: 1
+#    endpoint: "127.0.0.1:14550"
+#    name: "Pixhawk6C Main"
+#
+#rtcm:
+#  enabled: false
+#  host: 127.0.0.1
+#  port: 2101
+
+# ============================================================================
+# 例3: マルチドローン（シリアル接続）
+# ============================================================================
+#connection:
+#  type: serial
+#  serial_port: /dev/ttyACM0
+#  serial_baudrate: 115200
+#
+#drones:
+#  drone1:
+#    system_id: 1
+#    endpoint: "127.0.0.1:14550"
+#    name: "Main Drone"
+#  drone2:
+#    system_id: 2
+#    endpoint: "127.0.0.1:14552"
+#    name: "Survey Drone"
+#
+#rtcm:
+#  enabled: false
+#  host: 127.0.0.1
+#  port: 2101

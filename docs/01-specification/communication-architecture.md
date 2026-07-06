@@ -239,7 +239,10 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)/app
 
 ## 3. 設定ファイルの優先順位
 
-設定ファイルは `rtk_tools/config_loader.py` の `resolve_config_path()` によって以下の優先順位で解決される:
+設定ファイルは `rtk_tools/config_loader.py` の `load_config()` によって以下の優先順位で解決される:
+
+> **2026-07-06 更新**: 設定ファイルは `config/config.yml` に統合されました。
+> 旧 `gcs.yml`, `gcs_local.yml`, `gcs_production.yml`, `hardware.yml` は archive/ に移動済み。
 
 ```mermaid
 graph TD

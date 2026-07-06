@@ -54,7 +54,7 @@ docs_sphinx/.doctrees/
 
 # Local-only Copilot skill and config
 .github/skills/local-environment/
-config/gcs.user.local.yml
+config/config.local.yml
 
 # Kanban / Cline worktree
 .cline/

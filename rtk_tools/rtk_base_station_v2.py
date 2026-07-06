@@ -19,7 +19,6 @@ Usage:
 """
 
 import argparse
-import json
 import logging
 import socket
 import threading
@@ -35,6 +34,9 @@ try:
     from rtk_tools.f9p_configurator import F9pConfigurator
 except ModuleNotFoundError:
     from f9p_configurator import F9pConfigurator
+
+from rtk_tools.config_loader import load_hardware_config
+_hw_config = load_hardware_config()
 
 
 @dataclass
@@ -68,52 +70,32 @@ class Config:
 
 
 def _merge_config(json_path: Optional[str], args: argparse.Namespace) -> Config:
-    """JSON設定ファイルとCLI引数をマージして Config を生成する
+    """hardware.yml とCLI引数をマージして Config を生成する
 
-    優先順位: CLI引数 > JSON設定 > デフォルト値
+    優先順位: CLI引数 > hardware.yml > デフォルト値
     """
     config = Config()
 
-    repo_root = Path(__file__).resolve().parent.parent
-    json_file = json_path or str(repo_root / "config" / "base_station.json")
+    # hardware.yml から設定を読み込む
+    _hw = _hw_config
 
-    if Path(json_file).exists():
-        with open(json_file, 'r') as f:
-            json_data = json.load(f)
+    if 'f9p' in _hw:
+        f9p = _hw['f9p']
+        config.serial_port = f9p.get('serial_port', config.serial_port)
+        config.baudrate = f9p.get('baudrate', config.baudrate)
+        config.f9p_baudrate = f9p.get('baudrate', config.f9p_baudrate)
 
-        if 'serial_port' in json_data:
-            config.serial_port = json_data['serial_port']
-        if 'baudrate' in json_data:
-            config.baudrate = json_data['baudrate']
-            config.f9p_baudrate = json_data['baudrate']
-        if 'fixed_lat' in json_data:
-            config.fixed_lat = json_data['fixed_lat']
-        if 'fixed_lon' in json_data:
-            config.fixed_lon = json_data['fixed_lon']
-        if 'fixed_alt' in json_data:
-            config.fixed_alt = json_data['fixed_alt']
-        if 'save_to_flash' in json_data:
-            config.save_to_flash = json_data['save_to_flash']
-        if 'skip_f9p_config' in json_data:
-            config.skip_f9p_config = json_data['skip_f9p_config']
-        if 'tcp_host' in json_data:
-            config.tcp_host = json_data['tcp_host']
-        if 'tcp_port' in json_data:
-            config.tcp_port = json_data['tcp_port']
-        if 'enable_udp' in json_data:
-            config.enable_udp = json_data['enable_udp']
-        if 'udp_broadcast_host' in json_data:
-            config.udp_broadcast_host = json_data['udp_broadcast_host']
-        if 'udp_broadcast_port' in json_data:
-            config.udp_broadcast_port = json_data['udp_broadcast_port']
-        if 'log_level' in json_data:
-            config.log_level = json_data['log_level']
-        if 'log_file' in json_data:
-            config.log_file = json_data['log_file']
-    else:
-        logging.getLogger("Config").warning(
-            f"JSON config file not found: {json_file}, using defaults"
-        )
+    if 'base_station' in _hw:
+        bs = _hw['base_station']
+        config.fixed_lat = bs.get('fixed_lat')
+        config.fixed_lon = bs.get('fixed_lon')
+        config.fixed_alt = bs.get('fixed_alt')
+        config.save_to_flash = bs.get('save_to_flash', config.save_to_flash)
+
+    if 'forward' in _hw:
+        fwd = _hw['forward']
+        config.udp_broadcast_host = fwd.get('host', config.udp_broadcast_host)
+        config.udp_broadcast_port = fwd.get('port', config.udp_broadcast_port)
 
     # CLI 引数で上書き（JSONより優先）
     if hasattr(args, 'tcp_port') and args.tcp_port is not None:
