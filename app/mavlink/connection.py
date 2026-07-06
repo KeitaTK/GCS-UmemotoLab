@@ -44,16 +44,12 @@ class MavlinkConnection:
             # UDP connection (default)
             self.udp_port = self.config.get('udp_listen_port', 14550)
             self.drones = self.config.get('drones', {})
-            # Dedicated receive socket — never used for sendto()
+            # UDP socket for both send and receive
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.bind(("0.0.0.0", self.udp_port))
-            self.sock.settimeout(5.0)  # Timeout to detect UDP connection loss
-            # Dedicated send socket — keeps sendto() from interfering with
-            # recvfrom() on Windows (where sharing a UDP socket for both can
-            # cause recvfrom to drop when sendto is called frequently, e.g.
-            # during RTCM GPS_RTCM_DATA injection).
-            self._send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.settimeout(5.0)
+            self._sock_lock = threading.Lock()
             self.udp_timeout_count = 0
             self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
         
@@ -117,7 +113,6 @@ class MavlinkConnection:
             self.logger.info("Serial受信を停止")
         else:
             self.sock.close()
-            self._send_sock.close()
             self.logger.info("UDP受信を停止")
 
     def _recv_loop(self):
@@ -298,7 +293,7 @@ class MavlinkConnection:
                     endpoint = drone_info.get('endpoint')
                     if endpoint:
                         ip, port = endpoint.split(":")
-                        self._send_sock.sendto(data, (ip, int(port)))
+                        with self._sock_lock: self.sock.sendto(data, (ip, int(port)))
                         self.logger.debug(f"送信: {ip}:{port} (system_id={system_id})")
                         sent = True
                     break
