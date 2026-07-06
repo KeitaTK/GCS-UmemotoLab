@@ -11,6 +11,7 @@ MAVLink仕様:
 """
 
 import logging
+import time
 from typing import Callable, Optional
 
 from pymavlink import mavutil
@@ -38,10 +39,14 @@ class RtcmInjector:
             'bytes_sent': 0,
         }
         # pymavlink MAVLink エンコーダ（CRC_EXTRA 自動付与）
-        self.mav = mavutil.mavlink.MAVLink(
+        # Use v20 dialect for v2 frames (0xFD magic) — v1 frames on the same
+        # UDP socket can interfere with the receive loop in mavlink-router.
+        from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+        self.mav = mavlink2.MAVLink(
             bytearray(), srcSystem=self.system_id, srcComponent=self.component_id,
             use_native=False,
         )
+        self._inter_frame_delay = 0.01  # 10ms delay between multi-fragment frames
 
     def set_send_callback(self, callback: Callable):
         """MAVLinkメッセージ送信関数を設定"""
@@ -92,6 +97,11 @@ class RtcmInjector:
 
                 self.send_callback(frame)
                 frames_sent += 1
+
+                # Small delay between fragments to avoid flooding the UDP
+                # socket / mavlink-router buffer (rule out rate issue).
+                if frames_sent > 1:
+                    time.sleep(self._inter_frame_delay)
 
                 start += length
 

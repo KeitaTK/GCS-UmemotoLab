@@ -52,7 +52,10 @@ class MavlinkConnection:
             self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
         
         # MAVLink encode/decode object using a bytearray buffer
-        self.mav = mavutil.mavlink.MAVLink(bytearray())
+        # Use v20 dialect for v2 frames (0xFD magic) — v1 frames on the same
+        # UDP socket can interfere with the receive loop in mavlink-router.
+        from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+        self.mav = mavlink2.MAVLink(bytearray())
         
         self.running = False
         self.recv_thread = None
@@ -225,8 +228,20 @@ class MavlinkConnection:
                 self._trigger_error_callback('UDP_CONNECTION_RESET', msg)
                 threading.Event().wait(0.5)
                 
+            except OSError as e:
+                self.is_connected = False
+                self.packet_loss_count += 1
+                msg = f"UDP socket error (errno={e.errno}): {e}"
+                self.logger.error(msg)
+                self._trigger_error_callback('UDP_SOCKET_ERROR', msg)
+                # If socket is closed (e.g., EBADF), break out
+                if e.errno == 9:  # EBADF - bad file descriptor
+                    self.logger.error("UDP socket closed, stopping receive loop")
+                    break
+                threading.Event().wait(0.5)
+                
             except Exception as e:
-                self.logger.error(f"UDP受信エラー: {e}")
+                self.logger.error(f"UDP受信エラー: {e}", exc_info=True)
                 self.is_connected = False
                 self._trigger_error_callback('UDP_ERROR', str(e))
                 threading.Event().wait(0.1)
@@ -238,6 +253,19 @@ class MavlinkConnection:
         Returns:
             bool: True if data was sent successfully, False otherwise.
         """
+        # ── DEBUG: log every sent frame ──────────────────────────────────
+        if isinstance(data, (bytes, bytearray)) and len(data) > 0:
+            magic = data[0]
+            magic_hex = f"0x{magic:02X}"
+            magic_name = "v2(0xFD)" if magic == 0xFD else ("v1(0xFE)" if magic == 0xFE else "UNKNOWN")
+            first_bytes = data[:16].hex(' ') if len(data) > 16 else data.hex(' ')
+            msgid = data[5] if len(data) > 5 else None
+            self.logger.info(
+                f"[SEND] system_id={system_id}, len={len(data)}, magic={magic_hex} ({magic_name}), "
+                f"msgid={msgid}, first_bytes=[{first_bytes}]"
+            )
+        # ─────────────────────────────────────────────────────────────────
+
         if self.connection_type == 'serial':
             # For serial mode, send back to Pixhawk
             if not self.serial_conn or not self.serial_conn.is_open:

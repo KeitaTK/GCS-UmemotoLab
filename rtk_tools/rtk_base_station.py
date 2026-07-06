@@ -187,7 +187,8 @@ class MavlinkSender:
         self.thread = None
         self.sock = None
         # pymavlink MAVLink エンコーダ（CRC_EXTRA 自動付与）
-        self.mav = mavutil.mavlink.MAVLink(
+        from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+        self.mav = mavlink2.MAVLink(
             bytearray(), srcSystem=255, srcComponent=240, use_native=False,
         )
         self.stats = {
