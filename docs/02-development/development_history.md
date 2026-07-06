@@ -3,6 +3,28 @@
 このファイルは開発中のトライアンドエラー、バグ修正、実験的な変更の履歴を記録します。
 正式なリリースノートは別途管理してください。
 
+### 2026-07-06 11:08: [不要ファイルのアーカイブ + .clineignore 作成]
+- 問題: プロジェクトルート直下に旧バージョン・重複・特殊用途のファイルが散在し、アクティブに使うファイルが見分けづらかった。
+- 調査: 各ディレクトリ内の全ファイルを精査し、重複（rtk_tools/test_rtk_integration.py ↔ tests/test_rtk_integration.py）、旧バージョン（command_sender.py → command_dispatcher.py）、一度限り（generate_sample5_graph.py）を特定。空ファイル（test_rtcm.py）も確認。
+- 試行:
+  - 各ディレクトリに archive/ を作成し、不要ファイルを git mv
+    - app/archive/: dummy_sitl.py, roll_response.pdf, roll_response.svg
+    - rtk_tools/archive/: backend_minimal.py, command_sender.py, dummy_rtcm_server.py, rtk_rtcp_receiver.py, test_rtk_integration.py
+    - scripts/archive/: direct_bridge.py, generate_sample5_graph.py, start_pipeline.sh
+    - config/archive/: gcs_sshtunnel.yml, gcs_raspi_bridge.yml, gcs_multidrone_test.yml
+    - tools/archive/: mineru（PDF変換ツール）
+  - app/rtk_tools/test_rtcm.py を削除（空ファイル）
+  - .clineignore を作成し archive/ 以下・docs_sphinx/・data/ を Cline の読み取り対象から除外
+- 結果: 各ディレクトリがアクティブファイルのみに整理され、archive 以下のファイルは Cline に読まれなくなった。
+- 備考: アーカイブファイルは git 管理下に残っているため、履歴や参照のために必要な場合のみ確認可能。完全に削除したい場合は別途 git rm する。
+
+### 2026-07-06 11:02: [コンフィグ一元化 設計資料の作成]
+- 問題: config/ に10個の設定ファイルが散逸し、同じF9Pシリアルポートやボーレートが各スクリプトにハードコードされている。設定変更時に全ファイルを修正する必要があり、メンテナンス性が低い。
+- 調査: 全コンフィグファイル（10個）と各スクリプトのデフォルト引数を調査。F9Pシリアルポートが少なくとも7箇所にハードコードされていることを確認。rtk_forwarder.yml と base_station.json の内容重複も確認。
+- 試行: `docs/01-specification/config-consolidation-plan.md` に設計資料を作成。現状分析→hardware.yml新設提案→config_loader.py拡張案→修正スクリプト一覧（8ファイル）→削除候補（5ファイル）→最終構成図→懸念点→実装手順（21ステップ）を記載。
+- 結果: コンフィグ一元化の設計方針が文書化された。NTRIP設定の扱い（3案提示）や環境切り替え方式（2案）について議論できる状態になった。
+- 備考: この時点ではドキュメントのみ作成。実際の実装は別途。
+
 ### 2026-07-06 10:30: [ドキュメント整理: カテゴリ分け・重複解消・RTKパイプライン詳細追記]
 - 問題: docs/ ディレクトリに33ファイルがフラットに配置され、進捗レポート・設計書・運用マニュアルが混在。重複ドキュメントも複数存在し、メンテナンス性が低下していた。
 - 調査: 全33ファイルを精査し、5組の重複ペア（spec↔design, operations↔multidrone_operations, rtk_setup↔rtk_integration, RTK_BASE_STATION_IMPLEMENTATION↔RTK_BASE_STATION_FINAL_REPORT, progress_report↔gps_comparison）を特定。

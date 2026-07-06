@@ -1,0 +1,6 @@
+# Archived files — Cline will not read these
+**/archive/
+docs_sphinx/
+data/
+app/roll_response.pdf
+app/roll_response.svg
