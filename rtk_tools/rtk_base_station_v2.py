@@ -25,6 +25,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Optional
@@ -207,6 +208,7 @@ class RtcmSerialReader:
         self.logger = logging.getLogger("RtcmSerialReader")
         self.running = False
         self.thread = None
+        self._rtcm_log_file = None
         self.stats = {
             'bytes_read': 0,
             'frames_received': 0,
@@ -216,6 +218,15 @@ class RtcmSerialReader:
 
     def start(self):
         self.running = True
+        # RTCM raw log file
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = logs_dir / f"rtcm_raw_{timestamp}.bin"
+        self._rtcm_log_file = open(str(log_path), "wb")
+        self._rtcm_log_path = str(log_path)
+        self.logger.info(f"RTCM raw log file opened: {self._rtcm_log_path}")
+
         self.thread = threading.Thread(target=self._read_loop, daemon=True)
         self.thread.start()
         self.logger.info(f"Serial reader started on {self.config.serial_port}")
@@ -224,6 +235,14 @@ class RtcmSerialReader:
         self.running = False
         if self.thread:
             self.thread.join(timeout=2)
+        # Close RTCM raw log file
+        if self._rtcm_log_file is not None:
+            try:
+                self._rtcm_log_file.close()
+            except Exception:
+                pass
+            self.logger.info(f"RTCM raw log file closed: {self._rtcm_log_path}")
+            self._rtcm_log_file = None
         self.logger.info(f"Serial reader stopped. Stats: {self.stats}")
 
     def _read_loop(self):
@@ -282,6 +301,13 @@ class RtcmSerialReader:
                         self.queue.put(frame)
                         self.stats['frames_received'] += 1
                         self.logger.debug(f"RTCM frame: {len(frame)} bytes")
+
+                        # Write raw RTCM frame to log file
+                        if self._rtcm_log_file is not None:
+                            try:
+                                self._rtcm_log_file.write(frame)
+                            except Exception:
+                                pass
 
                 except (serial.SerialException, OSError, ValueError) as e:
                     self.logger.error(f"Serial read error: {e}")
