@@ -9,7 +9,7 @@ macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
 |------|------|
 | **通信方式** | MAVLink v2 over UDP/Serial |
 | **ハードウェア** | PC + Raspberry Pi 5（通信ブリッジ）+ Pixhawk |
-| **言語** | Python 3.10+ |
+| **言語** | Python 3.13+（uv 管理） |
 | **UI** | PySide6 (Qt 6) |
 | **特徴** | マルチドローン、RTK補正、プリチェック無効Arm |
 
@@ -78,7 +78,7 @@ macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
 
 ### インストール
 
-> **UV**（pipの10-100倍高速なPythonパッケージマネージャー）を使用します。
+> **UV**（Pythonパッケージマネージャー）を使用します。
 > 未インストールの場合は以下で導入してください:
 > ```bash
 > curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -89,26 +89,39 @@ macOS/Windows/Linux 上で ArduPilot ドローンを制御・監視する**
 git clone https://github.com/KeitaTK/GCS-UmemotoLab.git
 cd GCS-UmemotoLab
 
-uv venv
-source .venv/bin/activate
-uv sync
+uv python install 3.13    # 必要なPythonバージョンをインストール
+uv venv                    # 仮想環境作成
+uv sync                    # 依存パッケージを一括インストール
 ```
 
-> **従来のpip互換**: `uv sync` の代わりに `uv pip install -r requirements.txt` を使用することも可能です。
 > **Raspi用**: `uv pip install -r requirements_raspi.txt` でRaspi向けの最小依存をインストールできます。
+> **従来のpip互換**: `uv sync` の代わりに `uv pip install -r requirements.txt` も使用可能です。
 
 ### クイック起動
 
+**GUI モード（PySide6）:**
 ```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python app/main.py
+# PowerShell
+$env:PYTHONPATH = "app"
+uv run python app/main.py --native
 ```
 
-設定ファイルの自動選択順序:
-1. `$GCS_CONFIG_PATH` 環境変数
-2. `config/gcs.user.local.yml`（Git管理外）
-3. `config/gcs_local.yml`
-4. `config/gcs.yml`
+```bash
+# macOS / Linux
+PYTHONPATH=app uv run python app/main.py --native
+```
+
+**Web サーバーモード（FastAPI）:**
+```bash
+uv run python app/main.py
+```
+
+設定ファイルの自動選択順序（`rtk_tools/config_loader.py`）:
+1. CLI 明示パス
+2. `$GCS_CONFIG_PATH` 環境変数
+3. `config.local.yml`（Git管理外、個人用上書き）
+4. `config.win.yml` または `config.mac.yml`（OS自動判定）
+5. `config.yml`（デフォルト）
 
 ---
 
@@ -159,26 +172,22 @@ dtoverlay=uart0
 
 ## 接続方法
 
-### 方法 A: SSHトンネル経由（推奨）
+### 方法 A: SSHトンネル経由
 
 GCSのPC/MacとRaspiが別ネットワークでも接続可能。
-**Tailscale の UDP 転送に制限があるため、SSH トンネル（TCP）を推奨します。**
+**Tailscale 環境では UDP 直結が制限されるため、SSH トンネル（TCP）経由を推奨します。**
 
 ```bash
-# 別ターミナルでSSHトンネルを確立（バックグラウンド常駐）
+# 別ターミナルでSSHトンネルを確立
 ssh -f -N -L 14550:localhost:14550 raspi
-
-# または明示的に（Tailscale IP直指定）
-ssh -f -N -L 14550:localhost:14550 \
-    -o ProxyCommand="tailscale nc %h %p" \
-    taki@100.123.158.105
 ```
 
-設定ファイル:
+設定ファイル（`config.local.yml`）:
 ```yaml
-# config/gcs_local.yml
-connection_type: udp
-udp_listen_port: 14551   # SSHトンネルが14550を使うため
+connection:
+  type: udp
+  udp_listen_port: 14550
+
 drones:
   drone1:
     system_id: 1
@@ -188,13 +197,19 @@ drones:
 
 ### 方法 B: 同一ネットワーク（直接UDP）
 
-Mac/Raspiが同じWiFiに接続されている場合。
+PCとRaspiが同じWiFi/LANに接続されている場合。
 
+`config.local.yml` に Raspi のローカル IP を指定:
 ```yaml
-# 設定例
+connection:
+  type: udp
+  udp_listen_port: 14550
+
 drones:
   drone1:
-    endpoint: "172.20.10.12:14550"  # RaspiのローカルIP
+    system_id: 1
+    endpoint: "192.168.11.19:14550"  # RaspiのローカルIP
+    name: "Pixhawk6C Main"
 ```
 
 ### 方法 C: Raspi上でGCSを直接実行
@@ -242,22 +257,19 @@ python app/main.py
 ### ダミードローンテスト（実機不要）
 
 ```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python tests/test_arm_dummy.py
+PYTHONPATH=app uv run python tests/test_arm_dummy.py
 ```
 
 ### 実機アームテスト
 
 ```bash
-# SSHトンネル確立後
-export PYTHONPATH=$PYTHONPATH:$(pwd)/app
-python tests/test_arm_live.py
+PYTHONPATH=app uv run python tests/test_arm_live.py
 ```
 
 ### 全テスト実行
 
 ```bash
-pytest tests/ -v
+PYTHONPATH=app uv run pytest tests/ -v
 ```
 
 ---
@@ -267,12 +279,14 @@ pytest tests/ -v
 ```
 GCS-UmemotoLab/
 ├── README.md                  # 本ファイル
-├── requirements.txt            # Python依存
+├── pyproject.toml              # プロジェクト設定・依存定義（uv 管理）
+├── .python-version             # Python バージョン（uv 自動選択用）
+├── uv.lock                     # ロックファイル
 ├── config/
-│   ├── gcs.yml                 # デフォルト設定
-│   ├── gcs_production.yml      # 本番用（SSHトンネル）
-│   ├── gcs_raspi_direct.yml    # Raspi直接実行用
-│   └── gcs_local.yml           # ローカル開発用
+│   ├── config.yml              # デフォルト設定
+│   ├── config.win.yml          # Windows用上書き
+│   ├── config.mac.yml          # macOS用上書き
+│   └── config.local.yml        # 個人用上書き（Git管理外）
 ├── app/
 │   ├── main.py                 # エントリーポイント
 │   ├── ui/

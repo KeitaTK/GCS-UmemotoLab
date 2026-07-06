@@ -1,0 +1,16 @@
+# config/config.local.yml — Windows PC ローカル環境設定
+# 同一ネットワーク上の Raspi（192.168.11.19）に UDP 直結
+# config.yml → config.win.yml → config.local.yml の順でマージされる
+
+connection:
+  type: udp
+  udp_listen_port: 14550
+
+drones:
+  drone1:
+    system_id: 1
+    endpoint: "192.168.11.19:14550"
+    name: "Pixhawk6C Main"
+
+tailscale_tunnel:
+  enabled: false

@@ -7,8 +7,9 @@
 - `third_party/`：生成されたMAVLinkライブラリ（カスタムXML出力）
 
 ## 2. Python環境
-- Python 3.10+推奨
-- 専用の仮想環境を使用
+- Python 3.13+（uv 管理）
+- `uv venv` + `uv sync` で仮想環境構築
+- 単体実行: `uv run python app/main.py`
 
 ## 3. 依存関係（MVP）
 - `pymavlink`
@@ -18,8 +19,9 @@
 ## 4. 設定
 - `config/gcs.yml`をコピーして、エンドポイントとシステムIDを編集
 
-## 5. 実行（計画）
-- `python -m app.main`
+## 5. 実行
+- GUI モード: `PYTHONPATH=app uv run python app/main.py --native`
+- Web サーバーモード: `uv run python app/main.py`
 
 ## 6. コードスタイルと命名
 ### 6.1 命名
