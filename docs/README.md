@@ -22,11 +22,9 @@ docs/
 │   └── development_history.md   # 全開発履歴（時系列）
 │
 ├── 03-operations/               # 運用マニュアル
-│   ├── operations_manual.md     # 全体運用手順
-│   ├── multidrone_operations_guide.md  # マルチドローン運用手順
+│   ├── operations_manual.md     # 全体運用手順（マルチドローン運用手順を含む）
 │   ├── raspi-connection-setup.md  # Raspberry Pi 接続設定
-│   ├── rtk_setup_guide.md       # RTK セットアップガイド
-│   ├── rtk_integration_guide.md # RTK 統合ガイド
+│   ├── rtk_integration_guide.md # RTK 統合ガイド（クイックスタート含む）
 │   └── troubleshooting_guide.md # トラブルシューティング
 │
 ├── 04-testing/                  # テスト関連
@@ -44,7 +42,6 @@ docs/
     ├── PHASE1_COMPLETION_REPORT.md
     ├── PHASE5_RTK_NEXT_STEPS.md
     ├── PHASE7_PRODUCTION_TEST_START.md
-    ├── RTK_BASE_STATION_FINAL_REPORT.md
     ├── progress_report_20260624.md
     ├── troubleshooting_20260616_uart_udp_fix.md
     └── project_presentation.md
@@ -56,7 +53,7 @@ docs/
 |----------|------|
 | **01-specification** | システムの要件定義、アーキテクチャ設計、通信仕様など |
 | **02-development** | 開発環境のセットアップ手順、全開発履歴 |
-| **03-operations** | 実機の運用方法、RTK設定、トラブルシューティング |
+| **03-operations** | 実機の運用方法（単一/マルチドローン）、RTK設定、トラブルシューティング |
 | **04-testing** | テストケース定義、テスト実行レポート |
 | **05-implementation** | 特定機能の詳細な実装ドキュメント |
 | **archive** | 過去の進捗レポート・完了報告（参照用、メンテナンス対象外） |

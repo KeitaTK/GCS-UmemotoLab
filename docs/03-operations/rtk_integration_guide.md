@@ -2,6 +2,118 @@
 
 Pixhawk 6C + QGC + GCS コアシステムでのRTK（リアルタイムキネマティック）設定ガイド
 
+---
+
+## クイックスタート（u-center 使用）
+
+u-center（Windows GUIツール）を使って Pixhawk に RTK 補正データを配信するための最短手順です。
+
+### 前提条件
+
+- u-center がインストール済み
+- Pixhawk6C が Raspberry Pi に接続済み
+- GCS Backend が動作中
+- NTRIP キャスター（または RTCM ストリームソース）が利用可能
+
+### Step 1: u-center を起動
+
+1. Windows PC で u-center を起動
+2. メニュー → **Receiver** → **Connection** を選択
+3. 利用可能なポートを選択して接続
+
+### Step 2: NTRIP ストリームを設定
+
+**方法 A: NTRIP キャスターから取得**
+
+1. u-center メニュー → **Tools** → **NTRIP Client** を開く
+2. NTRIP キャスターのホストアドレス入力（例: `caster.rtk.provider.jp`）
+3. ポート番号入力（一般的なデフォルト: `2101`）
+4. マウントポイント選択（国土地理院 GNSS サービスなど）
+5. **Add Stream** をクリック
+
+**方法 B: ローカルホストで RTCM 配信を受ける場合**
+
+1. 別ターミナルで RTCM ストリームサーバーを起動
+2. ポート `2101` でリッスン状態を確認
+
+### Step 3: RTCM 出力を TCP ポートへ設定
+
+1. u-center の **Tools** メニュー → **TCP Server**
+2. TCP Server 設定:
+   - **Host**: `127.0.0.1` または Raspberry Pi の IP（例: `192.168.11.19`）
+   - **Port**: `2101`
+3. RTCM3 フォーマットを選択
+4. **Start** をクリック
+
+### Step 4: GCS Backend を起動（RTCM 有効化）
+
+```bash
+# config/gcs_local.yml で RTCM を有効化
+ssh taki@100.123.158.105 "cat > ~/GCS-UmemotoLab/config/gcs_local.yml << 'EOF'
+connection_type: serial
+serial_port: /dev/ttyACM0
+serial_baudrate: 115200
+rtcm_enabled: true
+rtcm_host: 127.0.0.1
+rtcm_tcp_port: 2101
+udp_listen_port: 14550
+drones:
+  drone1:
+    system_id: 1
+    endpoint: 127.0.0.1:14550
+EOF
+"
+
+# backend_server を起動
+ssh taki@100.123.158.105 "cd ~/GCS-UmemotoLab && timeout 60 .venv/bin/python app/backend_server.py 2>&1 | grep -E 'RTCM|heartbeat|Active drones'"
+```
+
+### Step 5: RTCM インジェクション確認
+
+ログを監視して以下を確認：
+
+```
+[INFO] Connected to RTCM source: 127.0.0.1:2101
+[INFO] RTCM data injected: X bytes in Y frame(s)
+```
+
+### クイックスタート チェックリスト
+
+- [ ] u-center が NTRIP に接続している
+- [ ] RTCM ストリームが TCP 2101 から配信されている
+- [ ] backend_server が起動している
+- [ ] ログに「RTCM data injected」メッセージが出力されている
+- [ ] Pixhawk の GPS 精度が改善している
+
+### クイックスタート トラブルシューティング
+
+#### RTCM 接続失敗
+
+```
+[ERROR] RTCM Reader error: Connection refused
+```
+
+1. u-center で TCP Server が起動しているか確認
+2. ポート番号が `2101` に設定されているか確認
+3. ファイアウォール設定を確認
+4. Windows/Raspberry Pi の IP アドレスが正しいか確認
+
+#### RTCM フレーム形式エラー
+
+```
+[ERROR] RTCM frame parse error
+```
+
+1. u-center で **RTCM3** フォーマットが選択されているか確認（RTCM1/RTCM2 不可）
+
+#### Pixhawk が RTCM を受け取らない
+
+1. Pixhawk のシリアル接続が確立されているか確認
+2. ログに `GPS_RTCM_DATA` 送信が記録されているか確認
+3. Pixhawk のファームウェアが RTCM インジェクションをサポートしているか確認
+
+---
+
 ## RTKの仕組み
 
 ### 概要
