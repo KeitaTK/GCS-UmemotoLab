@@ -2,64 +2,66 @@
 
 ## 現在取り組んでいること
 
-### UV 移行（✅ 完了）
-- `pyproject.toml` を導入し、UV による依存管理に完全移行済み
-- `uv venv && uv sync` で環境構築（従来の `pip install -r requirements.txt` 互換も維持）
-- Raspi 向けは `requirements_raspi.txt` で最小依存を維持（UV の optional-dependencies `raspi` としても定義済み）
-- `.python-version` で Python 3.14 を指定
+### RTK パイプライン実運用整備（✅ 完了）
+- **全体アーキテクチャ**: Windows PC (F9P) → TCP:2101 → Raspi → serial(/dev/ttyAMA0) → Pixhawk → CAN → F9P Rover
+- **Pixhawk 側パラメータ**: `GPS1_TYPE=9` (DroneCAN), `CAN_D1_PROTOCOL=1` (DroneCAN), `GPS_DRV_OPTIONS=64` (Rover側RTCM受信有効化)
+- **base_station 設定**: `mode=auto`（USBポート自動検出 + 60秒単独測位で基準座標自動取得）
+- **Raspi シリアル設定**: `/dev/ttyAMA0` @ 1M baud, RTS/CTS フロー制御有効 (`serial_rtscts: true`)
 
-### 開発環境の整備
-- `.clinerules`（Cline ルールファイル）の作成・整備
-- Memory Bank ディレクトリ構造の作成（本作業）
-- Sphinx ドキュメント生成の整備（`docs_sphinx/`）
+### Memory Bank 整備（🔄 進行中）
+- `memory-bank/product_context.md` 作成済み
+- `memory-bank/active_context.md` 更新（本ファイル）
+- `memory-bank/progress.md` 更新
+- `memory-bank/decision_log.md` 更新
+- `memory-bank/system_patterns.md` 作成済み
 
 ## 最近の変更
 
 | 日付 | 変更内容 | 影響範囲 |
 |------|----------|----------|
+| 2026-07-07 | **rtk_base_station_v2.py autoモード実装**: USB自動検出 + 単独測位で基準座標自動設定 | `rtk_base_station_v2.py`, `config/config.yml` |
+| 2026-07-07 | **Windowsエラー修正3件**: multiprocessing.spawn対応(`freeze_support()`)、COMポート統一(COM3→COM8)、設定ファイルOS分離(`config.win.yml`) | `rtk_base_station_v2.py`, `config/config.win.yml` |
+| 2026-07-07 | **RTCM false preamble バグ修正**: reserved bits チェック追加。0xD3検出後、予約ビット非ゼロの場合にfalse preambleとしてスキップ | `rtk_base_station_v2.py` (L283-287) |
+| 2026-07-07 | **RTCM生ログ保存機能**: `logs/rtcm_raw_{timestamp}.bin` に全受信RTCMフレームをバイナリ保存 | `rtk_base_station_v2.py` (L219-244, 305-310) |
+| 2026-07-07 | **Mavlink_raspi/RTK/ 整備**: `rtcm_injector.py`（RTCM→GPS_RTCM_DATA MAVLink変換）と `setup_EKF_Observer4.py`（EKF Observer設定）をRaspi上で整備 | Raspi 上の `Mavlink_raspi/RTK/` |
+| 2026-07-07 | **RTS/CTS + 1M baud対応**: Raspi→Pixhawk間のシリアル通信を1Mbps + ハードウェアフロー制御に高速化 | `raspi/config.yml`, `app/mavlink/connection.py` |
+| 2026-07-06 | config/ 完全統合 — config.yml 一元化 + raspi/ 移行完了 | `config/config.yml`, `raspi/`, `rtk_tools/config_loader.py` |
 | 2026-06-17 | Web UIをカード方式に統一、PySide6風タブ削除 | index.html, style.css, dashboard.js, controls.js |
 | 2026-06 | `pyproject.toml` 導入、UV 移行完了 | プロジェクト全体の依存管理 |
-| 2026-06 | `.clinerules` 作成 | Cline の挙動制御 |
-| 2026-06 | Memory Bank ディレクトリ作成 | プロジェクト知識の体系化 |
-| 2026-05-29 | 未実装機能の実装拡張（UI表示、ガイドモード、コマンド制御、複数フィールド表示、RTK状態監視） | `main_window.py`, `telemetry_store.py`, `connection.py`, `command_dispatcher.py` |
-| 2026-05-29 | COMMAND_ACK追跡・タイムアウト・リトライ機構実装（Phase 2-1, 2-2） | `command_dispatcher.py`, `message_router.py`, `main_window.py` |
-| 2026-05-29 | エラーハンドリング実装（Phase 3-2）：UDP/Serial 接続エラー検出・回復 | `connection.py`, `main_window.py`, `test_connection_errors.py` |
-| 2026-05-29 | グラフ化機能実装（Phase 1-2）：3タブUI、pyqtgraph リアルタイムグラフ | `main_window.py`, `telemetry_plotter.py` |
-| 2026-05-29 | RTCM切断復帰の再接続実装 | `rtcm_reader.py` |
-| 2026-04-28 | RTK基地局オールインワン化（Phase A）、ドキュメント統合 | `rtk_base_station.py`, `docs/` |
 
 ## 次のステップ
 
 ### 優先度: 高
-- [ ] **実機テスト検証**: Raspberry Pi 経由での実機接続テスト（コマンド送信、RTCM注入、接続エラー回復）
-- [ ] **長時間運用テスト**: Phase 7 の生産テスト継続（CPU使用率・メモリリーク監視）
-- [ ] **NTRIP再取得**: RTCMストリーム切断時の NTRIP 再接続・認証再取得の強化
+- [ ] **RTK LED 未点灯調査**: Pixhawk 側で RTK Fix 時に LED が点灯しない問題を調査中。GPS_DRV_OPTIONS や CAN パラメータの確認が必要
+- [ ] **実機飛行テスト**: プロペラあり実飛行でのRTK FIXED維持確認、全パイプラインエンドツーエンド検証
+- [ ] **長時間運用テスト**: メモリリーク・CPU使用率の長期監視
 
 ### 優先度: 中
 - [ ] **個別制御ボタン（Arm/Disarm/Takeoff/Land/Guided）のカード内実装**: Web UIの各ドローンカードに個別制御ボタンを追加
 - [ ] **UIの自由レイアウト編集**: 複数パネルのドラッグ＆ドロップ再配置
-- [ ] **高度な複数コマンド制御**: 厳密なグループ同期制御（複数機同時テイクオフ等）
-- [ ] **GPS拡張（Phase 1-3）**: GPS_DOP 表示、衛星コンステレーション可視化
+- [ ] **NTRIP再取得**: RTCMストリーム切断時の NTRIP 再接続・認証再取得の強化
 
 ### 優先度: 低
+- [ ] **GPS拡張（Phase 1-3）**: GPS_DOP 表示、衛星コンステレーション可視化
 - [ ] **Sphinx ドキュメントの全モジュールカバレッジ**: `docs_sphinx/` の `.rst` ファイル拡充
 - [ ] **CI/CD パイプライン**: GitHub Actions での自動テスト・ビルド
 
 ## アクティブな課題・検討事項
 
 ### 技術的課題
-1. **Raspi 側の依存管理**: UV の optional-dependencies と `requirements_raspi.txt` の二重管理状態。将来的に UV 一本化するか検討が必要。
-2. **Python 3.14 要件**: `pyproject.toml` で `>=3.14` としているが、Raspi の標準 Python は 3.11 系。Raspi 側では `pyproject.toml` を参照せず `requirements_raspi.txt` を使用する運用で回避中。
-3. **MAVLink メッセージパースの互換性**: `message_router.py` で pymavlink の新旧 API（`parse_buffer` / `parse_char_array` / `decode`）のフォールバック対応をしているが、pymavlink のバージョンアップで破壊的変更が入る可能性。
-4. **SITL テストの自動化**: 現在のテストは主にユニットテスト。SITL を使った統合テストの自動化が未整備。
+1. **RTK LED 未点灯（調査中）**: Pixhawk 側で RTK FIXED 達成時にも関わらず RTK LED が点灯しない。GPS_DRV_OPTIONS=64（RTCM受信有効化）、CAN_D1_PROTOCOL=1、GPS1_TYPE=9 の設定は投入済み。CAN経由でのF9P Rover → Pixhawk 間のRTCM注入パスを検証中。
+2. **Raspi 側の依存管理**: UV の optional-dependencies と `requirements_raspi.txt` の二重管理状態。将来的に UV 一本化するか検討が必要。
+3. **Python 3.14 要件**: `pyproject.toml` で `>=3.14` としているが、Raspi の標準 Python は 3.11 系。Raspi 側では `pyproject.toml` を参照せず `requirements_raspi.txt` を使用する運用で回避中。
+4. **MAVLink メッセージパースの互換性**: `message_router.py` で pymavlink の新旧 API（`parse_buffer` / `parse_char_array` / `decode`）のフォールバック対応をしているが、pymavlink のバージョンアップで破壊的変更が入る可能性。
 
 ### 設計上の検討事項
-1. **設定ファイルの優先順位**: `$GCS_CONFIG_PATH` > `gcs.user.local.yml` > `gcs_local.yml` > `gcs.yml`。ユーザー固有設定とGit管理下設定の分離は適切か。
-2. **マルチドローン対応の深化**: 現在は System ID による識別のみ。ドローンごとの個別設定（パラメータ違い等）への対応が必要か。
-3. **RTCMインジェクションのブロードキャスト**: 現在は全ドローン（System ID 1, 2）にブロードキャストしているが、選択的注入が必要なケースがあるか。
+1. **設定ファイルの優先順位**: `$GCS_CONFIG_PATH` > `config.local.yml` > `config.{win,mac}.yml` > `config.yml`。ユーザー固有設定とGit管理下設定の分離は適切か。
+2. **autoモードの堅牢性**: 単独測位失敗時のフォールバック（manualモードへの誘導）はあるが、USBポート検出失敗時のリカバリが不十分。
+3. **RTCM raw log のローテーション**: 現在無制限に書き込み続けるため、長時間運用でディスク容量を圧迫する可能性。
 4. **ログローテーション**: 現在 5MB x 5世代。長時間フライトでログ消失のリスクはないか。
 
 ### 運用上の注意点
 - **Force Arm は屋内テスト専用**: 実飛行では絶対に使用しない。テスト後は `dispatcher.restore_arm_params()` でデフォルトに戻す。
 - **RTCM ホスト設定**: Windows/u-center と Raspberry Pi/GCS が別ホストの場合は `rtcm_host` を配信元 IP に変更する。
 - **SSH トンネル**: 方式Aでは GCS 起動前に別ターミナルで SSH トンネルを確立しておく必要がある。
+- **autoモード使用時**: F9PをUSB接続した状態で起動すること。USB検出に失敗した場合は `mode=manual` に切り替えて `fixed_lat/lon/alt` を手動設定する。

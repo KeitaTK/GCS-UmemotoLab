@@ -5,6 +5,93 @@
 
 ---
 
+## 2026-07-07: 全体アーキテクチャ — F9P→TCP→Raspi→Pixhawk→CAN→F9P Rover
+
+- **決定内容**: RTK補正データの配信経路を「Windows F9P→TCP:2101→Raspi→serial→Pixhawk→CAN→F9P Rover」に確定。Pixhawk側に `GPS1_TYPE=9` (DroneCAN), `CAN_D1_PROTOCOL=1`, `GPS_DRV_OPTIONS=64` を設定。
+- **理由**:
+  - F9P RoverをDroneCAN経由でPixhawkに接続し、RTCM補正データをPixhawk経由で注入する方式がArduPilotの推奨構成
+  - GPS_DRV_OPTIONS=64 でRover側のRTCM受信を有効化
+  - Raspi→Pixhawk間は1M baud + RTS/CTSで高速・信頼性を確保
+- **影響**:
+  - `raspi/config.yml` に `serial_baudrate: 1000000`, `serial_rtscts: true` を設定
+  - `app/mavlink/connection.py` に `serial_rtscts` パラメータ追加
+  - Pixhawkパラメータマニュアル設定が必要（GPS1_TYPE=9, CAN_D1_PROTOCOL=1, GPS_DRV_OPTIONS=64）
+- **代替案**: Serial直結（却下：F9P RoverをCANで接続する方が配線と拡張性で優位）
+
+---
+
+## 2026-07-07: rtk_base_station_v2.py autoモード採用
+
+- **決定内容**: `config/config.yml` の `base_station.mode` を `auto` に設定。USBポート自動検出 + 60秒単独測位で基準座標を自動取得する方式をデフォルトとする。
+- **理由**:
+  - F9PをUSB接続するだけで基地局が起動でき、手動での座標設定が不要
+  - フィールドでの設置が簡略化され、ヒューマンエラーを防止
+  - 60秒の単独測位で十分な精度の基準座標が得られる（サンプル5で検証済み）
+- **影響**:
+  - `rtk_base_station_v2.py` の `_merge_config()` にautoモード処理を実装（L136-163）
+  - `standalone_obs.py` の `auto_detect_port()` / `auto_observe_position()` に依存
+  - 単独測位失敗時は `mode=manual` での再試行が必要
+- **代替案**: manual固定（却下：運用の手間とヒューマンエラーリスクのため）
+
+---
+
+## 2026-07-07: RTCM false preamble バグ修正
+
+- **決定内容**: RTCM v3 フレーム解析において、0xD3 preamble検出後に予約ビット（buffer[1]>>2）が非ゼロの場合、false preambleと判定してスキップする。
+- **理由**:
+  - RTCM v3 仕様では preamble の次の3ビットは予約ビット（must be zero）
+  - ノイズやデータ破損により 0xD3 が偶然出現した場合、フレーム長計算が誤った値になり後続フレームが破壊される
+  - 予約ビットチェックにより false preamble を 99.6% 以上の確率で排除可能
+- **影響**:
+  - `rtk_base_station_v2.py` L283-287 に reserved bits チェックを追加
+  - フレーム検出の信頼性が向上
+- **代替案**: CRC-24Q 検証のみに頼る（却下：破損フレームの誤検出確率が高く、後続フレームの連鎖破壊リスクがある）
+
+---
+
+## 2026-07-07: RTCM生ログ保存機能
+
+- **決定内容**: 基地局が受信した全RTCMフレームを `logs/rtcm_raw_{timestamp}.bin` にバイナリ保存する。ログは基地局起動時に自動生成、停止時に自動クローズ。
+- **理由**:
+  - RTK品質の事後検証・トラブルシューティングにRTCM生データが必要
+  - RTKLIB等の後処理ツールで再生・解析可能な形式で保存
+  - バイナリ形式によりストレージ効率が高い
+- **影響**:
+  - `rtk_base_station_v2.py` L219-244（ファイルオープン/クローズ）、L305-310（フレーム書き込み）
+  - `logs/` ディレクトリに `.bin` ファイルが蓄積される（現状ローテーションなし→今後の課題）
+- **代替案**: フレーム解析後のテキストログのみ（却下：生データ再生が不可能になる）
+
+---
+
+## 2026-07-07: Raspberry Pi → Pixhawk シリアル高速化（1M baud + RTS/CTS）
+
+- **決定内容**: RaspiとPixhawk間のシリアル通信を115200bps→1Mbpsに高速化し、RTS/CTSハードウェアフロー制御を有効化。
+- **理由**:
+  - MAVLinkテレメトリ + RTCM注入の同時通信では115200bpsでは帯域不足が懸念される
+  - 1M baudはPixhawk TELEM1がサポートする最大レート
+  - RTS/CTSにより高ボーレート時のバッファオーバーフローを防止
+- **影響**:
+  - `raspi/config.yml` : `serial_baudrate: 1000000`, `serial_rtscts: true`
+  - `app/mavlink/connection.py` : `serial_rtscts` パラメータを `serial.Serial(rtscts=...)` に伝達
+  - Pixhawk側 TELEM1 の SERIAL1_BAUD も 115（=115200bps）から適切な値に変更が必要な場合がある
+- **代替案**: 115200bpsのまま（却下：帯域不足のリスク）
+
+---
+
+## 2026-07-07: Windows multiprocessing spawn モード対応
+
+- **決定内容**: `rtk_base_station_v2.py` の `main()` エントリポイントに `multiprocessing.freeze_support()` を追加し、`__main__` ガード内で呼び出す。
+- **理由**:
+  - Windows の multiprocessing はデフォルトで `spawn` モード（Linux は `fork`）
+  - spawn モードでは `freeze_support()` がないと子プロセス生成時に無限再帰が発生する
+  - 実機テスト時に Windows で `RuntimeError: An attempt has been made to start a new process...` が発生したため修正
+- **影響**:
+  - `rtk_base_station_v2.py` L780: `multiprocessing.freeze_support()`
+  - Windows/Linux 両方でマルチプロセスが正常動作
+- **代替案**: マルチスレッド化（却下：Ctrl+C即停止の要件を満たせない）
+
+---
+
 ## 2026-06-17: Web UI カード方式採用
 
 - **決定内容**: Web UIのレイアウトをPySide6風のタブ構造から、ドローンカードグリッド方式に統一した。
