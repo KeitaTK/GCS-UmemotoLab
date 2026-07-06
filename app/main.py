@@ -135,6 +135,7 @@ if __name__ == "__main__":
         from rtk_tools.telemetry_store import TelemetryStore
         from rtk_tools.rtcm_reader import RtcmReader
         from rtk_tools.rtcm_injector import RtcmInjector
+        from rtk_tools.rtcm_logger import RtcmLogger
         import threading
 
         config = load_config()
@@ -178,10 +179,16 @@ if __name__ == "__main__":
         rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
         rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
 
+        # RTCMデータロガー（生データ・注入データ共に保存）
+        rtcm_logger = RtcmLogger(enabled=rtcm_enabled)
+        logger.info(f"RTCM logger initialized (enabled={rtcm_enabled})")
+
         def send_rtcm_message(frame_data):
             try:
                 mav_conn.send_to_system(1, frame_data)
                 mav_conn.send_to_system(2, frame_data)
+                # 注入フレームもログ保存（RTCMペイロードは抽出できないため frame のみ）
+                rtcm_logger.log_injected(frame_data)
                 logger.debug(f"RTCM frame sent to all systems: {len(frame_data)} bytes")
             except Exception as e:
                 logger.error(f"Failed to send RTCM frame: {e}")
@@ -189,10 +196,21 @@ if __name__ == "__main__":
         rtcm_injector.set_send_callback(send_rtcm_message)
 
         def on_rtcm_data(data):
+            # ログ保存: RTCM生データ
+            rtcm_logger.log_raw(data)
+            # MAVLink注入
             rtcm_injector.inject(data)
 
         rtcm_reader.register_callback(on_rtcm_data)
         rtcm_reader.start()
+
+        # RTCM統計を60秒ごとに表示するスレッド
+        def rtcm_stats_printer():
+            while rtcm_reader.running:
+                time.sleep(60)
+                rtcm_logger.print_stats()
+
+        threading.Thread(target=rtcm_stats_printer, daemon=True).start()
 
         from PySide6.QtWidgets import QApplication
         from ui.main_window import MainWindow
@@ -208,6 +226,8 @@ if __name__ == "__main__":
         router.stop()
         mav_conn.stop()
         rtcm_reader.stop()
+        rtcm_logger.print_stats()
+        rtcm_logger.close()
         logger.info("RTCM injection stopped.")
         sys.exit(exit_code)
 
