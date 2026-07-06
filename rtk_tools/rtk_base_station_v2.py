@@ -27,6 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Optional
+import sys
+
+# リポジトリルートを sys.path に追加して rtk_tools をインポート可能にする
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 import serial
 
