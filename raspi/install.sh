@@ -4,31 +4,29 @@
 # 使用方法:
 #   cd ~/GCS-UmemotoLab/raspi
 #   bash install.sh
-#
-# 以下の処理を行います:
-#   1. 依存パッケージのインストール
-#   2. systemd サービス登録（自動起動）
-#   3. mavlink-router 設定確認
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+VENV_DIR="$REPO_DIR/.venv"
+CURRENT_USER="$USER"  # 実行ユーザーを動的に取得
 
 echo "=== GCS-UmemotoLab Raspberry Pi Setup ==="
 echo ""
 
 # --------------------------------------------------
-# 1. 依存パッケージのインストール
+# 1. 依存パッケージのインストール（仮想環境）
 # --------------------------------------------------
-echo "[1/4] Installing Python dependencies..."
-if [ ! -d "$REPO_DIR/.venv" ]; then
-    python3 -m venv "$REPO_DIR/.venv"
-    echo "  Created virtual environment"
+echo "[1/4] Installing Python dependencies into virtual environment..."
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+    echo "  Created virtual environment at $VENV_DIR"
 fi
-source "$REPO_DIR/.venv/bin/activate"
-pip install --upgrade pip -q
-pip install -r "$SCRIPT_DIR/requirements.txt" -q
+
+# source を使わず、仮想環境内の pip を直接指定して安全にインストール
+"$VENV_DIR/bin/pip" install --upgrade pip -q
+"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
 echo "  Dependencies installed"
 
 # --------------------------------------------------
@@ -39,6 +37,7 @@ SERVICE_FILE="/etc/systemd/system/gcs-backend.service"
 if [ -f "$SERVICE_FILE" ]; then
     echo "  Service file already exists, skipping"
 else
+    # Userを動的に設定し、ExecStartに仮想環境のPythonをフルパスで指定
     sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=GCS Backend Server (Raspberry Pi)
@@ -47,9 +46,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=taki
+User=$CURRENT_USER
 WorkingDirectory=$REPO_DIR
-ExecStart=$REPO_DIR/.venv/bin/python $SCRIPT_DIR/backend_server.py
+ExecStart=$VENV_DIR/bin/python $SCRIPT_DIR/backend_server.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -58,6 +57,10 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 EOF
     echo "  Created $SERVICE_FILE"
+    
+    # システムに新しいサービスファイルを認識させる
+    sudo systemctl daemon-reload
+    echo "  Reloaded systemd daemon"
 fi
 
 # --------------------------------------------------
@@ -100,7 +103,7 @@ fi
 echo ""
 echo "=== Setup complete ==="
 echo ""
-echo "Start manually:  cd ~/GCS-UmemotoLab/raspi && python backend_server.py"
-echo "Start via systemd: sudo systemctl start gcs-backend"
-echo "Enable autostart:  sudo systemctl enable gcs-backend"
-echo "View logs:         sudo journalctl -u gcs-backend -f"
+echo "Start manually inside venv: $VENV_DIR/bin/python $SCRIPT_DIR/backend_server.py"
+echo "Start via systemd:          sudo systemctl start gcs-backend"
+echo "Enable autostart:           sudo systemctl enable gcs-backend"
+echo "View logs:                  sudo journalctl -u gcs-backend -f"
