@@ -15,7 +15,6 @@ mavlink-router が GPS_RTCM_DATA を透過的に Pixhawk に転送する。
 import argparse
 import logging
 import socket
-import struct
 import threading
 import time
 from dataclasses import dataclass
@@ -23,6 +22,8 @@ from queue import Queue, Empty
 from pathlib import Path
 
 import serial
+
+from pymavlink import mavutil
 
 from rtk_tools.config_loader import load_config
 _cfg = load_config()
@@ -48,87 +49,6 @@ class Config:
     # ログ設定
     log_level: str = "INFO"
     log_file: str = "rtk_base_station.log"
-
-
-# ============================================================================
-# MAVLink GPS_RTCM_DATA メッセージ作成
-# ============================================================================
-
-RtkGpsRtcmDataMsgId = 233  # GPS_RTCM_DATA
-
-
-def _crc16_ccitt(data: bytes) -> int:
-    """CRC-16 CCITT for MAVLink v2 frame checksum."""
-    crc = 0xFFFF
-    for byte in data:
-        crc ^= byte << 8
-        for _ in range(8):
-            crc <<= 1
-            if crc & 0x10000:
-                crc ^= 0x1021
-        crc &= 0xFFFF
-    return crc
-
-
-def build_gps_rtcm_data_frame(
-    rtcm_frame: bytes,
-    system_id: int = 255,
-    component_id: int = 240,
-    seq: int = 0,
-    frag_id: int = 0,
-    total_frags: int = 1,
-    max_payload: int = 180,
-) -> list[bytes]:
-    """RTCM v3 フレームバイト列を分割し、GPS_RTCM_DATA MAVLink v2 フレーム群を生成する。
-
-    Args:
-        rtcm_frame: RTCM v3 フレーム全体（0xD3 で開始）
-        system_id: MAVLink システムID（255 = 未使用）
-        component_id: MAVLink コンポーネントID
-        seq: シーケンス番号（0-255）
-        frag_id: フラグメント開始ID
-        total_frags: トータルフラグメント数
-        max_payload: 1フレームあたりの最大ペイロードサイズ
-
-    Returns:
-        list[bytes]: 1つ以上の MAVLink v2 フレーム
-    """
-    chunks = []
-    for i in range(0, len(rtcm_frame), max_payload):
-        chunks.append(rtcm_frame[i:i + max_payload])
-
-    total = len(chunks)
-    frames = []
-    for idx, chunk in enumerate(chunks):
-        flags = 0
-        if total > 1:
-            flags |= 0x01          # fragmented flag
-            flags |= (frag_id + idx & 0x03) << 1  # fragment ID
-
-        payload = bytearray(2 + len(chunk))
-        payload[0] = flags
-        payload[1] = len(chunk) & 0xFF
-        payload[2:] = chunk
-
-        # MAVLink v2 フレーム構築
-        frame = bytearray()
-        frame.append(0xFD)  # MAVLink v2 ヘッダ
-        frame.append(len(payload))
-        frame.append(0x00)  # incompat flags
-        frame.append(0x00)  # compat flags
-        frame.append(seq & 0xFF)
-        frame.append(system_id)
-        frame.append(component_id)
-        frame.append(RtkGpsRtcmDataMsgId & 0xFF)
-        frame.append((RtkGpsRtcmDataMsgId >> 8) & 0xFF)
-        frame.append((RtkGpsRtcmDataMsgId >> 16) & 0xFF)
-        frame.extend(payload)
-        crc = _crc16_ccitt(frame[1:])
-        frame.append(crc & 0xFF)
-        frame.append((crc >> 8) & 0xFF)
-        frames.append(bytes(frame))
-
-    return frames
 
 
 # ============================================================================
@@ -266,7 +186,10 @@ class MavlinkSender:
         self.running = False
         self.thread = None
         self.sock = None
-        self._seq = 0
+        # pymavlink MAVLink エンコーダ（CRC_EXTRA 自動付与）
+        self.mav = mavutil.mavlink.MAVLink(
+            bytearray(), srcSystem=255, srcComponent=240, use_native=False,
+        )
         self.stats = {
             'frames_sent': 0,
             'bytes_sent': 0,
@@ -296,13 +219,13 @@ class MavlinkSender:
                 pass
         self.logger.info(f"MavlinkSender stopped. Stats: {self.stats}")
 
-    def _next_seq(self) -> int:
-        s = self._seq
-        self._seq = (self._seq + 1) & 0xFF
-        return s
-
     def _send_loop(self):
-        """キューから RTCM フレームを取得し、MAVLink 化して UDP 送信"""
+        """キューから RTCM フレームを取得し、MAVLink 化して UDP 送信。
+        
+        pymavlink の gps_rtcm_data_encode() + pack() で
+        CRC_EXTRA を含む正しい CRC を自動計算する。
+        """
+        max_payload = 180
         target = (self.config.rtcm_target_host, self.config.rtcm_target_port)
         while self.running:
             try:
@@ -311,16 +234,34 @@ class MavlinkSender:
                 continue
 
             try:
-                seq = self._next_seq()
-                mav_frames = build_gps_rtcm_data_frame(
-                    rtcm_frame, seq=seq, frag_id=0, total_frags=1
-                )
-                for mf in mav_frames:
-                    self.sock.sendto(mf, target)
+                data_len = len(rtcm_frame)
+                start = 0
+                frames_sent_this = 0
+
+                while start < data_len:
+                    length = min(data_len - start, max_payload)
+                    chunk = rtcm_frame[start:start + length]
+
+                    # フラグ設定（GPS_RTCM_DATA 仕様）
+                    flags = 0
+                    if start + length < data_len:
+                        flags |= 0x01  # 続きあり
+                    fragment_id = (start // max_payload) & 0x03
+                    flags |= (fragment_id << 1)
+
+                    # 180バイトにパディング
+                    padded = bytearray(chunk).ljust(max_payload, b'\x00')
+                    msg = self.mav.gps_rtcm_data_encode(flags, length, bytes(padded))
+                    frame = msg.pack(self.mav)
+
+                    self.sock.sendto(frame, target)
                     self.stats['frames_sent'] += 1
-                    self.stats['bytes_sent'] += len(mf)
+                    self.stats['bytes_sent'] += len(frame)
+                    frames_sent_this += 1
+                    start += length
+
                 self.logger.debug(
-                    f"Sent {len(mav_frames)} MAVLink frame(s) "
+                    f"Sent {frames_sent_this} MAVLink frame(s) "
                     f"({len(rtcm_frame)} RTCM bytes)"
                 )
             except Exception as e:
