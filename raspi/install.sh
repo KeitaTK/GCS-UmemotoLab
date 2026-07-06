@@ -85,7 +85,7 @@ if command -v mavlink-routerd &>/dev/null; then
 else
     # ビルドに必要なパッケージをインストール
     sudo apt update -qq
-    sudo apt install -y -qq git build-essential autoconf automake libtool pkg-config python3-pip 2>&1 | tail -1
+    sudo apt install -y -qq git meson ninja-build pkg-config python3-pip 2>&1 | tail -1
 
     # ソースをクローン（--depth 1 で高速化）
     if [ ! -d "$MAVLINK_BUILD_DIR" ]; then
@@ -95,11 +95,10 @@ else
     cd "$MAVLINK_BUILD_DIR"
     git submodule update --init --recursive
 
-    # ビルド & インストール
-    ./autogen.sh
-    ./configure --prefix=/usr --sysconfdir=/etc
-    make -j$(nproc)
-    sudo make install
+    # Meson ビルド & インストール
+    meson setup build .
+    ninja -C build
+    sudo ninja -C build install
 
     cd "$REPO_DIR"
     echo "  mavlink-router built and installed"
