@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const path = '/usr/local/lib/node_modules/kanban/dist/cli.js';
+const path = '/opt/homebrew/lib/node_modules/kanban/dist/cli.js';
 let source = fs.readFileSync(path, 'utf8');
 
 let changes = 0;
