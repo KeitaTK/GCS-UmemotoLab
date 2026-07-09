@@ -1,5 +1,47 @@
 # 開発履歴
 
+### 2026-07-09 15:48: Cline Kanban Tailscale セットアップ完了
+- 背景: Kanban 自己操作系タスクは自動実行不可と判明したため手動実行に切り替え。
+- 試行:
+  - `npm i -g cline` で Cline CLI をインストール
+  - `node scripts/patch_kanban_cli.js` で Host検証/CORS パッチを適用
+  - `kanban --host <Tailscale IP> --port 3484` で起動
+  - 別端末から `http://<Tailscale IP>:3484` にアクセスし passcode 認証とタスク操作を確認
+- 結果: 手動3作業 + リモート接続確認すべて成功。Cline Kanban が Tailscale 経由で共有可能になった。
+- 備考: Kanban 自己操作（インストール/起動/パッチ）は Kanban タスク不向き。純粋なファイル編集のみ Kanban タスクで自動化するのが現実的。
+
+
+### 2026-07-09 15:38: Cline Kanban Tailscale セットアップ（手動実行に切替）
+- 背景: docs/cline_kanban_tailscale_setup.md に基づき Kanban タスク化を試みたが、Kanban内でKanban自身を操作するタスク（CLIインストール、起動、パッチ）はセッション断が発生し自動実行不可と判明。
+- 試行: 2回にわたり全6タスクを auto-review チェーンで作成・実行。いずれも interrupted で全滅。
+- 結果: Kanban 自己操作系タスク（CLIインストール/Kanban起動/パッチ適用）は手動実行、純粋なファイル編集（履歴追記）のみ Kanban タスクで実行する方針に切り替え。
+- 備考: 「自分自身を手術する」形になるタスクは Kanban 不向き。
+
+### 2026-07-09 15:30: Cline Kanban Tailscale セットアップタスク作成（再実行）
+- 背景: docs/cline_kanban_tailscale_setup.md の手順書に基づき、Cline Kanban を Tailscale 経由で共有するためのセットアップを Kanban タスク化。初回実行は全タスクが interrupted で中断したため再作成。
+- 試行:
+  - 3タスクを auto-review: commit 有効で作成し、依存関係チェーン（CLIインストール → Kanban起動 → 接続確認）を構築
+  - さらに履歴追記タスクと Host検証パッチタスクも並行作成
+- 結果: 全6タスクを再作成し再実行中。
+- 備考: 初回は全タスクが interrupted。原因はセッション途絶と推測。
+
+### 2026-07-09 15:30: Kanban Host検証による 403 エラー調査
+- 問題: `kanban --host <Tailscale IP>` 起動後に `http://127.0.0.1:3484/...` へアクセスすると 403 Forbidden。
+- 調査: Kanban v0.1.66 以降、Host ヘッダーが --host 指定値と一致しないリクエストを拒否する Host validation 機能が原因。同様の報告が GitHub Issue にも存在。
+- 結果: 127.0.0.1 ではなく Tailscale IP でアクセスすれば回避可能。Host validation の無効化フラグは現状存在しない。
+- 備考: ローカルと Tailscale 両方からのアクセスが必要な場合、`scripts/patch_kanban_cli.js` によるパッチ適用が現実的な回避策。
+
+### 2026-07-09 15:10: Cline Kanban Tailscale セットアップタスク作成
+- 背景: docs/cline_kanban_tailscale_setup.md の手順書に基づき、Cline Kanban を Tailscale 経由で共有するためのセットアップを Kanban タスク化。
+- 試行:
+  - Task d5304「Cline CLIのインストールとバージョン確認」を作成（auto-review: commit 有効）
+  - Task a70b4「Tailscale IPの確認とKanbanのTailscaleバインド起動」を作成（auto-review: commit 有効）
+  - Task 55799「リモート端末からの接続確認と動作検証」を作成（auto-review: commit 有効）
+  - 依存関係リンク: d5304 → a70b4 → 55799（前タスク完了で次タスクが自動開始）
+  - Task d5304 を開始、coding agent により実行中
+- 結果: 3タスクが自動実行チェーンとして構成された。d5304 は review カラムに到達。
+- 備考: 全タスクに auto-review: commit が有効で、人手を介さず順次実行される想定。
+
 ### 2026-07-08 16:01: 不要ファイルのクリーンアップ
 - 問題: Kanban 常時稼働セットアップ完了に伴い、不要になったファイルを整理。
 - 試行: 以下のファイル・サービスを削除:
