@@ -66,6 +66,13 @@ config/gcs.user.local.yml
 memory-bank/
 # GCS log files (all rotated logs)
 logs/
+app/logs/
+
+# macOS hidden files
+.DS_Store
+
+# Test artifacts
+test_results.log
 
 # Tailscale state (runtime data)
 tailscale_state/
