@@ -45,6 +45,10 @@ class Config:
     baudrate: int = 115200
     serial_timeout: float = 1.0
 
+    # 測位モード（"manual": 固定座標, "auto": 自動測位）
+    mode: str = "manual"
+    auto_obs_duration: int = 60
+
     # F9P 基準局設定
     fixed_lat: Optional[float] = None
     fixed_lon: Optional[float] = None
@@ -86,6 +90,10 @@ def _merge_config(json_path: Optional[str], args: argparse.Namespace) -> Config:
         if 'baudrate' in json_data:
             config.baudrate = json_data['baudrate']
             config.f9p_baudrate = json_data['baudrate']
+        if 'mode' in json_data:
+            config.mode = json_data['mode']
+        if 'auto_obs_duration' in json_data:
+            config.auto_obs_duration = json_data['auto_obs_duration']
         if 'fixed_lat' in json_data:
             config.fixed_lat = json_data['fixed_lat']
         if 'fixed_lon' in json_data:
@@ -492,6 +500,20 @@ class RtkBaseStation:
             self.logger.info("F9P configuration skipped (--skip-f9p-config)")
             return True
 
+        # mode="auto": 将来対応（単独測位で自動取得）
+        if self.config.mode == "auto":
+            self.logger.warning(
+                "mode='auto' (automatic survey-in) is not yet implemented. "
+                "Use mode='manual' with fixed coordinates, "
+                "or switch to manual mode for now."
+            )
+            self.logger.info(
+                "F9P configuration skipped for auto mode. "
+                "Run F9P Survey-In manually if needed."
+            )
+            return True
+
+        # mode="manual": 固定座標を使用
         if (self.config.fixed_lat is None or
                 self.config.fixed_lon is None or
                 self.config.fixed_alt is None):
@@ -532,6 +554,7 @@ class RtkBaseStation:
         """基地局を開始"""
         self.logger.info("=" * 60)
         self.logger.info("RTK Base Station v2 starting...")
+        self.logger.info(f"  Mode: {self.config.mode}")
         self.logger.info(f"  Serial: {self.config.serial_port}")
         self.logger.info(f"  TCP: {self.config.tcp_host}:{self.config.tcp_port}")
         if self.config.enable_udp:
@@ -635,6 +658,7 @@ def main():
 
     print("RTK Base Station v2 Configuration:")
     print(f"  Config file: {args.config or 'config/base_station.json'}")
+    print(f"  Mode: {config.mode}")
     print(f"  Serial port: {config.serial_port} @ {config.baudrate}")
     print(f"  TCP: {config.tcp_host}:{config.tcp_port}")
     print(

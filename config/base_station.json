@@ -1,8 +1,10 @@
 {
+    "mode": "manual",
     "serial_port": "/dev/tty.usbmodem113301",
     "baudrate": 38400,
-    "fixed_lat": 35.681236,
-    "fixed_lon": 139.767125,
-    "fixed_alt": 42.0,
-    "save_to_flash": true
+    "fixed_lat": 36.075714,
+    "fixed_lon": 136.213740,
+    "fixed_alt": 46.9,
+    "save_to_flash": true,
+    "auto_obs_duration": 60
 }
