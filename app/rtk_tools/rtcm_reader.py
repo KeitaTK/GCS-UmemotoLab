@@ -1,3 +1,23 @@
+"""
+RTCM TCP Stream Reader — [REDUCED SCOPE]
+
+This module is retained for backward compatibility with the **legacy MAVLink
+GPS_RTCM_DATA injection path**. Under the **UART2 direct injection architecture**,
+this module is no longer the primary RTCM delivery mechanism.
+
+Architecture change:
+    Old:  RtcmReader → RtcmInjector → MAVLink GPS_RTCM_DATA → Pixhawk → DroneCAN → F9P
+    New:  rtk_forwarder (serial output) → UART2 → F9P  (direct, no MAVLink)
+
+Current role:
+    - Still used by the legacy MAVLink GPS_RTCM_DATA code path (app/main.py GUI mode,
+      app/api/routes.py server mode) for backward compatibility.
+    - When config/rtk_forwarder.yml forward.type == "serial", the UART2 direct path
+      is used instead and this module is NOT started.
+
+See: docs/05-implementation/rtk_direct_uart2_injection_plan.md (Appendix C: 流用)
+"""
+
 import socket
 import threading
 import logging
