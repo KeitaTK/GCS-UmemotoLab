@@ -1,0 +1,15 @@
+[Unit]
+Description=RTK UART2 Direct Injection Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/GCS-UmemotoLab
+ExecStartPre=/bin/sleep 10
+ExecStart=/home/pi/GCS-UmemotoLab/.venv/bin/python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
