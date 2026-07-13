@@ -1,7 +1,8 @@
 # RTK Direct UART2 Injection — 実装設計書
 
 **作成日**: 2026-07-10  
-**ステータス**: 設計フェーズ  
+**最終更新日**: 2026-07-13  
+**ステータス**: 実装完了  
 **対象モジュール**: Holybro DroneCAN H-RTK F9P Helical (Rover側)
 
 ---
@@ -907,6 +908,13 @@ msg = mavlink.MAVLink_gps_input_message(
 | `config/gcs.yml` | GCSデフォルト設定 |
 | `config/gcs_local.yml` | SSH Tunnel接続設定 |
 | `config/gcs_drone.yml` | Raspi上直接実行設定 |
+| `rtk_tools/rtk_direct_inject.py` | ★ RTCM注入+RTK FIXED待機 自動化スクリプト |
+| `rtk_tools/f9p_rover_config.py` | ★ Rover側F9P UART2設定専用ツール |
+| `rtk_tools/f9p_fix_monitor.py` | ★ UBX-NAV-PVT Fix状態ポーリング |
+| `deploy/rtk-uart2-inject.service` | ★ systemd サービス定義 |
+| `deploy/install_rtk_uart2_service.sh` | ★ サービスインストールスクリプト |
+| `docs/05-implementation/preflight_rtk_checklist_uart2.md` | ★ プリフライトRTKチェックリスト (UART2) |
+| `CHANGELOG.md` | ★ 変更履歴 |
 | `docs/01-specification/communication-architecture.md` | 通信アーキテクチャ完全ドキュメント |
 | `docs/03-operations/rtk_integration_guide.md` | RTK統合ガイド |
 | `docs/05-implementation/RTK_BASE_STATION_IMPLEMENTATION.md` | RTK基地局実装計画 |
