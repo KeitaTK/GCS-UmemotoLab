@@ -132,6 +132,7 @@ async def connect_to_drone(req: ConnectRequest, request: Request):
         from rtk_tools.command_dispatcher import CommandDispatcher
         from rtk_tools.guided_control import GuidedControl
         from rtk_tools.rtcm_reader import RtcmReader
+        # [DEPRECATED] RtcmInjectorは撤廃。新方式: rtk_direct_inject.py (UART2直接注入)
         from rtk_tools.rtcm_injector import RtcmInjector
 
         config_path = req.config_path or resolve_config_path()

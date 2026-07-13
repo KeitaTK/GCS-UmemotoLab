@@ -1,16 +1,55 @@
+"""
+[DEPRECATED] RTCM3 → MAVLink GPS_RTCM_DATA (msgid=233) 注入モジュール
+=====================================================================
+
+このモジュールは **撤廃** されました。
+
+旧方式: MAVLink GPS_RTCM_DATA (msgid=233) 経由でPixhawkにRTCMを注入
+新方式: UART2直接注入 (rtk_direct_inject.py) による透過的なRTCMバイパス
+
+撤廃理由:
+- GPS_RTCM_DATAのフラグメント分割による透過性欠如
+- DroneCAN経由での到着順序変動リスク
+- UART2直接注入の方がシンプルで信頼性が高い
+
+本ファイルはロールバック用に保持されており、削除しないでください。
+新規開発では rtk_direct_inject.py を使用してください。
+
+参照: docs/05-implementation/rtk_direct_uart2_injection_plan.md (Appendix C: 撤廃対象)
+"""
 import logging
+import warnings
 from typing import Callable
 
 logger = logging.getLogger(__name__)
 
+# モジュールインポート時に DeprecationWarning を発行
+warnings.warn(
+    "rtcm_injector is DEPRECATED and will be removed in a future version. "
+    "Use rtk_direct_inject.py (UART2 direct injection) instead. "
+    "See docs/05-implementation/rtk_direct_uart2_injection_plan.md Appendix C.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 class RtcmInjector:
     """
-    RTCM3データをMAVLink GPS_RTCM_DATA (msgid=67) で送信
+    [DEPRECATED] RTCM3データをMAVLink GPS_RTCM_DATA (msgid=233) で送信
+
+    このクラスは撤廃されました。新方式: rtk_direct_inject.py (UART2直接注入)
+
     - 大容量RTCMデータの分割送信に対応
     - CRC-16 CCITT チェックサム付き
     """
     
     def __init__(self, enabled=True, max_payload_size=180, system_id=1, component_id=1):
+        warnings.warn(
+            "RtcmInjector is DEPRECATED. "
+            "Use rtk_direct_inject.py (UART2 direct injection) instead. "
+            "This class is kept for rollback reference only.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         self.enabled = enabled
         self.max_payload_size = max_payload_size
         self.system_id = system_id

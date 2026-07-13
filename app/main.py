@@ -132,6 +132,7 @@ if __name__ == "__main__":
         from mavlink.message_router import MessageRouter
         from rtk_tools.telemetry_store import TelemetryStore
         from rtk_tools.rtcm_reader import RtcmReader
+        # [DEPRECATED] RtcmInjectorは撤廃。新方式: rtk_direct_inject.py (UART2直接注入)
         from rtk_tools.rtcm_injector import RtcmInjector
         import threading
 
