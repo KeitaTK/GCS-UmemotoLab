@@ -18,8 +18,16 @@ source:
   timeout_sec: 2.0
 
 forward:
+  # udp または serial
+  type: udp
+
+  # type: udp の場合
   host: 127.0.0.1
   port: 50010
+
+  # type: serial の場合
+  serial_port: /dev/ttyUSB0
+  baudrate: 115200
 
 retry:
   reconnect_sec: 3.0

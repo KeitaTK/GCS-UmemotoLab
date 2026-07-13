@@ -25,8 +25,11 @@ class SourceConfig:
 
 @dataclass
 class ForwardConfig:
+    forward_type: str
     host: str
     port: int
+    serial_port: str
+    serial_baudrate: int
 
 
 @dataclass
@@ -57,11 +60,16 @@ class RtcmForwarderService:
         self.last_stats_time = time.time()
 
     def run_forever(self) -> None:
+        fwd = self.config.forward
+        if fwd.forward_type == "serial":
+            dest = f"{fwd.serial_port}@{fwd.serial_baudrate}bps"
+        else:
+            dest = f"{fwd.host}:{fwd.port}"
         self.logger.info(
-            "RTK forwarder start: source=%s, forward=%s:%s",
+            "RTK forwarder start: source=%s, forward.type=%s, destination=%s",
             self.config.source.source_type,
-            self.config.forward.host,
-            self.config.forward.port,
+            fwd.forward_type,
+            dest,
         )
         while True:
             try:
@@ -84,71 +92,119 @@ class RtcmForwarderService:
             )
             time.sleep(self.config.retry.reconnect_sec)
 
+    # ------------------------------------------------------------------
+    # Forward output helpers
+    # ------------------------------------------------------------------
+    def _open_forward(self):
+        """Open the forward output channel based on forward.forward_type."""
+        fwd = self.config.forward
+        if fwd.forward_type == "serial":
+            ser = serial.Serial(
+                port=fwd.serial_port,
+                baudrate=fwd.serial_baudrate,
+                timeout=1.0,
+            )
+            ser.reset_output_buffer()
+            self.logger.info(
+                "Forward serial port opened: %s @ %s bps",
+                fwd.serial_port,
+                fwd.serial_baudrate,
+            )
+            return ser
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.logger.info(
+                "Forward UDP socket ready: %s:%s",
+                fwd.host,
+                fwd.port,
+            )
+            return sock
+
+    @staticmethod
+    def _close_forward(fwd_obj) -> None:
+        """Close the forward output channel."""
+        try:
+            fwd_obj.close()
+        except Exception:
+            pass
+
+    def _forward_chunk(self, fwd_obj, chunk: bytes) -> None:
+        """Write an RTCM chunk to the forward destination."""
+        fwd_cfg = self.config.forward
+        if fwd_cfg.forward_type == "serial":
+            fwd_obj.write(chunk)
+            fwd_obj.flush()
+        else:
+            fwd_obj.sendto(chunk, (fwd_cfg.host, fwd_cfg.port))
+        self._count(chunk)
+
+    # ------------------------------------------------------------------
+    # Source loops
+    # ------------------------------------------------------------------
     def _run_ntrip_once(self) -> None:
         src = self.config.source
-        fwd = self.config.forward
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as ntrip_sock, socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM
-        ) as udp_sock:
-            ntrip_sock.settimeout(src.timeout_sec)
-            ntrip_sock.connect((src.host, src.port))
-            ntrip_sock.sendall(self._build_ntrip_request())
-            self.logger.info(
-                "Connected to NTRIP caster: %s:%s / %s",
-                src.host,
-                src.port,
-                src.mountpoint,
-            )
+        fwd_obj = self._open_forward()
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as ntrip_sock:
+                ntrip_sock.settimeout(src.timeout_sec)
+                ntrip_sock.connect((src.host, src.port))
+                ntrip_sock.sendall(self._build_ntrip_request())
+                self.logger.info(
+                    "Connected to NTRIP caster: %s:%s / %s",
+                    src.host,
+                    src.port,
+                    src.mountpoint,
+                )
 
-            first_chunk = ntrip_sock.recv(4096)
-            if not first_chunk:
-                raise ConnectionError("NTRIP connection closed on initial response")
+                first_chunk = ntrip_sock.recv(4096)
+                if not first_chunk:
+                    raise ConnectionError("NTRIP connection closed on initial response")
 
-            header, payload = self._split_header_payload(first_chunk)
-            self._check_ntrip_response(header)
+                header, payload = self._split_header_payload(first_chunk)
+                self._check_ntrip_response(header)
 
-            if payload:
-                udp_sock.sendto(payload, (fwd.host, fwd.port))
-                self._count(payload)
+                if payload:
+                    self._forward_chunk(fwd_obj, payload)
 
-            while True:
-                chunk = ntrip_sock.recv(4096)
-                if not chunk:
-                    raise ConnectionError("NTRIP stream closed by server")
-                udp_sock.sendto(chunk, (fwd.host, fwd.port))
-                self._count(chunk)
+                while True:
+                    chunk = ntrip_sock.recv(4096)
+                    if not chunk:
+                        raise ConnectionError("NTRIP stream closed by server")
+                    self._forward_chunk(fwd_obj, chunk)
+        finally:
+            self._close_forward(fwd_obj)
 
     def _run_serial_once(self) -> None:
         src = self.config.source
-        fwd = self.config.forward
-        with serial.Serial(src.serial_port, src.baudrate, timeout=src.timeout_sec) as ser, socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM
-        ) as udp_sock:
-            self.logger.info(
-                "Connected to serial source: %s (%sbps)",
-                src.serial_port,
-                src.baudrate,
-            )
-            while True:
-                # RTCM v3 preamble 0xD3 を探す
-                b0 = ser.read(1)
-                if not b0:
-                    continue
-                if b0 != b"\xd3":
-                    continue
+        fwd_obj = self._open_forward()
+        try:
+            with serial.Serial(src.serial_port, src.baudrate, timeout=src.timeout_sec) as ser:
+                self.logger.info(
+                    "Connected to serial source: %s (%sbps)",
+                    src.serial_port,
+                    src.baudrate,
+                )
+                while True:
+                    # RTCM v3 preamble 0xD3 を探す
+                    b0 = ser.read(1)
+                    if not b0:
+                        continue
+                    if b0 != b"\xd3":
+                        continue
 
-                header_tail = ser.read(2)
-                if len(header_tail) < 2:
-                    continue
+                    header_tail = ser.read(2)
+                    if len(header_tail) < 2:
+                        continue
 
-                payload_len = ((header_tail[0] & 0x03) << 8) | header_tail[1]
-                payload_and_crc = ser.read(payload_len + 3)
-                if len(payload_and_crc) < payload_len + 3:
-                    continue
+                    payload_len = ((header_tail[0] & 0x03) << 8) | header_tail[1]
+                    payload_and_crc = ser.read(payload_len + 3)
+                    if len(payload_and_crc) < payload_len + 3:
+                        continue
 
-                frame = b0 + header_tail + payload_and_crc
-                udp_sock.sendto(frame, (fwd.host, fwd.port))
-                self._count(frame)
+                    frame = b0 + header_tail + payload_and_crc
+                    self._forward_chunk(fwd_obj, frame)
+        finally:
+            self._close_forward(fwd_obj)
 
     def _build_ntrip_request(self) -> bytes:
         src = self.config.source
@@ -216,8 +272,11 @@ def load_config(path: str) -> ServiceConfig:
         timeout_sec=float(source_raw.get("timeout_sec", 2.0)),
     )
     forward = ForwardConfig(
+        forward_type=forward_raw.get("type", "udp"),
         host=forward_raw.get("host", "127.0.0.1"),
         port=int(forward_raw.get("port", 50010)),
+        serial_port=forward_raw.get("serial_port", "/dev/ttyUSB0"),
+        serial_baudrate=int(forward_raw.get("baudrate", 115200)),
     )
     retry = RetryConfig(reconnect_sec=float(retry_raw.get("reconnect_sec", 3.0)))
     log = LogConfig(
