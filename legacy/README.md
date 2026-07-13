@@ -33,7 +33,6 @@ See: [`docs/05-implementation/rtk_direct_uart2_injection_plan.md`](../docs/05-im
 | `standalone_obs.py` | `rtk_tools/standalone_obs.py` | Standalone GPS observation script for F9P; captures NMEA data and outputs best-Fix average coordinates | — |
 | `test_rtk_integration.py` | `rtk_tools/test_rtk_integration.py` | Integration test verifying RTCM injection flow from base station to Pixhawk | — |
 | `backend_server.py` | `rtk_tools/backend_server.py` | Headless GCS backend server; forwards MAVLink from Pixhawk to remote GCS over TCP | `backend_minimal.py` |
-| `rtk_data_collector.py` | `rtk_tools/rtk_data_collector.py` | Dual data collector for u-blox base station + Pixhawk rover; real-time error analysis with CSV/JSON output | — |
 | `rtk_base_station.py` | `rtk_tools/rtk_base_station.py` | RTK base station v1; receives RTCM from ublox F9P via serial and distributes via TCP/UDP | `rtk_base_station_v2.py` |
 
 ## Still Active (Not Moved)
@@ -48,3 +47,7 @@ To restore any file to active use:
 ```bash
 cp legacy/<filename> <original_location>
 ```
+
+### Restored Files
+
+- **`rtk_data_collector.py`** — Restored to `rtk_tools/`. It is an active CLI tool for RTK accuracy analysis (GPS accuracy analysis, RTK convergence time measurement, RTK Fixed accuracy verification). It was never a library module — it is a standalone CLI tool with no external dependencies.
