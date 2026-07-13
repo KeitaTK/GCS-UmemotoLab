@@ -67,6 +67,7 @@ class Config:
     uart_baud: int = 115200
     base_host: str = "192.168.11.100"
     base_port: int = 2101
+    base_mountpoint: str = "UBLOX_EVK_F9P"
     rtk_fixed_timeout: float = 120.0
     skip_f9p_config: bool = False
 
@@ -130,41 +131,100 @@ def step1_configure_rover_f9p(cfg: Config) -> bool:
 def step2_verify_base_station(cfg: Config) -> bool:
     """Verify the base station NTRIP caster is serving RTCM3 data.
 
-    Opens a TCP connection to base_host:base_port and sends an HTTP GET
-    request. An NTRIP caster should respond with a '200' status line.
+    Performs a proper NTRIP handshake:
+      1. TCP connect to base_host:base_port
+      2. Send NTRIP GET request with mountpoint and required headers
+      3. Check response for ICY 200 OK
+      4. Read initial data chunk (512 bytes) and verify RTCM3 preamble (0xD3)
 
     Returns:
-        True if base station is reachable and serving, False otherwise.
+        True only if all checks pass, False otherwise.
     """
     logger.info("=" * 60)
     logger.info("STEP 2: Verify Base Station RTCM3 Stream")
     logger.info("=" * 60)
 
-    try:
-        logger.info(f"  Connecting to {cfg.base_host}:{cfg.base_port} ...")
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5.0)
-        sock.connect((cfg.base_host, cfg.base_port))
-        sock.sendall(
-            f"GET / HTTP/1.0\r\n"
-            f"Host: {cfg.base_host}:{cfg.base_port}\r\n"
-            f"User-Agent: rtk_direct_inject\r\n"
-            f"\r\n".encode()
-        )
-        resp = sock.recv(4096)
-        sock.close()
+    sock: Optional[socket.socket] = None
 
-        if b"200" in resp:
-            logger.info("  Base station NTRIP caster: OK (HTTP 200)")
-            return True
-        else:
-            logger.warning(f"  Unexpected response (first 100 bytes): {resp[:100]}")
-            # Still return True if we got any response — 200 check is best-effort
-            return True
+    try:
+        # --- 1. TCP connect ---
+        logger.info(
+            f"  Connecting to {cfg.base_host}:{cfg.base_port} "
+            f"(mountpoint: /{cfg.base_mountpoint}) ..."
+        )
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10.0)
+        sock.connect((cfg.base_host, cfg.base_port))
+        logger.info("  TCP connection established.")
+
+        # --- 2. Send proper NTRIP GET request ---
+        request = (
+            f"GET /{cfg.base_mountpoint} HTTP/1.1\r\n"
+            f"Host: {cfg.base_host}:{cfg.base_port}\r\n"
+            f"Ntrip-Version: Ntrip/2.0\r\n"
+            f"User-Agent: NTRIP rtk_direct_inject/1.0\r\n"
+            f"\r\n"
+        )
+        logger.debug(f"  Sending NTRIP request:\n{request}")
+        sock.sendall(request.encode())
+
+        # --- 3. Check response for ICY 200 OK ---
+        resp = b""
+        while b"\r\n\r\n" not in resp and len(resp) < 4096:
+            chunk = sock.recv(1)
+            if not chunk:
+                break
+            resp += chunk
+
+        response_text = resp.decode("utf-8", errors="replace")
+        logger.debug(f"  Response headers (raw):\n{response_text}")
+
+        # NTRIP casters respond with "ICY 200 OK" (not "HTTP/1.1 200 OK")
+        first_line = response_text.split("\r\n")[0] if response_text else ""
+        if "ICY 200 OK" not in first_line and "200 OK" not in first_line:
+            logger.error(
+                f"  NTRIP caster returned non-200 response: "
+                f"'{first_line.strip()}'"
+            )
+            return False
+
+        logger.info(f"  NTRIP caster response: {first_line.strip()}")
+
+        # --- 4. Read initial data chunk ---
+        sock.settimeout(5.0)
+        data = b""
+        try:
+            while len(data) < 512:
+                chunk = sock.recv(512 - len(data))
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            logger.warning("  Timed out waiting for RTCM data stream.")
+
+        if len(data) == 0:
+            logger.error(
+                "  No RTCM data received from NTRIP caster after ICY 200 OK."
+            )
+            return False
+
+        # --- 5. Verify RTCM3 preamble (0xD3) ---
+        if data[0] != 0xD3:
+            logger.error(
+                f"  Data does not start with RTCM3 preamble 0xD3: "
+                f"first byte = 0x{data[0]:02X}"
+            )
+            return False
+
+        logger.info(
+            f"  RTCM3 stream verified: preamble=0xD3, "
+            f"received {len(data)} bytes"
+        )
+        return True
 
     except socket.timeout:
         logger.error(
-            f"  Connection timeout ({cfg.base_host}:{cfg.base_port}, 5s)"
+            f"  Connection timeout ({cfg.base_host}:{cfg.base_port}, 10s)"
         )
         return False
     except ConnectionRefusedError:
@@ -172,9 +232,21 @@ def step2_verify_base_station(cfg: Config) -> bool:
             f"  Connection refused by {cfg.base_host}:{cfg.base_port}"
         )
         return False
+    except socket.gaierror as e:
+        logger.error(
+            f"  Cannot resolve host {cfg.base_host}: {e}"
+        )
+        return False
     except Exception as e:
         logger.error(f"  STEP 2 failed: {e}")
         return False
+
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +438,11 @@ def main() -> int:
         help="Base station NTRIP caster port (default: 2101)",
     )
     parser.add_argument(
+        "--base-mountpoint",
+        default="UBLOX_EVK_F9P",
+        help="NTRIP caster mountpoint (default: UBLOX_EVK_F9P)",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=120.0,
@@ -397,6 +474,7 @@ def main() -> int:
     cfg.uart_baud = args.uart_baud
     cfg.base_host = args.base_host
     cfg.base_port = args.base_port
+    cfg.base_mountpoint = args.base_mountpoint
     cfg.rtk_fixed_timeout = args.timeout
     cfg.skip_f9p_config = args.skip_f9p_config
 
