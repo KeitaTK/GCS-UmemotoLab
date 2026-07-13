@@ -23,18 +23,34 @@ telemetry_store = None
 dispatcher = None
 connection = None
 rtcm_reader = None
+rtk_forwarder_stats = None
+f9p_fix_state = None
 
 # === WebSocket 接続管理 ===
 _active_ws: list[WebSocket] = []
 
 
-def init_api(_telemetry_store, _dispatcher, _connection, _rtcm_reader=None):
-    """Initialize API with backend components."""
+def init_api(_telemetry_store, _dispatcher, _connection, _rtcm_reader=None,
+             _rtk_forwarder_stats=None, _f9p_fix_state=None):
+    """Initialize API with backend components.
+
+    Parameters
+    ----------
+    _rtcm_reader : optional
+        Legacy RtcmReader instance (backward compatible).
+    _rtk_forwarder_stats : dict or None
+        Shared forwarder stats dict (UART2 direct injection path).
+    _f9p_fix_state : dict or None
+        Shared F9P fix state dict (UART2 direct injection path).
+    """
     global telemetry_store, dispatcher, connection, rtcm_reader
+    global rtk_forwarder_stats, f9p_fix_state
     telemetry_store = _telemetry_store
     dispatcher = _dispatcher
     connection = _connection
     rtcm_reader = _rtcm_reader
+    rtk_forwarder_stats = _rtk_forwarder_stats
+    f9p_fix_state = _f9p_fix_state
     logger.info("API initialized with backend components.")
 
 

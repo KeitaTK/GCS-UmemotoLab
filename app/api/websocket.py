@@ -77,6 +77,8 @@ async def broadcast_loop():
                 api_srv.connection,
                 api_srv.dispatcher,
                 api_srv.rtcm_reader,
+                rtk_forwarder_stats=getattr(api_srv, "rtk_forwarder_stats", None),
+                f9p_fix_state=getattr(api_srv, "f9p_fix_state", None),
             )
             if payload is None:
                 continue
@@ -118,7 +120,8 @@ _COPTER_MODES = {
 OFFLINE_TIMEOUT = 10.0  # seconds without telemetry → consider drone offline
 
 
-def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict | None:
+def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader,
+                   rtk_forwarder_stats=None, f9p_fix_state=None) -> dict | None:
     """Build the complete telemetry payload for broadcast.
 
     Drones that haven't sent any telemetry in OFFLINE_TIMEOUT seconds
@@ -135,7 +138,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader) -> dict
         "timestamp": t_now,
         "connection": _build_connection_status(connection),
         "drones": {},
-        "rtk": _build_rtk_status(rtcm_reader),
+        "rtk": _build_rtk_status(rtcm_reader, rtk_forwarder_stats, f9p_fix_state),
     }
 
     last_seen_all = {}
@@ -313,16 +316,79 @@ def _build_status_texts(store, sysid: int) -> list:
         return []
 
 
-def _build_rtk_status(rtcm_reader) -> dict:
-    if rtcm_reader is None:
-        return {"enabled": False, "messages_received": 0, "connections": 0, "reconnects": 0}
-    try:
-        stats = getattr(rtcm_reader, "stats", {})
-        return {
-            "enabled": getattr(rtcm_reader, "enabled", False),
-            "messages_received": stats.get("messages_received", 0),
-            "connections": stats.get("connections", 0),
-            "reconnects": stats.get("reconnects", 0),
-        }
-    except Exception:
-        return {"enabled": False, "messages_received": 0, "connections": 0, "reconnects": 0}
+def _build_rtk_status(rtcm_reader, rtk_forwarder_stats=None, f9p_fix_state=None) -> dict:
+    """Build enriched RTK status payload with architecture detection.
+
+    Priority: UART2 direct injection > Legacy MAVLink RTCM path > default/disabled.
+    Only ONE architecture path is reported per payload.
+    """
+    result: dict = {
+        "architecture": "none",
+        "enabled": False,
+    }
+
+    # ── UART2 direct injection path ────────────────────────────────────
+    if rtk_forwarder_stats is not None:
+        result["architecture"] = "uart2_direct"
+        result["enabled"] = True
+        try:
+            fwd = rtk_forwarder_stats() if callable(rtk_forwarder_stats) else rtk_forwarder_stats
+            if fwd and isinstance(fwd, dict):
+                result["uart2_injection"] = {
+                    "total_packets": fwd.get("total_packets", 0),
+                    "total_bytes": fwd.get("total_bytes", 0),
+                    "forward_type": fwd.get("forward_type", "serial"),
+                    "serial_port": fwd.get("serial_port", ""),
+                    "last_update": fwd.get("last_update", 0),
+                }
+            else:
+                result["uart2_injection"] = {
+                    "total_packets": 0,
+                    "total_bytes": 0,
+                    "forward_type": "serial",
+                    "serial_port": "",
+                }
+        except Exception:
+            result["uart2_injection"] = {
+                "total_packets": 0,
+                "total_bytes": 0,
+                "forward_type": "serial",
+                "serial_port": "",
+            }
+
+    # ── F9P Fix state ──────────────────────────────────────────────────
+    if f9p_fix_state is not None:
+        try:
+            fix = f9p_fix_state() if callable(f9p_fix_state) else f9p_fix_state
+            if fix and isinstance(fix, dict):
+                result["fix_status"] = {
+                    "carrSoln": fix.get("carrSoln", -1),
+                    "carrSoln_name": fix.get("carrSoln_name", "N/A"),
+                    "fixType": fix.get("fixType", -1),
+                    "numSV": fix.get("numSV", 0),
+                    "hAcc": fix.get("hAcc", 0),
+                    "vAcc": fix.get("vAcc", 0),
+                    "lat": fix.get("lat", 0),
+                    "lon": fix.get("lon", 0),
+                    "hMSL": fix.get("hMSL", 0),
+                    "last_update": fix.get("last_update", 0),
+                }
+        except Exception:
+            pass
+
+    # ── Legacy MAVLink GPS_RTCM_DATA path ──────────────────────────────
+    if result["architecture"] == "none" and rtcm_reader is not None:
+        result["architecture"] = "mavlink_gps_rtcm_data"
+        try:
+            stats = getattr(rtcm_reader, "stats", {})
+            result["enabled"] = getattr(rtcm_reader, "enabled", False)
+            result["messages_received"] = stats.get("messages_received", 0)
+            result["connections"] = stats.get("connections", 0)
+            result["reconnects"] = stats.get("reconnects", 0)
+        except Exception:
+            result["enabled"] = False
+            result["messages_received"] = 0
+            result["connections"] = 0
+            result["reconnects"] = 0
+
+    return result

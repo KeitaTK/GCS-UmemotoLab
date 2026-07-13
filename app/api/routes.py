@@ -125,15 +125,15 @@ async def connect_to_drone(req: ConnectRequest, request: Request):
     logger.info("=== Backend initialization via /api/connect ===")
 
     try:
+        import os
+        import yaml
+
         from rtk_tools.config_loader import resolve_config_path
         from mavlink.connection import MavlinkConnection
         from mavlink.message_router import MessageRouter
         from rtk_tools.telemetry_store import TelemetryStore
         from rtk_tools.command_dispatcher import CommandDispatcher
         from rtk_tools.guided_control import GuidedControl
-        from rtk_tools.rtcm_reader import RtcmReader
-        # [DEPRECATED] RtcmInjectorは撤廃。新方式: rtk_direct_inject.py (UART2直接注入)
-        from rtk_tools.rtcm_injector import RtcmInjector
 
         config_path = req.config_path or resolve_config_path()
         logger.info(f"Config: {config_path}")
@@ -160,29 +160,100 @@ async def connect_to_drone(req: ConnectRequest, request: Request):
 
         threading.Thread(target=_request_streams, daemon=True).start()
 
-        rtcm_enabled = mav_conn.config.get("rtcm_enabled", True)
-        rtcm_host = mav_conn.config.get("rtcm_host", "127.0.0.1")
-        rtcm_port = mav_conn.config.get("rtcm_tcp_port", 15000)
+        # ── RTK architecture detection ──────────────────────────────────
+        rtk_forwarder_stats = None
+        f9p_fix_state_ref = None
+        rtcm_reader = None
+        uart2_direct = False
 
-        rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
-        rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
+        # Determine project root for config detection
+        _project_root = os.environ.get(
+            "GCS_PROJECT_ROOT",
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        )
+        _rtk_fwd_config_path = os.path.join(_project_root, "config", "rtk_forwarder.yml")
 
-        def _send_rtcm_frame(frame_data):
+        if os.path.exists(_rtk_fwd_config_path):
             try:
-                mav_conn.send_to_system(1, frame_data)
-                mav_conn.send_to_system(2, frame_data)
+                with open(_rtk_fwd_config_path, "r") as f:
+                    _fwd_cfg = yaml.safe_load(f) or {}
+                _fwd_type = (
+                    _fwd_cfg.get("forward", {}).get("type", "udp")
+                    if isinstance(_fwd_cfg, dict)
+                    else "udp"
+                )
+                if _fwd_type == "serial":
+                    uart2_direct = True
+                    logger.info(
+                        "RTK architecture: UART2 direct injection (rtk_forwarder type=serial)"
+                    )
+                    logger.info(
+                        "  RtcmReader + RtcmInjector (GPS_RTCM_DATA) will NOT be started."
+                    )
+                else:
+                    logger.info(
+                        f"RTK architecture: legacy MAVLink path (rtk_forwarder type={_fwd_type})"
+                    )
             except Exception as e:
-                logger.error(f"RTCM send failed: {e}")
+                logger.warning(f"Could not parse rtk_forwarder.yml: {e}")
+        else:
+            logger.info("RTK architecture: legacy MAVLink path (no rtk_forwarder.yml)")
 
-        rtcm_injector.set_send_callback(_send_rtcm_frame)
-        rtcm_reader.register_callback(lambda data: rtcm_injector.inject(data))
-        rtcm_reader.start()
+        if uart2_direct:
+            # ── UART2 direct injection path ─────────────────────────
+            from app.api.rtk_state import get_forwarder_stats, get_fix_state
 
-        api_srv.init_api(telemetry_store, dispatcher, mav_conn, rtcm_reader)
+            rtk_forwarder_stats = get_forwarder_stats
+            f9p_fix_state_ref = get_fix_state
+
+            logger.info("UART2 direct injection: using rtk_state module for RTK monitoring")
+        else:
+            # ── Legacy MAVLink GPS_RTCM_DATA path ──────────────────
+            rtcm_enabled = mav_conn.config.get("rtcm_enabled", True)
+            rtcm_host = mav_conn.config.get("rtcm_host", "127.0.0.1")
+            rtcm_port = mav_conn.config.get("rtcm_tcp_port", 15000)
+
+            try:
+                from rtk_tools.rtcm_reader import RtcmReader
+            except ImportError:
+                logger.warning("RtcmReader not available; RTCM injection disabled")
+                RtcmReader = None
+
+            try:
+                # [DEPRECATED] RtcmInjectorは撤廃。新方式: rtk_direct_inject.py (UART2直接注入)
+                from rtk_tools.rtcm_injector import RtcmInjector
+            except ImportError:
+                logger.warning("RtcmInjector not available (deprecated); RTCM injection disabled")
+                RtcmInjector = None
+
+            if RtcmReader is not None and RtcmInjector is not None:
+                rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
+                rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
+
+                def _send_rtcm_frame(frame_data):
+                    try:
+                        mav_conn.send_to_system(1, frame_data)
+                        mav_conn.send_to_system(2, frame_data)
+                    except Exception as e:
+                        logger.error(f"RTCM send failed: {e}")
+
+                rtcm_injector.set_send_callback(_send_rtcm_frame)
+                rtcm_reader.register_callback(lambda data: rtcm_injector.inject(data))
+                rtcm_reader.start()
+                logger.info("Legacy RTCM pipeline started: RtcmReader → RtcmInjector → GPS_RTCM_DATA")
+            else:
+                logger.warning("Legacy RTCM pipeline NOT started (modules unavailable)")
+
+        api_srv.init_api(
+            telemetry_store, dispatcher, mav_conn, rtcm_reader,
+            _rtk_forwarder_stats=rtk_forwarder_stats,
+            _f9p_fix_state=f9p_fix_state_ref,
+        )
 
         app.state.mav_conn = mav_conn
         app.state.router = router
         app.state.rtcm_reader = rtcm_reader
+        app.state.rtk_architecture = "uart2_direct" if uart2_direct else "mavlink_gps_rtcm_data"
 
         conn_status = mav_conn.get_connection_status()
         logger.info("=== Backend connected ===")
@@ -238,6 +309,8 @@ async def disconnect_from_drone(request: Request):
     api_srv.dispatcher = None
     api_srv.connection = None
     api_srv.rtcm_reader = None
+    api_srv.rtk_forwarder_stats = None
+    api_srv.f9p_fix_state = None
 
     logger.info("=== Backend disconnected ===")
     return {"status": "disconnected", "errors": errors if errors else None}
