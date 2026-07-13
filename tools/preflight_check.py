@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
 """Preflight Check Tool - Drone preflight ground test.
+
+Performs system state checks (GCS, MAVLink, GPS, EKF, Sensors),
+motor rotation test, checklist, and UART2 RTK monitoring checks.
+
 Usage:
   python tools/preflight_check.py [--system-id 1] [--gcs-url http://localhost:8000]
   python tools/preflight_check.py --no-motor
   python tools/preflight_check.py --direct
+  python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0
+  python tools/preflight_check.py --skip-rtk-uart2
+
 Safety: PROPELLERS MUST BE REMOVED before motor test.
+
+RTK_UART2 checks verify:
+  - F9P Rover Config module availability (f9p_rover_config.py)
+  - Fix Monitor module availability (f9p_fix_monitor.py)
+  - rtk_forwarder.yml configuration (serial vs udp forward type)
+  - UART2 device presence (e.g. /dev/ttyUSB0)
+Use --skip-rtk-uart2 to skip these checks if not using UART2 direct injection.
 """
 import sys, os, json, time, logging, argparse, subprocess
 from datetime import datetime, timezone, timedelta
@@ -264,6 +278,118 @@ def step1_system_check(api, system_id, result):
             result.add("System","Warnings",True,"No warnings",value=[])
     except Exception as e:
         result.add("System","Warnings",False,str(e))
+
+
+# ======================================================================
+# UART2 RTK Check — direct F9P UART2 monitoring checks
+# ======================================================================
+
+def step_rtk_uart2_check(api, system_id, result, uart_port=None):
+    """Check UART2 RTK monitoring readiness.
+
+    Verifies:
+      - f9p_rover_config.py module is importable
+      - f9p_fix_monitor.py module is importable
+      - config/rtk_forwarder.yml forward.type is 'serial' (not 'udp')
+      - UART2 device (e.g. /dev/ttyUSB0) exists on the system
+
+    These checks are labelled with category 'RTK_UART2' so they are
+    clearly distinguished from the existing MAVLink-based GPS checks.
+
+    Parameters
+    ----------
+    api : GcsApiClient
+        GCS API client (unused; kept for caller consistency).
+    system_id : int
+        MAVLink system ID (unused; kept for caller consistency).
+    result : CheckResult
+        Check result accumulator.
+    uart_port : str or None
+        UART2 serial device path (default: /dev/ttyUSB0).
+    """
+    logger.info("=" * 60)
+    logger.info(" Step: RTK_UART2 Check (F9P UART2 Direct Monitoring)")
+    logger.info("=" * 60)
+
+    port = uart_port or "/dev/ttyUSB0"
+
+    # ------------------------------------------------------------------
+    # (a) RTK_UART2 / F9P Rover Config
+    # ------------------------------------------------------------------
+    logger.info("--- RTK_UART2: F9P Rover Config module ---")
+    try:
+        import importlib
+        importlib.import_module("rtk_tools.f9p_rover_config")
+        result.add("RTK_UART2", "F9P Rover Config", True,
+                   "Module importable (hardware verification requires F9P connected)",
+                   value="Module available")
+    except ImportError as e:
+        result.add("RTK_UART2", "F9P Rover Config", False,
+                   f"Import failed: {e}",
+                   value="Module unavailable",
+                   notes="Ensure rtk_tools/f9p_rover_config.py exists")
+
+    # ------------------------------------------------------------------
+    # (b) RTK_UART2 / Fix Monitor
+    # ------------------------------------------------------------------
+    logger.info("--- RTK_UART2: Fix Monitor module ---")
+    try:
+        importlib.import_module("rtk_tools.f9p_fix_monitor")
+        result.add("RTK_UART2", "Fix Monitor", True,
+                   "Module importable (hardware monitoring requires F9P connected)",
+                   value="Module available")
+    except ImportError as e:
+        result.add("RTK_UART2", "Fix Monitor", False,
+                   f"Import failed: {e}",
+                   value="Module unavailable",
+                   notes="Ensure rtk_tools/f9p_fix_monitor.py exists")
+
+    # ------------------------------------------------------------------
+    # (c) RTK_UART2 / rtk_forwarder config
+    # ------------------------------------------------------------------
+    logger.info("--- RTK_UART2: rtk_forwarder config ---")
+    rtk_fwd_path = os.path.join(_PROJECT_ROOT, "config", "rtk_forwarder.yml")
+    if not os.path.exists(rtk_fwd_path):
+        result.add("RTK_UART2", "rtk_forwarder config", False,
+                   f"Config file not found: {rtk_fwd_path}",
+                   value="File missing")
+    else:
+        try:
+            import yaml
+            with open(rtk_fwd_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+            fwd_type = cfg.get("forward", {}).get("type", "unknown")
+            if fwd_type == "serial":
+                sport = cfg.get("forward", {}).get("serial_port", "N/A")
+                sbaud = cfg.get("forward", {}).get("baudrate", "N/A")
+                result.add("RTK_UART2", "rtk_forwarder config", True,
+                           f"forward.type=serial → {sport} @ {sbaud} bps",
+                           value={"type": fwd_type, "port": sport,
+                                  "baudrate": sbaud})
+            elif fwd_type == "udp":
+                result.add("RTK_UART2", "rtk_forwarder config", True,
+                           "forward.type=udp (UART2 direct injection NOT configured; "
+                           "using MAVLink injection path)",
+                           value={"type": fwd_type},
+                           notes="Set forward.type=serial for UART2 direct injection")
+            else:
+                result.add("RTK_UART2", "rtk_forwarder config", False,
+                           f"Unknown forward.type: '{fwd_type}'",
+                           value={"type": fwd_type})
+        except Exception as e:
+            result.add("RTK_UART2", "rtk_forwarder config", False,
+                       f"Failed to parse: {e}",
+                       value="Parse error")
+
+    # ------------------------------------------------------------------
+    # (d) RTK_UART2 / UART2 Device
+    # ------------------------------------------------------------------
+    logger.info(f"--- RTK_UART2: UART2 Device ({port}) ---")
+    dev_exists = os.path.exists(port)
+    result.add("RTK_UART2", "UART2 Device", dev_exists,
+               f"{port} {'exists' if dev_exists else 'NOT FOUND'}",
+               value={"port": port, "exists": dev_exists},
+               notes="Check USB-serial connection" if not dev_exists else "")
 
 
 # ======================================================================
@@ -585,7 +711,7 @@ def run_direct_mode(system_id, logs_dir, skip_motor):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Preflight Check - Drone ground test")
+        description="Preflight Check - Drone ground test (with UART2 RTK checks)")
     parser.add_argument("--system-id", type=int, default=1,
                         help="MAVLink system ID (default: 1)")
     parser.add_argument("--gcs-url", default="http://localhost:8000",
@@ -597,6 +723,11 @@ def main():
     parser.add_argument("--logs-dir",
                         default=os.path.join(_PROJECT_ROOT, "logs"),
                         help="Log output directory (default: logs/)")
+    parser.add_argument("--rtk-uart-port", default="/dev/ttyUSB0",
+                        help="UART2 serial device path for RTK checks "
+                             "(default: /dev/ttyUSB0)")
+    parser.add_argument("--skip-rtk-uart2", action="store_true",
+                        help="Skip UART2 RTK monitoring checks")
     args = parser.parse_args()
 
     print("""
@@ -609,9 +740,17 @@ def main():
     logger.info(f"Logs dir: {args.logs_dir}")
     logger.info(f"Motor test: {'SKIPPED' if args.no_motor else 'ENABLED'}")
     logger.info(f"Mode: {'DIRECT MAVLink' if args.direct else 'GCS API'}")
+    if args.skip_rtk_uart2:
+        logger.info("RTK_UART2 checks: SKIPPED (--skip-rtk-uart2)")
+    else:
+        logger.info(f"RTK_UART2 port: {args.rtk_uart_port}")
 
     if args.direct:
         result = run_direct_mode(args.system_id, args.logs_dir, args.no_motor)
+        # UART2 RTK checks — run even in direct mode
+        if not args.skip_rtk_uart2:
+            step_rtk_uart2_check(None, args.system_id, result,
+                                 uart_port=args.rtk_uart_port)
         print("\n" + result.summary())
         result.save(args.logs_dir)
         return 0 if result.all_passed else 1
@@ -619,10 +758,17 @@ def main():
     api = GcsApiClient(args.gcs_url)
     result = CheckResult()
 
-    # Step 1
+    # Step 1: System check
     step1_system_check(api, args.system_id, result)
 
-    # Step 2
+    # UART2 RTK checks (after Step 1, before motor test)
+    if not args.skip_rtk_uart2:
+        step_rtk_uart2_check(api, args.system_id, result,
+                             uart_port=args.rtk_uart_port)
+    else:
+        logger.info("RTK_UART2 checks: SKIPPED (--skip-rtk-uart2)")
+
+    # Step 2: Motor test
     if not args.no_motor:
         step2_motor_test(api, args.system_id, result, args.logs_dir)
     else:
@@ -630,7 +776,7 @@ def main():
         result.add("MotorTest","Skipped",True,
                    "--no-motor flag", value="SKIPPED")
 
-    # Step 3
+    # Step 3: Checklist
     step3_checklist(api, args.system_id, result)
 
     # Report
