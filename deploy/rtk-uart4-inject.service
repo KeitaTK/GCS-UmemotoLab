@@ -4,10 +4,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=pi
-WorkingDirectory=/home/pi/GCS-UmemotoLab
+User=taki
+WorkingDirectory=/home/taki/GCS-UmemotoLab
 ExecStartPre=/bin/sleep 10
-ExecStart=/home/pi/GCS-UmemotoLab/.venv/bin/python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml
+ExecStart=/home/taki/GCS-UmemotoLab/.venv/bin/python /home/taki/GCS-UmemotoLab/rtk_tools/rtk_forwarder_service.py --config /home/taki/GCS-UmemotoLab/config/rtk_forwarder.yml
 Restart=always
 RestartSec=5
 
