@@ -8,7 +8,7 @@ Usage:
   python tools/preflight_check.py [--system-id 1] [--gcs-url http://localhost:8000]
   python tools/preflight_check.py --no-motor
   python tools/preflight_check.py --direct
-  python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0
+  python tools/preflight_check.py --rtk-uart-port /dev/ttyAMA5
   python tools/preflight_check.py --skip-rtk-uart2
 
 Safety: PROPELLERS MUST BE REMOVED before motor test.
@@ -17,7 +17,7 @@ RTK_UART2 checks verify:
   - F9P Rover Config module availability (f9p_rover_config.py)
   - Fix Monitor module availability (f9p_fix_monitor.py)
   - rtk_forwarder.yml configuration (serial vs udp forward type)
-  - UART2 device presence (e.g. /dev/ttyUSB0)
+  - UART2 device presence (e.g. /dev/ttyAMA5)
 Use --skip-rtk-uart2 to skip these checks if not using UART2 direct injection.
 """
 import sys, os, json, time, logging, argparse, subprocess
@@ -291,7 +291,7 @@ def step_rtk_uart2_check(api, system_id, result, uart_port=None):
       - f9p_rover_config.py module is importable
       - f9p_fix_monitor.py module is importable
       - config/rtk_forwarder.yml forward.type is 'serial' (not 'udp')
-      - UART2 device (e.g. /dev/ttyUSB0) exists on the system
+      - UART5 device (e.g. /dev/ttyAMA5) exists on the system
 
     These checks are labelled with category 'RTK_UART2' so they are
     clearly distinguished from the existing MAVLink-based GPS checks.
@@ -305,13 +305,13 @@ def step_rtk_uart2_check(api, system_id, result, uart_port=None):
     result : CheckResult
         Check result accumulator.
     uart_port : str or None
-        UART2 serial device path (default: /dev/ttyUSB0).
+        UART5 serial device path (default: /dev/ttyAMA5).
     """
     logger.info("=" * 60)
     logger.info(" Step: RTK_UART2 Check (F9P UART2 Direct Monitoring)")
     logger.info("=" * 60)
 
-    port = uart_port or "/dev/ttyUSB0"
+    port = uart_port or "/dev/ttyAMA5"
 
     # ------------------------------------------------------------------
     # (a) RTK_UART2 / F9P Rover Config
@@ -723,9 +723,9 @@ def main():
     parser.add_argument("--logs-dir",
                         default=os.path.join(_PROJECT_ROOT, "logs"),
                         help="Log output directory (default: logs/)")
-    parser.add_argument("--rtk-uart-port", default="/dev/ttyUSB0",
-                        help="UART2 serial device path for RTK checks "
-                             "(default: /dev/ttyUSB0)")
+    parser.add_argument("--rtk-uart-port", default="/dev/ttyAMA5",
+                        help="UART5 serial device path for RTK checks "
+                             "(default: /dev/ttyAMA5)")
     parser.add_argument("--skip-rtk-uart2", action="store_true",
                         help="Skip UART2 RTK monitoring checks")
     args = parser.parse_args()

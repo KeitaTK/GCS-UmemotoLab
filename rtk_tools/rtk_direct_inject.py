@@ -15,7 +15,7 @@ Integrated modules:
 
 Usage:
   python rtk_tools/rtk_direct_inject.py
-  python rtk_tools/rtk_direct_inject.py --uart-port /dev/ttyUSB0 --timeout 120
+  python rtk_tools/rtk_direct_inject.py --uart-port /dev/ttyAMA5 --timeout 120
   python rtk_tools/rtk_direct_inject.py --skip-f9p-config
   python rtk_tools/rtk_direct_inject.py --log-level DEBUG
 
@@ -63,7 +63,7 @@ FIX_NAMES: dict = {
 class Config:
     """Runtime configuration for the 5-STEP RTK Direct Inject workflow."""
 
-    uart_port: str = "/dev/ttyUSB0"
+    uart_port: str = "/dev/ttyAMA5"
     uart_baud: int = 115200
     base_host: str = "192.168.11.100"
     base_port: int = 2101
@@ -417,8 +417,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--uart-port",
-        default="/dev/ttyUSB0",
-        help="USB-Serial port connected to F9P UART2 (default: /dev/ttyUSB0)",
+        default="/dev/ttyAMA5",
+        help="RPi UART5 port connected to F9P (default: /dev/ttyAMA5)",
     )
     parser.add_argument(
         "--uart-baud",

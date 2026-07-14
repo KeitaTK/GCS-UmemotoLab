@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# install_rtk_uart2_service.sh
-# Copy the RTK UART2 injection systemd service and enable it.
+# install_rtk_uart5_service.sh
+# Copy the RTK UART5 injection systemd service and enable it.
 set -euo pipefail
 
-SERVICE_NAME="rtk-uart2-inject.service"
+SERVICE_NAME="rtk-uart5-inject.service"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_FILE="${SCRIPT_DIR}/${SERVICE_NAME}"
 TARGET="/etc/systemd/system/${SERVICE_NAME}"
