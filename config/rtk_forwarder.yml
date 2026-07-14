@@ -26,7 +26,7 @@ forward:
   port: 50010
 
   # type: serial の場合
-  serial_port: /dev/ttyAMA5
+  serial_port: /dev/ttyAMA4
   baudrate: 115200
 
 retry:

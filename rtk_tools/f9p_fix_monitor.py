@@ -14,13 +14,13 @@ carrSoln がキーフィールド:
 
 【使用例】
   # 単発ポーリング
-  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA5 --once
+  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --once
 
   # RTK Fixed 待機 (最大120秒)
-  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA5 --timeout 120
+  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --timeout 120
 
   # 連続モニタリング
-  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA5 --monitor
+  python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --monitor
 
 【参考】
   - docs/05-implementation/rtk_direct_uart2_injection_plan.md Section 5.3
@@ -75,7 +75,7 @@ class F9pFixMonitor:
     Parameters
     ----------
     serial_port : str
-        F9P に接続された RPi UART5 ポート (default: /dev/ttyAMA5)
+        F9P に接続された RPi UART4 ポート (default: /dev/ttyAMA4)
     baudrate : int
         ボーレート (default: 115200)
     """
@@ -84,7 +84,7 @@ class F9pFixMonitor:
     NAV_PVT_CLS = 0x01
     NAV_PVT_MID = 0x07
 
-    def __init__(self, serial_port: str = "/dev/ttyAMA5", baudrate: int = 115200):
+    def __init__(self, serial_port: str = "/dev/ttyAMA4", baudrate: int = 115200):
         self.serial_port = serial_port
         self.baudrate = baudrate
         self._ser: Optional[serial.Serial] = None
@@ -318,8 +318,8 @@ def main():
     )
     parser.add_argument(
         "--port",
-        default="/dev/ttyAMA5",
-        help="F9P に接続された RPi UART5 ポート (default: /dev/ttyAMA5)",
+        default="/dev/ttyAMA4",
+        help="F9P に接続された RPi UART4 ポート (default: /dev/ttyAMA4)",
     )
     parser.add_argument(
         "--baud",

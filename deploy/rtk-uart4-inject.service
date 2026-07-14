@@ -1,5 +1,5 @@
 [Unit]
-Description=RTK UART5 Direct Injection Service
+Description=RTK UART4 Direct Injection Service
 After=network-online.target
 Wants=network-online.target
 

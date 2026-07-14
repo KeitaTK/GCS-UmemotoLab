@@ -96,7 +96,7 @@ class F9pRoverConfigurator:
                  logger: Optional[logging.Logger] = None):
         """
         Args:
-            serial_port: F9P に接続された RPi UART5 ポート (例: /dev/ttyAMA5)
+            serial_port: F9P に接続された RPi UART4 ポート (例: /dev/ttyAMA4)
             baudrate: シリアル通信ボーレート (デフォルト 115200)
             logger: ロガーインスタンス (None の場合は新規作成)
         """
@@ -427,12 +427,12 @@ def main():
         description='F9P Rover UART2 Configurator — '
                     'RTCM3 input + UBX output setup',
         epilog='Example: python f9p_rover_config.py '
-               '--port /dev/ttyAMA5 --baud 115200',
+               '--port /dev/ttyAMA4 --baud 115200',
     )
     parser.add_argument(
-        '--port', default='/dev/ttyAMA5',
-        help='RPi UART5 port connected to F9P '
-             '(default: /dev/ttyAMA5)',
+        '--port', default='/dev/ttyAMA4',
+        help='RPi UART4 port connected to F9P '
+             '(default: /dev/ttyAMA4)',
     )
     parser.add_argument(
         '--baud', type=int, default=115200,

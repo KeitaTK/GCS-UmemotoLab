@@ -275,7 +275,7 @@ def load_config(path: str) -> ServiceConfig:
         forward_type=forward_raw.get("type", "udp"),
         host=forward_raw.get("host", "127.0.0.1"),
         port=int(forward_raw.get("port", 50010)),
-        serial_port=forward_raw.get("serial_port", "/dev/ttyAMA5"),
+        serial_port=forward_raw.get("serial_port", "/dev/ttyAMA4"),
         serial_baudrate=int(forward_raw.get("baudrate", 115200)),
     )
     retry = RetryConfig(reconnect_sec=float(retry_raw.get("reconnect_sec", 3.0)))

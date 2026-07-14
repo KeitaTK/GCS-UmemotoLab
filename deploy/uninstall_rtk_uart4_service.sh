@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# uninstall_rtk_uart5_service.sh
-# Stop, disable, and remove the RTK UART5 injection systemd service.
+# uninstall_rtk_uart4_service.sh
+# Stop, disable, and remove the RTK UART4 injection systemd service.
 set -euo pipefail
 
-SERVICE_NAME="rtk-uart5-inject.service"
+SERVICE_NAME="rtk-uart4-inject.service"
 TARGET="/etc/systemd/system/${SERVICE_NAME}"
 
 if [ ! -f "${TARGET}" ]; then
