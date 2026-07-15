@@ -1,6 +1,6 @@
 {
     "mode": "manual",
-    "serial_port": "/dev/tty.usbmodem113301",
+    "serial_port": "/dev/tty.usbmodem114301",
     "baudrate": 38400,
     "fixed_lat": 36.075714,
     "fixed_lon": 136.213740,
