@@ -1,9 +1,12 @@
+# Raspi用 rtk_forwarder 設定
+# Mac側のRTK基地局（TCP:2101）からRTCMを受信し、
+# /dev/ttyAMA10（GPIO32,33,34 → F9P Rover UART）へ注入する
 source:
   # ntrip または serial
   source_type: ntrip
 
-  # source_type: ntrip の場合
-  host: 100.80.225.4
+  # source_type: ntrip の場合 → MacのRTK基地局（Tailscale IP）
+  host: MAC_TAILSCALE_IP
   port: 2101
   mountpoint: UBLOX_EVK_F9P
   user_agent: NTRIP PythonClient
@@ -25,8 +28,8 @@ forward:
   host: 127.0.0.1
   port: 50010
 
-  # type: serial の場合
-  serial_port: /dev/ttyAMA4
+  # type: serial の場合（F9P Rover UART: /dev/ttyAMA10）
+  serial_port: /dev/ttyAMA10
   baudrate: 115200
 
 retry:
