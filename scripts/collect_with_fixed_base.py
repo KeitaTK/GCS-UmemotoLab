@@ -71,41 +71,30 @@ def _find_gps(msg):
 class GcsPoller:
     def __init__(self, base_url="http://localhost:8000", system_id=1):
         self.base_url = base_url.rstrip("/"); self.system_id = system_id
+        import urllib.request
+        self.urllib = urllib.request
+
     def get_telemetry(self, timeout=5.0):
-        result = {"gps": None}
-        def _connect():
-            try:
-                url = self.base_url.replace("http://", "").replace("https://", "")
-                host, port = (url.rsplit(":", 1)[0], int(url.rsplit(":", 1)[1])) if ":" in url else (url, 8000)
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5.0); sock.connect((host, port))
-                req = f"GET /ws HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
-                sock.sendall(req.encode())
-                resp = b""
-                while b"\r\n\r\n" not in resp:
-                    chunk = sock.recv(4096)
-                    if not chunk: return
-                    resp += chunk
-                if b"101" not in resp: return
-                buf, start = b"", time.monotonic()
-                while time.monotonic() - start < timeout:
-                    try:
-                        sock.settimeout(1.0)
-                        data = sock.recv(65535)
-                        if data:
-                            buf += data
-                            for msg_str in _extract_ws_text(buf):
-                                try:
-                                    gps = _find_gps(json.loads(msg_str))
-                                    if gps: result["gps"] = gps; return
-                                except json.JSONDecodeError: continue
-                    except socket.timeout: continue
-            except Exception as e: logger.debug(f"WS: {e}")
-            finally:
-                try: sock.close()
-                except: pass
-        t = threading.Thread(target=_connect, daemon=True); t.start(); t.join(timeout + 5)
-        return result["gps"]
+        """Fetch GPS data via REST API (more reliable than WebSocket)."""
+        try:
+            req = self.urllib.Request(f"{self.base_url}/api/drones")
+            req.add_header("Accept", "application/json")
+            with self.urllib.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            drones = data.get("drones", [])
+            for drone in drones:
+                if drone.get("system_id") == self.system_id and drone.get("lat") is not None:
+                    return {
+                        "fix_type": drone.get("gps_fix", -1),
+                        "satellites": drone.get("gps_sats", 0),
+                        "lat": float(drone["lat"]),
+                        "lon": float(drone["lon"]),
+                        "alt": float(drone.get("alt", 0) or 0),
+                    }
+            return None
+        except Exception as e:
+            logger.debug(f"REST: {e}")
+            return None
 
 def collect(gcs, count=30, interval=2.0, max_duration=120.0):
     rows, start, deadline = [], time.monotonic(), time.monotonic() + max_duration
