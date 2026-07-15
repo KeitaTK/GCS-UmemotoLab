@@ -28,7 +28,9 @@ carrSoln がキーフィールド:
 """
 
 import argparse
+import csv
 import logging
+import os
 import sys
 import threading
 import time
@@ -190,6 +192,30 @@ class F9pFixMonitor:
     # RTK Fixed 待機
     # ------------------------------------------------------------------
 
+    FIX_TRANSITION_LOG_DIR = "logs"
+    FIX_TRANSITION_LOG_FILE = os.path.join(FIX_TRANSITION_LOG_DIR, "rtcm_fix_transition.log")
+
+    def _open_fix_transition_log(self) -> tuple:
+        """RTCM→FIX遷移ログを開きCSV writerを返す。(csv_file, csv_writer)"""
+        os.makedirs(self.FIX_TRANSITION_LOG_DIR, exist_ok=True)
+        csv_file = open(self.FIX_TRANSITION_LOG_FILE, "a", newline="")
+        csv_writer = csv.writer(csv_file)
+        # ファイルが空ならヘッダを書き込む
+        if os.path.getsize(self.FIX_TRANSITION_LOG_FILE) == 0:
+            csv_writer.writerow([
+                "timestamp",
+                "elapsed_sec",
+                "carrSoln",
+                "carrSoln_name",
+                "numSV",
+                "hAcc",
+                "lat",
+                "lon",
+                "transition",
+            ])
+            csv_file.flush()
+        return csv_file, csv_writer
+
     def wait_for_rtk_fixed(self, timeout: float = 120.0) -> bool:
         """carrSoln=2 (RTK Fixed) になるまでループで待つ
 
@@ -202,51 +228,128 @@ class F9pFixMonitor:
         -------
         bool
             RTK Fixed 達成で True、タイムアウトで False
+
+        Notes
+        -----
+        carrSoln遷移（0→1 FLOAT, 1→2 FIXED）を
+        logs/rtcm_fix_transition.log に記録する。
         """
         if self._reader is None:
             logger.error("Not opened. Call open() first.")
             return False
 
+        csv_file, csv_writer = self._open_fix_transition_log()
+        prev_carrsoln = -1
+        time_to_float = None
+        time_to_fixed = None
         start = time.monotonic()
-        while time.monotonic() - start < timeout:
-            result = self.poll_nav_pvt(timeout=3.0)
-            elapsed = time.monotonic() - start
 
-            if result is None:
+        try:
+            while time.monotonic() - start < timeout:
+                result = self.poll_nav_pvt(timeout=3.0)
+                elapsed = time.monotonic() - start
+                now_str = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+
+                if result is None:
+                    logger.info(
+                        f"  t={elapsed:5.1f}s  (no NAV-PVT received yet)"
+                    )
+                    time.sleep(0.5)
+                    continue
+
+                cs = result["carrSoln"]
+
+                # 遷移検出
+                transition = ""
+                if prev_carrsoln != -1 and cs != prev_carrsoln:
+                    if prev_carrsoln == 0 and cs == 1:
+                        transition = ">>> FLOAT (0→1) <<<"
+                        time_to_float = elapsed
+                        logger.info(
+                            "  >>> RTK FLOAT reached at t=%.1fs <<<", elapsed
+                        )
+                    elif prev_carrsoln == 1 and cs == 2:
+                        transition = ">>> FIXED (1→2) <<<"
+                        time_to_fixed = elapsed
+
+                prev_carrsoln = cs
+
+                # CSV行書き込み
+                csv_writer.writerow([
+                    now_str,
+                    f"{elapsed:.1f}",
+                    cs,
+                    result.get("carrSoln_name", "?"),
+                    result.get("numSV", 0),
+                    f"{result.get('hAcc', 0):.3f}",
+                    f"{result.get('lat', 0):.7f}",
+                    f"{result.get('lon', 0):.7f}",
+                    transition,
+                ])
+                csv_file.flush()
+
                 logger.info(
-                    f"  t={elapsed:5.1f}s  (no NAV-PVT received yet)"
+                    f"  t={elapsed:5.1f}s  carrSoln={result['carrSoln']}"
+                    f"({result['carrSoln_name']})  "
+                    f"fixType={result['fixType']}  "
+                    f"numSV={result['numSV']}  "
+                    f"hAcc={result['hAcc']:.3f}m"
                 )
+
+                if cs == 2:
+                    logger.info("=" * 60)
+                    logger.info("  RTK FIXED ACHIEVED!")
+                    logger.info(
+                        f"  Position: lat={result['lat']:.7f} "
+                        f"lon={result['lon']:.7f} "
+                        f"hMSL={result['hMSL']:.2f}m"
+                    )
+                    logger.info(
+                        f"  Accuracy: hAcc={result['hAcc']:.3f}m "
+                        f"vAcc={result['vAcc']:.3f}m"
+                    )
+                    logger.info(f"  Time to fix: {elapsed:.1f}s")
+                    logger.info("=" * 60)
+
+                    # 最終サマリ行をCSVに書き込み
+                    float_str = f"{time_to_float:.1f}" if time_to_float else "N/A"
+                    fixed_str = f"{elapsed:.1f}"
+                    csv_writer.writerow([
+                        f"# SUMMARY",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        f"time_to_float={float_str}s  time_to_fixed={fixed_str}s",
+                    ])
+                    csv_file.flush()
+                    return True
+
                 time.sleep(0.5)
-                continue
 
-            logger.info(
-                f"  t={elapsed:5.1f}s  carrSoln={result['carrSoln']}"
-                f"({result['carrSoln_name']})  "
-                f"fixType={result['fixType']}  "
-                f"numSV={result['numSV']}  "
-                f"hAcc={result['hAcc']:.3f}m"
-            )
-
-            if result["carrSoln"] == 2:
-                logger.info("=" * 60)
-                logger.info("  RTK FIXED ACHIEVED!")
-                logger.info(
-                    f"  Position: lat={result['lat']:.7f} "
-                    f"lon={result['lon']:.7f} "
-                    f"hMSL={result['hMSL']:.2f}m"
-                )
-                logger.info(
-                    f"  Accuracy: hAcc={result['hAcc']:.3f}m "
-                    f"vAcc={result['vAcc']:.3f}m"
-                )
-                logger.info(f"  Time to fix: {elapsed:.1f}s")
-                logger.info("=" * 60)
-                return True
-
-            time.sleep(0.5)
-
-        logger.warning(f"RTK Fixed not achieved within {timeout}s")
-        return False
+            # タイムアウト時もサマリを記録
+            csv_writer.writerow([
+                f"# TIMEOUT",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                f"time_to_float={time_to_float or 'N/A'}s  time_to_fixed=N/A (timeout={timeout}s)",
+            ])
+            csv_file.flush()
+            logger.warning(f"RTK Fixed not achieved within {timeout}s")
+            return False
+        finally:
+            try:
+                csv_file.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # 連続モニタリング (スレッド)

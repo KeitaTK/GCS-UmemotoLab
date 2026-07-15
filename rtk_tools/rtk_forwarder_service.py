@@ -1,6 +1,8 @@
 import argparse
 import base64
+import csv
 import logging
+import os
 import socket
 import time
 from dataclasses import dataclass
@@ -52,14 +54,52 @@ class ServiceConfig:
 
 
 class RtcmForwarderService:
+    INJECTION_LOG_DIR = "logs"
+    INJECTION_LOG_FILE = os.path.join(INJECTION_LOG_DIR, "rtcm_injection.log")
+
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.logger = logging.getLogger("rtk_forwarder")
         self.total_packets = 0
         self.total_bytes = 0
         self.last_stats_time = time.time()
+        # レート計算用の前回値
+        self._last_packets = 0
+        self._last_bytes = 0
+        self._errors = 0
+        self._csv_file = None
+        self._csv_writer = None
+
+    def _init_injection_log(self) -> None:
+        """RTCM注入ログのCSVファイルを初期化（ヘッダ行を書き込み）"""
+        os.makedirs(self.INJECTION_LOG_DIR, exist_ok=True)
+        self._csv_file = open(self.INJECTION_LOG_FILE, "a", newline="")
+        self._csv_writer = csv.writer(self._csv_file)
+        # ファイルが空ならヘッダを書き込む
+        if os.path.getsize(self.INJECTION_LOG_FILE) == 0:
+            self._csv_writer.writerow([
+                "timestamp",
+                "frame_count",
+                "cumulative_bytes",
+                "frames_per_min",
+                "bytes_per_minute",
+                "errors",
+            ])
+            self._csv_file.flush()
+        self.logger.info("RTCM injection log opened: %s", self.INJECTION_LOG_FILE)
+
+    def _close_injection_log(self) -> None:
+        """RTCM注入ログファイルを閉じる"""
+        if self._csv_file is not None:
+            try:
+                self._csv_file.close()
+            except Exception:
+                pass
+            self._csv_file = None
+            self._csv_writer = None
 
     def run_forever(self) -> None:
+        self._init_injection_log()
         fwd = self.config.forward
         if fwd.forward_type == "serial":
             dest = f"{fwd.serial_port}@{fwd.serial_baudrate}bps"
@@ -242,12 +282,36 @@ class RtcmForwarderService:
         now = time.time()
         interval = self.config.log.stats_interval_sec
         if now - self.last_stats_time >= interval:
+            elapsed = now - self.last_stats_time
             self.last_stats_time = now
+
+            # レート計算（frames/min, bytes/min）
+            delta_packets = self.total_packets - self._last_packets
+            delta_bytes = self.total_bytes - self._last_bytes
+            frames_per_min = (delta_packets / elapsed) * 60.0 if elapsed > 0 else 0.0
+            bytes_per_minute = (delta_bytes / elapsed) * 60.0 if elapsed > 0 else 0.0
+
+            self._last_packets = self.total_packets
+            self._last_bytes = self.total_bytes
+
             self.logger.info(
                 "Forward stats: packets=%s, bytes=%s",
                 self.total_packets,
                 self.total_bytes,
             )
+
+            # CSV注入ログ出力
+            if self._csv_writer is not None:
+                timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now))
+                self._csv_writer.writerow([
+                    timestamp,
+                    self.total_packets,
+                    self.total_bytes,
+                    f"{frames_per_min:.1f}",
+                    f"{bytes_per_minute:.1f}",
+                    self._errors,
+                ])
+                self._csv_file.flush()
 
 
 def load_config(path: str) -> ServiceConfig:

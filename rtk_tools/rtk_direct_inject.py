@@ -24,10 +24,13 @@ Reference:
 """
 
 import argparse
+import csv
 import logging
+import os
 import socket
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -289,6 +292,117 @@ def step3_start_rtcm_injection(cfg: Config) -> None:
 # STEP 4: Wait for RTK Fixed (UBX-NAV-PVT carrSoln=2)
 # ---------------------------------------------------------------------------
 
+INJECTION_LOG_PATH = os.path.join("logs", "rtcm_injection.log")
+FIX_TRANSITION_LOG_PATH = os.path.join("logs", "rtcm_fix_transition.log")
+PROOF_SUMMARY_PATH = os.path.join("logs", "rtcm_proof_summary.txt")
+
+
+def _read_float_fixed_times() -> tuple:
+    """rtcm_fix_transition.log から FLOAT/FIXED 到達時間を読み取る。
+
+    Returns:
+        (time_to_float, time_to_fixed) — 見つからない場合は None
+    """
+    time_to_float = None
+    time_to_fixed = None
+    try:
+        with open(FIX_TRANSITION_LOG_PATH, "r") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row or len(row) < 9:
+                    continue
+                transition = row[8]
+                elapsed_str = row[1] if len(row) > 1 else ""
+                if "FLOAT" in transition and "0→1" in transition:
+                    try:
+                        time_to_float = float(elapsed_str)
+                    except (ValueError, TypeError):
+                        pass
+                if "FIXED" in transition and "1→2" in transition:
+                    try:
+                        time_to_fixed = float(elapsed_str)
+                    except (ValueError, TypeError):
+                        pass
+    except (FileNotFoundError, IOError):
+        pass
+    return time_to_float, time_to_fixed
+
+
+def _read_injection_stats() -> tuple:
+    """rtcm_injection.log の最終行から累積フレーム数・バイト数を読み取る。
+
+    Returns:
+        (total_frames, total_bytes) — 読み取れなければ (0, 0)
+    """
+    try:
+        with open(INJECTION_LOG_PATH, "r") as f:
+            reader = csv.reader(f)
+            last_row = None
+            for row in reader:
+                if row and not row[0].startswith("#"):
+                    last_row = row
+            if last_row and len(last_row) >= 3:
+                try:
+                    frames = int(last_row[1])
+                    bytes_total = int(last_row[2])
+                    return frames, bytes_total
+                except (ValueError, IndexError):
+                    pass
+    except (FileNotFoundError, IOError):
+        pass
+    return 0, 0
+
+
+def _display_and_save_proof_summary(
+    start_time: datetime,
+    ok: bool,
+) -> None:
+    """injection_proof_summary を表示し、logs/rtcm_proof_summary.txt に保存する。"""
+    end_time = datetime.now()
+    time_to_float, time_to_fixed = _read_float_fixed_times()
+    total_frames, total_bytes = _read_injection_stats()
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append("  RTCM INJECTION PROOF SUMMARY")
+    lines.append("=" * 60)
+    lines.append(f"  RTCM注入開始時刻    : {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"  RTK FIXED 到達時刻  : {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    total_elapsed = (end_time - start_time).total_seconds()
+    lines.append(f"  総経過時間          : {total_elapsed:.1f}s")
+    lines.append("")
+    lines.append(f"  総注入フレーム数    : {total_frames}")
+    lines.append(f"  総注入バイト数      : {total_bytes}")
+    lines.append("")
+    if time_to_float is not None:
+        lines.append(f"  FLOAT 到達までの時間 : {time_to_float:.1f}s")
+    else:
+        lines.append("  FLOAT 到達までの時間 : (未到達)")
+    if time_to_fixed is not None:
+        lines.append(f"  FIXED 到達までの時間 : {time_to_fixed:.1f}s")
+    else:
+        lines.append("  FIXED 到達までの時間 : (未到達)")
+    lines.append("")
+    lines.append("  ログファイル:")
+    lines.append(f"    - RTCM注入ログ       : {INJECTION_LOG_PATH}")
+    lines.append(f"    - RTK Fix遷移ログ    : {FIX_TRANSITION_LOG_PATH}")
+    lines.append(f"    - 証明サマリ (本ファイル) : {PROOF_SUMMARY_PATH}")
+    lines.append("")
+    status = "OK (RTK FIXED)" if ok else "NG (NOT FIXED)"
+    lines.append(f"  STATUS: {status}")
+    lines.append("=" * 60)
+
+    # コンソール表示
+    for line in lines:
+        logger.info(line)
+
+    # ファイル保存
+    os.makedirs("logs", exist_ok=True)
+    with open(PROOF_SUMMARY_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    logger.info(f"  Proof summary saved to: {PROOF_SUMMARY_PATH}")
+
+
 def step4_wait_for_rtk_fixed(cfg: Config) -> bool:
     """Poll UART2 for UBX-NAV-PVT and wait until carrSoln=2 (RTK Fixed).
 
@@ -296,6 +410,9 @@ def step4_wait_for_rtk_fixed(cfg: Config) -> bool:
     F9P UART2 TX2. The monitor internally logs:
       - Elapsed time, carrSoln name, numSV, hAcc on each poll
       - Position (lat, lon, hMSL), accuracy (hAcc, vAcc), time-to-fix on success
+
+    After completion (success or timeout), an injection_proof_summary is
+    displayed and saved to logs/rtcm_proof_summary.txt.
 
     Returns:
         True if RTK Fixed achieved within timeout, False otherwise.
@@ -306,6 +423,7 @@ def step4_wait_for_rtk_fixed(cfg: Config) -> bool:
     logger.info(f"  Monitoring UBX-NAV-PVT via {cfg.uart_port} ...")
     logger.info("=" * 60)
 
+    start_time = datetime.now()
     monitor: Optional[F9pFixMonitor] = None
 
     try:
@@ -315,10 +433,14 @@ def step4_wait_for_rtk_fixed(cfg: Config) -> bool:
         )
         monitor.open()
         ok = monitor.wait_for_rtk_fixed(timeout=cfg.rtk_fixed_timeout)
+
+        # RTK Fixed 待機完了後、proof summary を表示・保存
+        _display_and_save_proof_summary(start_time, ok)
         return ok
 
     except Exception as e:
         logger.error(f"  STEP 4 failed: {e}")
+        _display_and_save_proof_summary(start_time, False)
         return False
 
     finally:
