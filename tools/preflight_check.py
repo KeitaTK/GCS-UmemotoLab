@@ -563,11 +563,11 @@ def step3_checklist(api, system_id, result):
     # Tailscale/Raspi ping
     try:
         ping_ok = subprocess.run(
-            ["ping","-c","2","-W","3","100.123.158.105"],
+            ["ping","-c","2","-W","3","100.69.75.96"],
             capture_output=True, text=True, timeout=10
         ).returncode == 0
         result.add("Comm","Tailscale/Raspi ping",ping_ok,
-                   f"ping 100.123.158.105 -> {'OK' if ping_ok else 'FAIL'}",
+                   f"ping 100.69.75.96 -> {'OK' if ping_ok else 'FAIL'}",
                    value="reachable" if ping_ok else "unreachable")
     except Exception as e:
         result.add("Comm","Tailscale/Raspi ping",False,str(e))

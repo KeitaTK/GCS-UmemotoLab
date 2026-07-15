@@ -2,7 +2,7 @@
 """Direct MAVLink Bridge: UDP <-> TCP via Tailscale (no SSH tunnel needed)
 
 Usage: python scripts/direct_bridge.py [udp_port] [raspi_ip] [raspi_port]
-  Default: udp_port=14552, raspi_ip=100.123.158.105, raspi_port=5760
+  Default: udp_port=14552, raspi_ip=100.69.75.96, raspi_port=5760
 """
 import socket
 import threading
@@ -10,7 +10,7 @@ import sys
 
 def main():
     udp_port = int(sys.argv[1]) if len(sys.argv) > 1 else 14552
-    raspi_ip = sys.argv[2] if len(sys.argv) > 2 else '100.123.158.105'
+    raspi_ip = sys.argv[2] if len(sys.argv) > 2 else '100.69.75.96'
     raspi_port = int(sys.argv[3]) if len(sys.argv) > 3 else 5760
 
     # UDP receive from GCS

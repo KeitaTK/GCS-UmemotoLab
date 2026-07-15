@@ -12,8 +12,8 @@ Tailscale 経由で Raspberry Pi 5 へのデプロイ・実行サイクルを自
 
 | 項目 | 値 |
 |------|-----|
-| Raspberry Pi (Tailscale) | `taki@100.123.158.105` |
-| SSH 接続 | `ssh -o ProxyCommand="tailscale nc %h %p" taki@100.123.158.105` |
+| Raspberry Pi (Tailscale) | `taki@100.69.75.96` |
+| SSH 接続 | `ssh -o ProxyCommand="tailscale nc %h %p" taki@100.69.75.96` |
 | リポジトリパス | `~/GCS-UmemotoLab` |
 | 仮想環境 | `~/GCS-UmemotoLab/.venv` |
 
@@ -21,7 +21,7 @@ Tailscale 経由で Raspberry Pi 5 へのデプロイ・実行サイクルを自
 
 ```ssh-config
 Host raspi
-    HostName 100.123.158.105
+    HostName 100.69.75.96
     User taki
     IdentityFile ~/.ssh/id_ed25519
     ProxyCommand tailscale nc %h %p

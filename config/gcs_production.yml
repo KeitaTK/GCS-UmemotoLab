@@ -9,7 +9,7 @@
 #
 #   # もしくはTailscale経由
 #   ssh -L 14550:localhost:14550 -L 5760:localhost:5760 \\
-#       -o ProxyCommand="tailscale nc %h %p" taki@100.123.158.105
+#       -o ProxyCommand="tailscale nc %h %p" taki@100.69.75.96
 #
 # 起動:
 #   export GCS_CONFIG_PATH=config/gcs_production.yml
