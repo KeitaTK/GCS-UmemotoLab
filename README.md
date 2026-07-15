@@ -93,6 +93,117 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 
 ---
 
+## RTCM注入 全体システム構成図
+
+2つの独立した通信経路（MAVLinkテレメトリ + RTCM注入）を1つの図に統合した全体構成図です。
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                         RTCM注入 全体システム構成図                                     │
+│                                                                                      │
+│  ┌──────────────────────────┐              ┌──────────────────────────────────────┐  │
+│  │         Mac              │              │         Raspberry Pi 5               │  │
+│  │                          │              │                                      │  │
+│  │  ┌──────────────────┐    │  TCP:2101    │  ┌──────────────────────────────┐    │  │
+│  │  │ u-blox F9P(基準局)│────┼────────────→│  │ rtk_forwarder               │    │  │
+│  │  │ Survey-In / TIME │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
+│  │  │ /dev/tty.usbmodem*│   │              │  │                              │    │  │
+│  │  └──────────────────┘    │              │  │ NTRIP受信 → Serial転送        │    │  │
+│  │                          │              │  └──────────────┬───────────────┘    │  │
+│  │  ┌──────────────────┐    │ MAVLink UDP  │                 │                    │  │
+│  │  │ GCS UI (PySide6) │←───┼──────────────│                 │ /dev/ttyAMA10      │  │
+│  │  │ app/main.py      │    │ SSH Tunnel   │                 │ (GPIO32,33,34)     │  │
+│  │  │                  │    │127.0.0.1:14550│ ┌───────────────▼───────────────┐    │  │
+│  │  │ テレメトリ表示     │    │              │ │ mavlink-router               │    │  │
+│  │  │ 機体制御          │    │              │ │ /etc/mavlink-router/         │    │  │
+│  │  └──────────────────┘    │              │ │   main.conf                  │    │  │
+│  │                          │              │ │                              │    │  │
+│  └──────────────────────────┘              │ │ UART↔UDPブリッジ              │    │  │
+│                                             │ └──────────────┬───────────────┘    │  │
+│                                             │                 │                    │  │
+│                                             │                 │ /dev/ttyAMA0       │  │
+│                                             │                 │ (GPIO8,10,11)      │  │
+│                                             └─────────────────┼────────────────────┘  │
+│                                                               │                       │
+│       ┌───────────────────────────────────────────────────────┼───────────────┐       │
+│       │                    機体側                              │               │       │
+│       │                                                       │               │       │
+│       │  ┌──────────────────────────┐     ┌───────────────────▼──────────────┐│       │
+│       │  │ F9P Rover                │     │   Pixhawk 6C (ArduPilot)        ││       │
+│       │  │ (H-RTK F9P Helical)      │     │                                  ││       │
+│       │  │                          │     │ TELEM1 ← MAVLink通信             ││       │
+│       │  │ UART2 RX2 ← RTCM3注入    │     │   (GPIO14/15 → Raspi)           ││       │
+│       │  │ UART2 TX2 → UBX-NAV-PVT  │     │                                  ││       │
+│       │  │                          │     │ CAN2 ──────────┐                 ││       │
+│       │  │ RTCM3補正 → RTK測位演算   │     │   位置情報受信   │                 ││       │
+│       │  └────────────┬─────────────┘     └────────────────┼─────────────────┘│       │
+│       │               │ CAN H/L                              │                  │       │
+│       │               └─────────────────────────────────────→│                  │       │
+│       │                          DroneCAN BUS (1Mbit/s)      │                  │       │
+│       └───────────────────────────────────────────────────────────────────────┘       │
+│                                                                                      │
+│  【経路凡例】                                                                          │
+│  ──→  RTCM注入(パスB): Mac u-blox → TCP:2101 → rtk_forwarder → /dev/ttyAMA10 → F9P   │
+│  ←──  MAVLink(パスA): Pixhawk TELEM1 → /dev/ttyAMA0 → mavlink-router → Mac GCS       │
+│  ──→  位置情報: F9P Rover → CAN2 → Pixhawk CAN1 (DroneCAN, 既存維持)                   │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 経路A: MAVLinkテレメトリ（機体制御・監視）
+
+```
+Pixhawk TELEM1 → GPIO8(TX),10(RX),11(RTS) → /dev/ttyAMA0 → mavlink-router → Mac GCS
+```
+
+| 区間 | デバイス/プロトコル | 詳細 |
+|------|-------------------|------|
+| Pixhawk → Raspi | GPIO8(TX), GPIO10(RX), GPIO11(RTS) | TELEM1 6pin → Raspi GPIO Header |
+| Raspi 受信 | `/dev/ttyAMA0` @ 115200bps | Pi 5 BCM2712 PL011 AXI UART |
+| Raspi 中継 | `mavlink-router` (systemd) | UART↔UDP 透過ブリッジ |
+| Raspi → Mac | UDP:14550 → SSH Tunnel | Tailscale経由 TCP転送 |
+| Mac 受信 | `127.0.0.1:14550` | GCS MavlinkConnection |
+
+### 経路B: RTCM注入（RTK補正データ）
+
+```
+Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA10 → F9P UART2 → CAN2 → Pixhawk CAN1
+```
+
+| 区間 | デバイス/プロトコル | 詳細 |
+|------|-------------------|------|
+| u-blox → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
+| Raspi 受信 | `rtk_forwarder_service.py` | NTRIPクライアント / TCP Socket |
+| Raspi 転送 | `/dev/ttyAMA10` @ 115200bps | GPIO32(TX), GPIO33(RX), GPIO34(CTS) |
+| F9P 受信 | UART2 RX2 (Pin 2) | RTCM3 → RTK測位演算 |
+| F9P → Pixhawk | CAN2 → CAN1 (DroneCAN) | 位置情報供給（既存維持） |
+
+### 各コンポーネントの役割
+
+| コンポーネント | 役割 |
+|--------------|------|
+| **u-blox F9P (Mac)** | RTK基準局。Survey-Inモードで基準位置を確定し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
+| **Raspberry Pi 5** | 機体搭載の通信ブリッジ。`mavlink-router` でMAVLinkをUART↔UDP中継。`rtk_forwarder` でRTCM3をTCP→シリアル変換。2系統の通信を1台で処理。 |
+| **F9P Rover (H-RTK F9P Helical)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
+| **Pixhawk 6C (ArduPilot)** | フライトコントローラ。TELEM1でMAVLink通信、CAN1でF9PからRTK位置情報を受信。ArduPilotがGPS_AUTO_SWITCHで最適GPSソースを自動選択。 |
+
+### デバイス名とGPIOピン対応表
+
+| デバイス名 | GPIOピン | 物理Pin | 信号 | 接続先 | 用途 |
+|-----------|----------|---------|------|--------|------|
+| `/dev/ttyAMA0` | GPIO8 | Pin 8 | TX | Pixhawk TELEM1 RX | MAVLink送信 |
+| `/dev/ttyAMA0` | GPIO10 | Pin 10 | RX | Pixhawk TELEM1 TX | MAVLink受信 |
+| `/dev/ttyAMA0` | GPIO11 | Pin 11 | RTS | Pixhawk TELEM1 CTS | フロー制御 |
+| `/dev/ttyAMA10` | GPIO32 | Pin 32 | TX | F9P Rover UART2 RX2 | RTCM3データ注入 |
+| `/dev/ttyAMA10` | GPIO33 | Pin 33 | RX | F9P Rover UART2 TX2 | UBX-NAV-PVT受信 |
+| `/dev/ttyAMA10` | GPIO34 | Pin 34 | CTS | F9P Rover (予備) | フロー制御 |
+
+> **Pi 5 注意**:
+> - `/dev/ttyAMA0` は BCM2712 の PL011 AXI UART。`enable_uart=1` + `dtoverlay=uart0` で有効化。
+> - `/dev/ttyAMA10` は RP1 チップの追加 UART。`dtoverlay=uart4` 等で有効化。
+> - Pixhawk TELEM1 接続では `/dev/ttyAMA0` を直接指定する方が安定する。
+
+---
+
 ## RTK クイックスタート
 
 RTK UART2 直接注入の最小セットアップ手順です。詳細は [rtk_direct_uart2_injection_plan.md](docs/05-implementation/rtk_direct_uart2_injection_plan.md) を参照。
