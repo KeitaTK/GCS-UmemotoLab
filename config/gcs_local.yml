@@ -1,12 +1,10 @@
-# GCS Configuration - SSH Tunnel via Tailscale
-#
 connection_type: udp
-udp_listen_port: 14550
+udp_listen_port: 14551
 
 drones:
   drone1:
     system_id: 1
-    endpoint: "127.0.0.1:14552"  # Bridge UDP port (SSH Tunnel)
+    endpoint: "127.0.0.1:14552"
     name: "Pixhawk6C Main"
   drone2:
     system_id: 2
