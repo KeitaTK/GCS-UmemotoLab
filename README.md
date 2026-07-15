@@ -149,6 +149,362 @@ python app/main.py
 
 ---
 
+## RTCMデータフロー検証手順
+
+RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的に検証する手順です。
+新規ユーザーでもこの手順に従うことで、RTCM注入からRTK FIXED到達までの正常動作を確認できます。
+
+### RTCMデータフロー詳細
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     RTCMデータフロー（RTK UART2 直接注入）                        │
+│                                                                              │
+│  ┌──────────────┐     NTRIP/TCP        ┌──────────────────┐                  │
+│  │  基地局 F9P   │─────────────────────→│  Raspberry Pi 5   │                  │
+│  │  (Survey-In)  │   RTCM3 stream      │                  │                  │
+│  │              │   port 2101          │ rtk_forwarder_   │                  │
+│  │  RTCM3 0xD3  │                     │ service.py       │                  │
+│  │  preamble    │                     │                  │                  │
+│  └──────────────┘                     │ ① NTRIP接続      │                  │
+│                                       │   (TCP Socket)   │                  │
+│                                       │                  │                  │
+│                                       │ ② RTCM3受信      │                  │
+│                                       │   recv(4096)     │                  │
+│                                       │                  │                  │
+│                                       │ ③ シリアル転送    │                  │
+│                                       │   UART4 TX       │                  │
+│                                       │   /dev/ttyAMA4   │                  │
+│                                       │   @115200bps     │                  │
+│                                       └───────┬──────────┘                  │
+│                                               │ USB-Serial                  │
+│                                               │ (3.3V TTL)                  │
+│                                               ▼                             │
+│                                       ┌──────────────────┐                  │
+│                                       │  Rover F9P       │                  │
+│                                       │  (UART2 RX2)     │                  │
+│                                       │                  │                  │
+│                                       │ ④ RTCM3処理      │                  │
+│                                       │   → RTK測位演算   │                  │
+│                                       │                  │                  │
+│                                       │ ⑤ UBX-NAV-PVT    │                  │
+│                                       │   出力 (UART2 TX2)│                  │
+│                                       │   carrSoln:      │                  │
+│                                       │   0=NONE        │                  │
+│                                       │   1=FLOAT       │                  │
+│                                       │   2=FIXED  ←目標 │                  │
+│                                       └───────┬──────────┘                  │
+│                                               │ USB-Serial                  │
+│                                               ▼                             │
+│                                       ┌──────────────────┐                  │
+│                                       │  Raspberry Pi 5   │                  │
+│                                       │                  │                  │
+│                                       │ ⑥ UBX-NAV-PVT    │                  │
+│                                       │   受信・監視      │                  │
+│                                       │   f9p_fix_monitor │                  │
+│                                       │   .py             │                  │
+│                                       │                  │                  │
+│                                       │ ⑦ ログ記録        │                  │
+│                                       │   rtcm_injection  │                  │
+│                                       │   .log            │                  │
+│                                       │   rtcm_fix_       │                  │
+│                                       │   transition.log  │                  │
+│                                       └──────────────────┘                  │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  F9P (DroneCAN) ──→ Pixhawk CAN1 (位置情報供給)                      │    │
+│  │  ※ 既存CAN接続は変更なし。UART2注入と並行動作                           │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+| ステップ | 説明 | 担当コンポーネント | 確認方法 |
+|----------|------|-------------------|---------|
+| ① | NTRIP Caster にTCP接続しRTCM3ストリームを取得 | `rtk_forwarder_service.py` | NTRIP応答 `ICY 200 OK` |
+| ② | RTCM3バイナリデータを4096バイト単位で受信 | `rtk_forwarder_service.py` `_run_ntrip_once()` | ログ: `Forward stats:` |
+| ③ | 受信データをUSB-Serial経由でF9P UART2 RX2へ送信 | `rtk_forwarder_service.py` `_forward_chunk()` | シリアルポート `/dev/ttyAMA4` |
+| ④ | F9PがRTCM3補正データを処理しRTK測位演算を実行 | F9P ファームウェア | carrSoln 遷移観測 |
+| ⑤ | F9PがUBX-NAV-PVTメッセージをUART2 TX2から出力 | F9P ファームウェア | UBXメッセージ (0x01 0x07) |
+| ⑥ | RaspiがUBX-NAV-PVTを受信しcarrSolnを監視 | `f9p_fix_monitor.py` `poll_nav_pvt()` | carrSoln=2 検出 |
+| ⑦ | 注入統計とFix遷移をCSVログに記録 | `RtcmForwarderService` / `F9pFixMonitor` | `logs/` 以下のCSVファイル |
+
+### 検証の前提条件
+
+検証を開始する前に、以下が完了していることを確認してください：
+
+- [ ] Raspi に USB-Serial アダプタが接続され、`/dev/ttyAMA4`（または `/dev/ttyUSB*`）として認識されている
+- [ ] F9P Rover の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み
+- [ ] 基地局 F9P が Survey-In 完了済み（`python scripts/ublox_survey_in.py --status` で確認）
+- [ ] 基地局が NTRIP Caster として RTCM3 ストリームを配信中
+- [ ] Rover F9P の UART2 が設定済み（初回のみ `f9p_rover_config.py` を実行）
+
+### 検証手順（ステップバイステップ）
+
+#### STEP 1: Rover F9P UART2 設定確認
+
+F9P Rover の UART2 が RTCM3 入力 + UBX-NAV-PVT 出力に設定されていることを確認します。
+
+```bash
+cd ~/GCS-UmemotoLab
+source .venv/bin/activate
+
+# 初回設定（未設定の場合のみ）
+python rtk_tools/f9p_rover_config.py --port /dev/ttyAMA4
+
+# 設定確認（既設定済みの場合）
+python rtk_tools/f9p_rover_config.py --port /dev/ttyAMA4 --verify-only
+```
+
+**期待される出力:**
+```
+UART2 Config Verification Results
+  CFG-UART2-BAUDRATE           : expected=115200, actual=115200, OK
+  CFG-UART2INPROT-RTCM3X       : expected=     1, actual=1, OK
+  CFG-UART2OUTPROT-UBX         : expected=     1, actual=1, OK
+  All verified: YES
+```
+
+#### STEP 2: 基地局 RTCM3 ストリーム確認
+
+基地局の NTRIP Caster が RTCM3 データを配信していることを確認します。
+
+```bash
+# 自動チェック（NTRIPハンドシェイク + RTCM3プリアンブル確認）
+python rtk_tools/rtk_direct_inject.py \
+  --uart-port /dev/ttyAMA4 \
+  --base-host 192.168.11.100 \
+  --timeout 10
+
+# 出力の STEP 2 部分を確認:
+#   STEP 2: Verify Base Station RTCM3 Stream
+#   NTRIP caster response: ICY 200 OK
+#   RTCM3 stream verified: preamble=0xD3, received 512 bytes
+```
+
+**確認ポイント:**
+- NTRIP Caster が `ICY 200 OK` を返すこと
+- 受信データの先頭バイトが `0xD3`（RTCM3 プリアンブル）であること
+
+#### STEP 3: RTCM 注入サービス起動
+
+`rtk_forwarder_service.py` を起動し、基地局からのRTCM3データを F9P UART2 に転送します。
+
+```bash
+# 方法A: systemd サービスとして永続起動（推奨）
+sudo bash deploy/install_rtk_uart4_service.sh
+sudo systemctl start rtk-uart4-inject
+systemctl status rtk-uart4-inject
+
+# 方法B: 手動起動（テスト・デバッグ用）
+python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml
+```
+
+> **注意:** `config/rtk_forwarder.yml` の `forward.type` が `serial`、`forward.serial_port` が `/dev/ttyAMA4` に設定されていることを確認してください。
+
+**期待されるログ出力（journalctl / コンソール）:**
+```
+RTK forwarder start: source=ntrip, forward.type=serial, destination=/dev/ttyAMA4@115200bps
+Connected to NTRIP caster: 192.168.11.100:2101 / UBLOX_EVK_F9P
+NTRIP response: ICY 200 OK
+Forward stats: packets=120, bytes=51200
+Forward stats: packets=240, bytes=102400
+```
+
+#### STEP 4: RTK FIXED 到達確認
+
+F9P の UBX-NAV-PVT 出力を監視し、`carrSoln=2`（RTK FIXED）への遷移を確認します。
+
+```bash
+# RTK Fixed 待機（最大120秒）
+python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --timeout 120
+
+# 単発ポーリング（現在の状態を一度だけ確認）
+python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --once
+
+# 連続モニタリング（手動監視用）
+python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --monitor
+```
+
+**carrSoln 遷移の期待シーケンス:**
+```
+  t=  0.0s  carrSoln=0(NONE)     fixType=0  numSV=0   hAcc=99.999m
+  t=  5.0s  carrSoln=0(NONE)     fixType=3  numSV=12  hAcc=5.000m
+  t= 15.0s  carrSoln=1(FLOAT)    fixType=5  numSV=18  hAcc=1.500m   ← FLOAT到達
+  >>> RTK FLOAT reached at t=15.0s <<<
+  t= 25.0s  carrSoln=1(FLOAT)    fixType=5  numSV=20  hAcc=0.800m
+  t= 35.0s  carrSoln=2(FIXED)    fixType=6  numSV=22  hAcc=0.020m   ← FIXED到達!
+  >>> RTK FIXED (1→2) <<<
+  ============================================================
+    RTK FIXED ACHIEVED!
+    Position: lat=35.XXXXXXX lon=139.XXXXXXX hMSL=XX.XXm
+    Accuracy: hAcc=0.020m vAcc=0.030m
+    Time to fix: 35.0s
+  ============================================================
+```
+
+| carrSoln | 状態 | 意味 | 水平精度目安 |
+|----------|------|------|-------------|
+| 0 | NONE | RTK補正なし | >1m |
+| 1 | FLOAT | フロート解（搬送波位相の整数値バイアス未確定） | 0.5〜1.5m |
+| **2** | **FIXED** | **RTK FIX解（搬送波位相確定、cm級精度）** | **<0.05m** |
+
+#### STEP 5: プリフライトチェック（総合確認）
+
+全システムの状態を総合的にチェックします。
+
+```bash
+# GCS API経由（GCS起動中の場合）
+python tools/preflight_check.py --rtk-uart-port /dev/ttyAMA4
+
+# 直接 MAVLink 接続（GCS未起動の場合）
+python tools/preflight_check.py --direct --rtk-uart-port /dev/ttyAMA4
+
+# UART2チェックのみスキップする場合
+python tools/preflight_check.py --skip-rtk-uart2
+```
+
+**期待されるチェック項目:**
+```
+[OK] [RTK_UART2] F9P Rover Config    → Module available
+[OK] [RTK_UART2] Fix Monitor          → Module available
+[OK] [RTK_UART2] rtk_forwarder config → forward.type=serial → /dev/ttyAMA4 @ 115200 bps
+[OK] [RTK_UART2] UART2 Device         → /dev/ttyAMA4 exists
+...
+FINAL: READY FOR FLIGHT
+```
+
+### 確認ポイント一覧
+
+#### ログファイル
+
+| ログファイル | 生成元 | 内容 |
+|-------------|--------|------|
+| `logs/rtcm_injection.log` | `rtk_forwarder_service.py` | RTCM注入統計（時刻・累積フレーム数・累積バイト数・転送レート・エラー数） |
+| `logs/rtcm_fix_transition.log` | `f9p_fix_monitor.py` | carrSoln遷移記録（時刻・経過時間・carrSoln・numSV・hAcc・位置・遷移イベント） |
+| `logs/rtcm_proof_summary.txt` | `rtk_direct_inject.py` | 注入証明サマリ（総フレーム数・FLOAT/FIXED到達時間・最終ステータス） |
+| `logs/preflight_check_*.json` | `preflight_check.py` | プリフライトチェック全結果（JSON形式） |
+
+#### 期待される出力と判定基準
+
+| 確認項目 | コマンド | 合格基準 | 不合格時の対応 |
+|---------|---------|---------|---------------|
+| F9P UART2 設定 | `f9p_rover_config.py --verify-only` | `All verified: YES` | STEP 1 再実行 |
+| 基地局 RTCM3 到達 | `rtk_direct_inject.py` STEP 2 | `ICY 200 OK` + `preamble=0xD3` | 基地局のSurvey-In状態・ネットワーク確認 |
+| RTCM注入稼働 | `systemctl status rtk-uart4-inject` | `active (running)` | `journalctl -u rtk-uart4-inject -f` でエラー確認 |
+| RTCM注入流量 | `logs/rtcm_injection.log` 最終行 | `frames_per_min > 0`（通常 数百〜数千フレーム/分） | 基地局-Raspi間のネットワーク確認 |
+| RTK FLOAT 到達 | `logs/rtcm_fix_transition.log` | `0→1` 遷移が記録されている | 周辺環境（上空視界）確認、アンテナ位置調整 |
+| RTK FIXED 到達 | `f9p_fix_monitor.py --once` | `carrSoln=2(FIXED)` | タイムアウト時間延長（`--timeout 300`）、基地局距離確認 |
+| 水平精度 | `f9p_fix_monitor.py --once` | FIXED時 `hAcc < 0.05m` | FLOATのままなら継続待機 |
+| プリフライト PASS | `preflight_check.py` | `FINAL: READY FOR FLIGHT` | 各FAIL項目の `notes` を参照 |
+
+#### systemd サービスの健全性確認
+
+```bash
+# サービス状態確認
+systemctl status rtk-uart4-inject
+
+# リアルタイムログ追跡
+journalctl -u rtk-uart4-inject -f
+
+# 過去1時間のログ
+journalctl -u rtk-uart4-inject --since "1 hour ago"
+
+# エラーのみ抽出
+journalctl -u rtk-uart4-inject -p err
+```
+
+**正常時の journalctl 出力例:**
+```
+Jul 15 10:00:00 raspi python[1234]: RTK forwarder start: source=ntrip, forward.type=serial, destination=/dev/ttyAMA4@115200bps
+Jul 15 10:00:01 raspi python[1234]: Connected to NTRIP caster: 192.168.11.100:2101 / UBLOX_EVK_F9P
+Jul 15 10:00:01 raspi python[1234]: NTRIP response: ICY 200 OK
+Jul 15 10:00:06 raspi python[1234]: Forward stats: packets=45, bytes=18432
+Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
+```
+
+### トラブルシューティング
+
+#### RTCM データフロー障害の系統的診断
+
+障害が発生した場合、データフローの各段階を上流から順に診断します。
+
+```
+診断フロー:
+  ① 基地局は起動しているか？
+    └→ python scripts/ublox_survey_in.py --status
+    └→ Survey-In が完了しているか？（最長300秒）
+  
+  ② NTRIP Caster にTCP接続できるか？
+    └→ nc -zv 192.168.11.100 2101
+    └→ 基地局のIPアドレス・ポートが正しいか確認
+  
+  ③ RTCM3データが流れているか？
+    └→ python rtk_tools/rtk_direct_inject.py --timeout 10
+    └→ STEP 2 で ICY 200 OK と 0xD3 preamble を確認
+  
+  ④ rtk_forwarder_service は稼働しているか？
+    └→ systemctl status rtk-uart4-inject
+    └→ journalctl -u rtk-uart4-inject -f
+  
+  ⑤ /dev/ttyAMA4 デバイスは存在するか？
+    └→ ls -la /dev/ttyAMA4
+    └→ dmesg | grep tty で認識状況を確認
+  
+  ⑥ F9P UART2 の配線は正しいか？
+    └→ F9P RX2 (Pin 2) ← USB-Serial TX
+    └→ F9P TX2 (Pin 3) → USB-Serial RX
+    └→ GND (Pin 6)     ↔ USB-Serial GND
+  
+  ⑦ F9P が UBX-NAV-PVT を出力しているか？
+    └→ python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --once
+    └→ 応答がない場合: f9p_rover_config.py --port /dev/ttyAMA4 で再設定
+```
+
+#### よくある障害と対応
+
+| 現象 | 考えられる原因 | 対応 |
+|------|--------------|------|
+| `systemctl status` が `failed` | 設定ファイルの不備、パスの誤り | `journalctl -u rtk-uart4-inject -n 50` でエラー確認 |
+| NTRIP接続エラー `Connection refused` | 基地局が起動していない、またはファイアウォール | 基地局の電源・ネットワーク確認。`nc -zv` でポート到達性確認 |
+| `ICY 200 OK` は返るが `Forward stats` が出ない | `forward.type` が `udp` のまま | `config/rtk_forwarder.yml` の `forward.type` を `serial` に変更 |
+| シリアルポート `Permission denied` | デバイス権限不足 | `sudo usermod -a -G dialout $USER` → 再ログイン |
+| `/dev/ttyAMA4` が存在しない | UART4 が有効化されていない | `/boot/firmware/config.txt` に `dtoverlay=uart4` を追加 |
+| `f9p_fix_monitor` が `(no data)` を返し続ける | F9P UART2 OUTPROT-UBX 未設定、または配線ミス | `f9p_rover_config.py --verify-only` で設定確認。TX/RX 配線の入れ替え確認 |
+| carrSoln が 0(NONE) から遷移しない | 基地局からのRTCM3が届いていない | `tail -f logs/rtcm_injection.log` でフレームカウント増加を確認 |
+| carrSoln が 1(FLOAT) で停滞 | 衛星数不足、マルチパス、基線長過大 | 空が見える場所に移動。基地局-Rover間距離が10km以内か確認 |
+| RTK FIXED 後にすぐ FLOAT に戻る | 基地局RTCM3の断続的な途切れ | `journalctl -u rtk-uart4-inject` で切断・再接続ログを確認 |
+| `preflight_check` の RTK_UART2 が FAIL | モジュールのimportエラー | `pip install pyubx2 pyserial` を再実行。PYTHONPATHを確認 |
+
+#### F9P UART2 配線の再確認
+
+問題が解決しない場合、物理配線を再確認してください：
+
+| F9P UART2 Pin | 信号 | USB-Serial 側 | 確認 |
+|---------------|------|---------------|------|
+| Pin 2 (RX2) | 3.3V TTL 入力 | TX | RTCM3データ注入用 |
+| Pin 3 (TX2) | 3.3V TTL 出力 | RX | UBX-NAV-PVT受信用 |
+| Pin 6 (GND) | GND | GND | 共通グラウンド |
+
+> **ヒント:** TX/RX を入れ替えてみると解決することがあります。F9P RX2 はデータを受信する側なので、USB-Serial の TX に接続してください。
+
+#### ログを活用した詳細診断
+
+```bash
+# RTCM 注入ログの最新10行
+tail -10 logs/rtcm_injection.log
+
+# Fix 遷移ログの全内容（carrSoln の変化を時系列で確認）
+cat logs/rtcm_fix_transition.log
+
+# 注入証明サマリ（前回の検証結果）
+cat logs/rtcm_proof_summary.txt
+
+# 注入レートの推移をグラフ表示（gnuplot 使用時）
+gnuplot -e "set datafile separator ','; plot 'logs/rtcm_injection.log' using 4 with lines title 'frames/min'"
+```
+
+---
+
 ## セットアップ
 
 ### 前提条件
