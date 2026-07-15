@@ -19,7 +19,7 @@ source:
 
 forward:
   # udp または serial
-  type: udp
+  type: serial
 
   # type: udp の場合
   host: 127.0.0.1
