@@ -1,7 +1,8 @@
 # CANインターフェース セットアップ計画書
 
 **作成日**: 2026-07-21
-**ステータス**: 計画中
+**最終更新**: 2026-07-21
+**ステータス**: 設定ファイル準備完了（実機適用待ち）
 **目的**: Raspberry Pi 5 に CAN インターフェースを追加し、UART2 を RTCM 専用化する
 
 ---
@@ -201,6 +202,17 @@ Raspberry Pi 5 の 40-pin ヘッダにおける SPI0 と MCP2515 HAT の接続:
 
 ## 4. カーネルモジュール設定
 
+> **🚀 自動セットアップ**: `sudo ./deploy/can_setup_raspi.sh` を実行すると、
+> 以下の 4.1～4.5 の設定を一括で行えます。手動設定の詳細は以降を参照。
+>
+> | オプション | 説明 |
+> |-----------|------|
+> | `--interfaces` | systemd-networkd の代わりに `/etc/network/interfaces.d/can0` を使用 |
+> | `--no-reboot` | 再起動プロンプトをスキップ |
+> | `--listen-only` | Listen-Only モード（デフォルト・推奨） |
+> | `--normal` | 通常モード（送信も許可） |
+> | `--legacy-boot` | `/boot/config.txt` を使用（Pi 4 以前） |
+
 ### 4.1 /boot/firmware/config.txt への追加
 
 ```ini
@@ -220,6 +232,9 @@ dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25,spimaxfrequency=10000000
 # 注意: Raspberry Pi 5 では config.txt のパスが以下に変更されている
 #        /boot/firmware/config.txt
 #        (Pi 4 以前の /boot/config.txt とは異なる)
+
+# または自動セットアップ:
+#   sudo ./deploy/can_setup_raspi.sh  (本プロジェクトの deploy/ 以下)
 ```
 
 ### 4.2 設定の反映と確認
@@ -255,6 +270,25 @@ ip -details link show can0
 
 ### 4.4 CAN 自動起動の永続化（systemd-networkd 推奨）
 
+プロジェクト内に設定ファイルを用意済み:
+
+| プロジェクトファイル | 配置先 | 説明 |
+|-------------------|--------|------|
+| `deploy/can0.network` | `/etc/systemd/network/80-can0.network` | CAN ボーレート、Listen-Only 設定 |
+| `deploy/can0.link` | `/etc/systemd/network/80-can0.link` | 常時 UP ポリシー |
+
+手動で配置する場合:
+
+```bash
+sudo cp deploy/can0.network /etc/systemd/network/80-can0.network
+sudo cp deploy/can0.link /etc/systemd/network/80-can0.link
+sudo systemctl restart systemd-networkd
+sudo systemctl enable systemd-networkd
+networkctl status can0
+```
+
+または手動作成する場合:
+
 ```bash
 sudo tee /etc/systemd/network/80-can0.network <<'EOF'
 [Match]
@@ -262,6 +296,7 @@ Name=can0
 
 [CAN]
 Bitrate=1000000
+ListenOnly=true
 RestartSec=100ms
 EOF
 
@@ -280,14 +315,28 @@ networkctl status can0
 
 ### 4.5 代替: /etc/network/interfaces 方式
 
+プロジェクト内に設定ファイルを用意済み: `deploy/interfaces.d/can0`
+
+手動で配置する場合:
+
 ```bash
-sudo tee -a /etc/network/interfaces.d/can0 <<'EOF'
+sudo cp deploy/interfaces.d/can0 /etc/network/interfaces.d/can0
+sudo systemctl restart networking
+```
+
+または手動作成する場合:
+
+```bash
+sudo tee /etc/network/interfaces.d/can0 <<'EOF'
 auto can0
 iface can0 inet manual
-    pre-up /sbin/ip link set can0 type can bitrate 1000000
+    pre-up /sbin/ip link set can0 type can bitrate 1000000 listen-only on
     up /sbin/ip link set up can0
     down /sbin/ip link set down can0
 EOF
+```
+
+> **Note**: systemd-networkd 方式（4.4）を推奨。本ファイルは ifupdown が必要な場合の代替。
 
 ---
 
@@ -460,6 +509,16 @@ sudo poweroff
 
 ### Step 3: config.txt 設定
 
+**自動セットアップ**（推奨）:
+
+```bash
+# プロジェクトの deploy/ ディレクトリにある自動セットアップスクリプト
+sudo ./deploy/can_setup_raspi.sh --listen-only
+# → SPI有効化 + dtoverlay追加 + ネットワーク設定 + 再起動確認 を一括実行
+```
+
+**手動セットアップ**:
+
 ```bash
 # Raspberry Pi 5 では /boot/firmware/config.txt を編集
 sudo nano /boot/firmware/config.txt
@@ -519,6 +578,26 @@ except KeyboardInterrupt:
 ```
 
 ### Step 7: 自動起動設定
+
+**自動セットアップ**（Step 3 で既に完了している場合はスキップ可）:
+
+```bash
+# deploy スクリプトが /etc/systemd/network/ に設定済み
+# 再実行する場合:
+sudo ./deploy/can_setup_raspi.sh --listen-only --no-reboot
+```
+
+**手動**: プロジェクト内の設定ファイルを使う場合:
+
+```bash
+sudo cp deploy/can0.network /etc/systemd/network/80-can0.network
+sudo cp deploy/can0.link /etc/systemd/network/80-can0.link
+sudo systemctl restart systemd-networkd
+sudo systemctl enable systemd-networkd
+networkctl status can0
+```
+
+または手動作成:
 
 ```bash
 sudo tee /etc/systemd/network/80-can0.network <<'EOF'
@@ -662,3 +741,41 @@ Phase 4: 本番移行・運用ドキュメント更新
 | ArduPilot CAN Setup | https://ardupilot.org/copter/docs/common-canbus-setup.html |
 | 本プロジェクト CAN 監視可否レポート | [can_monitor_feasibility_report.md](can_monitor_feasibility_report.md) |
 | RTK UART2 注入設計書 | [../05-implementation/rtk_direct_uart2_injection_plan.md](../05-implementation/rtk_direct_uart2_injection_plan.md) |
+
+---
+
+## 12. プロジェクト内の設定ファイル一覧
+
+CAN インターフェース用に用意した設定ファイル:
+
+| プロジェクト内パス | 実機配置先 | 説明 |
+|------------------|----------|------|
+| `deploy/can_setup_raspi.sh` | (実行スクリプト) | 自動セットアップスクリプト |
+| `deploy/can0.network` | `/etc/systemd/network/80-can0.network` | systemd-networkd CAN 設定（推奨） |
+| `deploy/can0.link` | `/etc/systemd/network/80-can0.link` | systemd-networkd 常時UPポリシー |
+| `deploy/interfaces.d/can0` | `/etc/network/interfaces.d/can0` | ifupdown CAN 設定（代替） |
+
+### 使用方法
+
+```bash
+# 全自動（一括設定）:
+sudo ./deploy/can_setup_raspi.sh --listen-only
+
+# systemd-networkd 個別適用:
+sudo cp deploy/can0.network /etc/systemd/network/80-can0.network
+sudo cp deploy/can0.link /etc/systemd/network/80-can0.link
+sudo systemctl restart systemd-networkd
+
+# ifupdown 個別適用:
+sudo cp deploy/interfaces.d/can0 /etc/network/interfaces.d/can0
+sudo systemctl restart networking
+```
+
+### config.txt への追加内容
+
+自動または手動で追加される `/boot/firmware/config.txt` の内容:
+
+```ini
+dtparam=spi=on
+dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25,spimaxfrequency=10000000
+```
