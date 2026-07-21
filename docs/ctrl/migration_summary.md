@@ -764,3 +764,179 @@ python scripts/mavlink_rtcm_inject.py \
 | `scripts/mavlink_rtcm_inject.py` | MAVLink GPS_RTCM_DATA注入スクリプト（stdlibのみ） |
 | `logs/mavlink_rtcm_inject.log` | Test #5 注入統計ログ |
 
+---
+
+## 実機RTKテスト #6 (2026-07-22 01:26 -- GPS比較データ収集 + RTK FIXED分析)
+
+### 前提条件（ユーザー指定）
+
+| 項目 | 指定値 | 実環境 |
+|------|--------|--------|
+| fix_type | 6 (RTK FIXED) | **3 (3D_FIX)** ❌ |
+| carrSoln | 2 (FIXED) | **0 (NONE)** ❌ |
+| MAVLink接続 | 確立済み | **切断状態 (UDP receive timeout)** ❌ |
+
+> **⚠️ 注意**: ユーザー指定の前提条件（RTK FIXED到達済み）は現在の実環境では満たされていない。
+> 以下は可能な範囲での検証・分析結果である。
+
+### テスト環境
+
+| 項目 | 値 |
+|------|-----|
+| 日時 | 2026-07-22 01:26 JST |
+| Mac (GCS/基地局) | localhost, macOS |
+| u-blox基地局 | /dev/tty.usbmodem114301 @ 38400bps |
+| u-blox (2台目) | /dev/tty.usbmodemSN234567892 |
+| GCSサーバー | localhost:8000, status=ok, uptime 23,572s |
+| ドローン状態 | system_id=1, mode=STABILIZE, armed=false |
+
+### Step 1: Fix状態確認
+
+```bash
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once
+```
+
+| 項目 | 値 |
+|------|-----|
+| fix_type | **3 (3D_FIX)** |
+| carrSoln | **0 (NONE)** |
+| sats | 21 |
+| hdop | **0.83** ✅ (<1.0) |
+| lat | 36.0693843 |
+| lon | 136.2410017 |
+| alt | 1.08 m |
+
+- **fix_type=6 (RTK FIXED) 未達** — 前提条件不成立
+- HDOP=0.83: 期待値 <1.0 を満たすが、3D_FIXレベル
+
+### Step 2: GPS比較データ収集試行
+
+```bash
+python scripts/gps_compare_collect.py \
+    --ublox /dev/tty.usbmodem114301 --ublox-baud 38400 \
+    --gcs-url http://localhost:8000 \
+    --count 30 --interval 1.0 --max-duration 120 \
+    --output logs/gps_error_20260722_test6.csv
+```
+
+| 項目 | 結果 |
+|------|------|
+| u-blox接続 | ✅ シリアルポートオープン成功 (38400bps) |
+| GCS WebSocket | ❌ テレメトリデータ取得不可 (MAVLink切断) |
+| 収集サンプル数 | **0/30** ❌ |
+| 所要時間 | 29.1s (全ポーリング失敗で早期終了) |
+
+**失敗原因**:
+1. GCS MAVLink接続が切断状態 (`is_connected: false`, UDP receive timeout)
+2. u-bloxは基地局モードでRTCM出力中 → NMEA GGAセンテンス未出力
+
+### Step 3: 過去RTK FIXEDデータ分析
+
+#### 3a. compare_sample5.csv (2026-07-01, RTK FIXED 実績データ)
+
+| 項目 | 値 |
+|------|-----|
+| ファイル | `logs/compare_sample5.csv` |
+| サンプル数 | 20 |
+| fix_type | **6 (RTK_FIXED)** — 全20サンプル |
+| sats | 27 |
+| lat (平均) | 36.07572630 |
+| lon (平均) | 136.21371010 |
+| alt (平均) | 2.90 m |
+
+**位置安定性**:
+
+| 指標 | 水平 (cm) | 垂直 (cm) |
+|------|----------|----------|
+| StdDev | 0.00 | 0.00 |
+| RMS | 0.00 | — |
+| Max | 0.00 | 0.00 |
+| Min | 0.00 | 0.00 |
+
+> **注**: 全20サンプルが同一値。RTK FIXED時の高精度位置保持を示すが、
+> 全サンプルが同一スナップショットである可能性もある（データ更新未確認）。
+> u-blox側データなし（基地局RTCM出力中のため比較不可）。
+
+#### 3b. compare_sample6_both.csv (2026-07-02, 3D_FIX + u-blox比較)
+
+| 項目 | 値 |
+|------|-----|
+| サンプル数 | 10 |
+| fix_type | 3 (3D_FIX) |
+| 水平 StdDev | 2.96 cm |
+| 水平 RMS | 6.11 cm |
+| 水平 Max | 11.04 cm |
+| 水平 Min | 1.56 cm |
+| 垂直 StdDev | 21.10 cm |
+
+> **参考**: 3D_FIX時の水平RMS 6.11cm、RTK FIXEDなら1-3cmが期待値。
+
+#### 3c. E2E シミュレーション結果 (2026-07-21)
+
+| 指標 | 水平 (cm) | 垂直 (cm) |
+|------|----------|----------|
+| Mean | 0.91 | 1.38 |
+| StdDev | 0.45 | 0.95 |
+| RMS | 1.02 | 1.67 |
+| Max | 1.69 | 3.93 |
+| Min | 0.11 | 0.17 |
+
+> 30サンプル、RTK FIXEDシミュレーション。水平1-3cm目標を達成。
+
+### Step 4: HDOP 分析
+
+| データソース | HDOP | 評価 |
+|-------------|------|------|
+| GCS API (現在) | 0.83 | ✅ <1.0 |
+| Test #3 (00:17-00:22) | 0.83 | ✅ <1.0 |
+| Test #5 (00:57-01:05) | 0.83 | ✅ <1.0 |
+
+- HDOP < 1.0: **全テストで一貫して達成** ✅
+- 3D_FIX状態でもHDOP < 1.0は安定（衛星数21で良好なDOP）
+
+### データ収集サマリ
+
+| 項目 | 値 |
+|------|-----|
+| アーキテクチャ | UART2直接注入（MAVLink非依存） |
+| 基地局F9P設定 | type 1005/1006有効化済み |
+| RTCM配信 | 生TCP:2101 → rtk_forwarder → /dev/ttyAMA4 |
+| fix_type 遷移（期待） | 3→4→5→6 |
+| fix_type 遷移（実績） | 3 のまま（RTK FIXED未達） |
+| carrSoln 最終値（期待） | 2 (FIXED) |
+| carrSoln 最終値（実績） | 0 (NONE) |
+| 収集サンプル数（試行） | 0/30 ❌ |
+| 収集サンプル数（過去実績） | 20 (compare_sample5.csv, fix=6) |
+| 水平誤差 平均（過去実績） | 0.00 cm（全サンプル同一値） |
+| 垂直誤差 平均（過去実績） | 0.00 cm（全サンプル同一値） |
+
+### 考察
+
+#### 現状のブロッカー
+
+| # | 課題 | 影響 | 優先度 |
+|---|------|------|--------|
+| 1 | MAVLink接続切断 | GCS WebSocket不通、テレメトリ更新停止 | 🔴 P0 |
+| 2 | RTK FIXED未達 (fix=3) | GPS比較データ収集不可 | 🔴 P0 |
+| 3 | u-blox NMEA未出力 | 基地局モードでRTCM出力中のため比較用NMEAなし | 🟡 P1 |
+
+#### 確認済み正常項目
+- ✅ GCSサーバー稼働中 (uptime 6.5h, status=ok)
+- ✅ u-blox基地局認識 (2台, /dev/tty.usbmodem*)
+- ✅ HDOP < 1.0 (0.83, 一貫して良好)
+- ✅ 過去RTK FIXED実績あり (compare_sample5.csv: fix=6, sats=27)
+- ✅ 分析スクリプト整備 (`scripts/analyze_gps_compare.py`)
+
+#### 推奨アクション
+1. **MAVLink再接続**: GCS `/api/connect` でUDP再接続
+2. **RTKパイプライン再構築**: 基地局 → rtk_forwarder → F9P UART2
+3. **fix_type=6到達後**: `gps_compare_collect.py --count 30` で再収集
+4. **u-blox NMEA有効化**: 基地局側でGGAセンテンス出力を追加で有効化すればu-blox vs Pixhawk比較が可能
+
+### 生成ファイル
+
+| ファイル | 説明 |
+|----------|------|
+| `scripts/analyze_gps_compare.py` | GPS比較CSV統計分析スクリプト（新規作成） |
+| `logs/gps_error_20260722_test6.csv` | Test #6 収集試行（0サンプル、作成されず） |
+
