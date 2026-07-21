@@ -236,7 +236,7 @@ class RtcmSerialReader:
                             continue
 
                         reserved = buffer[1] >> 6
-                        frame_len = ((buffer[1] & 0x3F) << 8) | buffer[2]
+                        frame_len = ((buffer[1] & 0x03) << 8) | buffer[2]
                         total_len = 6 + frame_len
 
                         if len(buffer) < total_len:

@@ -115,7 +115,7 @@ class RtcmSerialReader:
                         
                         # フレーム長を解析
                         reserved = buffer[1] >> 6
-                        frame_len = ((buffer[1] & 0x3F) << 8) | buffer[2]
+                        frame_len = ((buffer[1] & 0x03) << 8) | buffer[2]
                         
                         # フレーム全体が揃っているか確認
                         total_len = 6 + frame_len  # ヘッダ(3) + 予約(1) + 長さ(2) + ペイロード + CRC(3)
