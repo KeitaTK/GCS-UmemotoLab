@@ -43,6 +43,11 @@ _UART2_RTCM_CFG_KEYS = [
     ('CFG-UART2OUTPROT-UBX',      1),        # ★ UBX 出力を有効化 (NAV-PVT 用) ★
     ('CFG-UART2OUTPROT-NMEA',     0),        # NMEA 出力を無効化
     ('CFG-NAVHPG-DGNSSMODE',      3),        # RTK Fixed モード (3=RTK Fixed)
+
+    # --- Output rate configuration (5 Hz) ---
+    ('CFG-RATE-MEAS',                  200),   # ★ 測位演算周期 200ms (5Hz) ★
+    ('CFG-RATE-NAV',                   1),     # ★ ナビゲーション出力比 1:1 ★
+    ('CFG-MSGOUT-UBX-NAV-PVT-UART2',   1),     # ★ NAV-PVTを毎測位演算で出力 ★
 ]
 
 # ------------------------------------------------------------------
@@ -186,6 +191,8 @@ class F9pRoverConfigurator:
           - 出力: UBX (NAV-PVT) のみ有効 (NMEA 出力は無効)
           - ボーレート: 115200
           - DGNSS モード: RTK Fixed (3)
+          - 測位演算周期: 200ms (5Hz) — CFG-RATE-MEAS=200, CFG-RATE-NAV=1
+          - NAV-PVT UART2出力: 毎測位演算 — CFG-MSGOUT-UBX-NAV-PVT-UART2=1
 
         Args:
             save_to_flash: True の場合 LAYER_ALL (RAM+BBR+Flash) に保存。
