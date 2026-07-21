@@ -404,15 +404,14 @@ def _display_and_save_proof_summary(
 
 
 def step4_wait_for_rtk_fixed(cfg: Config) -> bool:
-    """Poll UART2 for UBX-NAV-PVT and wait until carrSoln=2 (RTK Fixed).
+    """[DEPRECATED] Poll UART2 for UBX-NAV-PVT and wait until carrSoln=2 (RTK Fixed).
+
+    ⛔ UART2 は RTCM注入専用に移行。UBX出力は無効化されています。
+       Fix監視は gcs_fix_monitor.py (MAVLink GPS_RAW_INT経由) を使用してください。
+       このステップは旧方式の参照用として残置。
 
     Uses F9pFixMonitor (Task 2) which reads the UBX-NAV-PVT stream from
-    F9P UART2 TX2. The monitor internally logs:
-      - Elapsed time, carrSoln name, numSV, hAcc on each poll
-      - Position (lat, lon, hMSL), accuracy (hAcc, vAcc), time-to-fix on success
-
-    After completion (success or timeout), an injection_proof_summary is
-    displayed and saved to logs/rtcm_proof_summary.txt.
+    F9P UART2 TX2.
 
     Returns:
         True if RTK Fixed achieved within timeout, False otherwise.

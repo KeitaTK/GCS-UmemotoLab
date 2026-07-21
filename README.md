@@ -51,16 +51,21 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │  ┌──────────┐   NTRIP/TCP     ┌──────────────┐  USB-Serial   ┌──────────┐ │
 │  │ 基地局F9P │────────────────→│ Raspberry Pi 5│─────────────→│F9P Rover │ │
 │  │(Survey-In)│  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │UART2直結 │ │
-│  └──────────┘                 │               │←─────────────│UBX-NAV-PVT│ │
-│                               │               │  UART2 TX2   │(Fix監視) │ │
-│                               └──────────────┘             └─────┬─────┘ │
-│                                                                  │       │
-│                                                           DroneCAN BUS  │
-│                                                                  │       │
-│                                                          ┌───────▼─────┐ │
-│                                                          │  Pixhawk    │ │
-│                                                          │CAN1 (位置受信)│ │
-│                                                          └─────────────┘ │
+│  └──────────┘                 │               │              │          │ │
+│                               │  UART2=RTCM注入専用          │RTK測位演算│ │
+│                               │  (UBX出力=無効)              └─────┬─────┘ │
+│                               └──────────────┘                    │       │
+│                                                                    │       │
+│                                                            DroneCAN BUS   │
+│                                                                    │       │
+│                                                           ┌────────▼─────┐ │
+│                                                           │  Pixhawk     │ │
+│                                                           │CAN1 (位置受信)│ │
+│                                                           └──────────────┘ │
+│                                                                          │
+│  ▼ Fix監視: MAVLink GPS_RAW_INT.fix_type  (新方式)                        │
+│     GCS REST API (/api/drones) → gcs_fix_monitor.py で監視               │
+│     ⛔ f9p_fix_monitor.py (UBX-NAV-PVT UART2直接読取) は非推奨             │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -68,8 +73,9 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 |------|------|-----------|------|
 | **A** | 機体制御・テレメトリ | MAVLink v2 | PC → Raspi(mavlink-router) → Pixhawk TELEM1 |
 | **B** | RTK補正データ注入 | RTCM3 (raw) | Base F9P → Raspi(rtk_forwarder) → Rover F9P UART2 |
+| **Fix監視** | RTK Fix状態検出 | MAVLink GPS_RAW_INT | GCS REST API → gcs_fix_monitor.py |
 
-**ポイント**: RTCM3データはMAVLink GPS_RTCM_DATAを使わず、F9P UART2へ直接注入。フラグメント分割やDroneCAN経由の不透明さを解消。
+**ポイント**: RTCM3データはMAVLink GPS_RTCM_DATAを使わず、F9P UART2へ直接注入。UART2はRTCM注入専用（UBX出力無効）。Fix監視はMAVLink GPS_RAW_INT.fix_typeをGCS API経由で監視。
 
 ### Raspi 配線（MAVLink制御パス）
 
@@ -81,15 +87,15 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | CTS → | GPIO 16 | Pin 36 |
 | GND → | GND | Pin 6 |
 
-### Raspi 配線（RTK UART2 注入パス）
+### Raspi 配線（RTK UART2 注入パス — RTCM注入専用）
 
 | F9P UART2 Pin | 信号 | Raspi側 | 用途 |
 |---------------|------|---------|------|
 | Pin 2 (RX2) | 3.3V TTL | USB-Serial TX | RTCM3データ注入 |
-| Pin 3 (TX2) | 3.3V TTL | USB-Serial RX | UBX-NAV-PVT受信 |
 | Pin 6 (GND) | GND | USB-Serial GND | 共通グラウンド |
 
 > **注意**: F9PはCANコネクタ経由でPixhawkから5V給電済み。UART2のVCC接続不要。
+> UART2 TX2 (Pin 3) は不要（UBX出力無効。Fix監視はMAVLink GPS_RAW_INT経由）。
 
 ---
 
@@ -220,7 +226,7 @@ RTK UART2 直接注入の最小セットアップ手順です。詳細は [rtk_d
 cd ~/GCS-UmemotoLab
 source .venv/bin/activate
 
-# F9P RoverのUART2をRTCM3入力 + UBX出力に設定
+# F9P RoverのUART2をRTCM3入力専用に設定（UBX出力=無効）
 python rtk_tools/f9p_rover_config.py --port /dev/ttyUSB0
 ```
 
@@ -243,11 +249,13 @@ python rtk_tools/rtk_direct_inject.py \
 ### 3. RTK FIXED 確認
 
 ```bash
-# UBX-NAV-PVT を直接ポーリング
-python rtk_tools/f9p_fix_monitor.py --port /dev/ttyUSB0
+# MAVLink GPS_RAW_INT.fix_type を GCS API 経由で監視（新方式）
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --timeout 120
 
 # プリフライトチェック（GPS/EKF/RTK UART2 総合確認）
 python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0
+
+# ⛔ UBX-NAV-PVT 直接読取 (f9p_fix_monitor.py) は非推奨
 ```
 
 ### 4. 飛行準備完了 → GCS起動
@@ -297,24 +305,35 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 │                                       │ ④ RTCM3処理      │                  │
 │                                       │   → RTK測位演算   │                  │
 │                                       │                  │                  │
-│                                       │ ⑤ UBX-NAV-PVT    │                  │
-│                                       │   出力 (UART2 TX2)│                  │
-│                                       │   carrSoln:      │                  │
-│                                       │   0=NONE        │                  │
-│                                       │   1=FLOAT       │                  │
-│                                       │   2=FIXED  ←目標 │                  │
+│                                       │ ⑤ RTK測位演算     │                  │
+│                                       │   → CAN2出力      │                  │
+│                                       │   (F9P→Pixhawk)  │                  │
 │                                       └───────┬──────────┘                  │
-│                                               │ USB-Serial                  │
+│                                               │ DroneCAN BUS                │
+│                                               ▼                             │
+│                                       ┌──────────────────┐                  │
+│                                       │  Pixhawk 6C       │                  │
+│                                       │  (ArduPilot)      │                  │
+│                                       │                  │                  │
+│                                       │ ⑥ GPS_RAW_INT    │                  │
+│                                       │   fix_type:      │                  │
+│                                       │   5=RTK_FLOAT    │                  │
+│                                       │   6=RTK_FIXED ←目標│                │
+│                                       │   (MAVLink経由)   │                  │
+│                                       └───────┬──────────┘                  │
+│                                               │ MAVLink (TELEM1→Raspi)      │
 │                                               ▼                             │
 │                                       ┌──────────────────┐                  │
 │                                       │  Raspberry Pi 5   │                  │
+│                                       │  / Mac (GCS)      │                  │
 │                                       │                  │                  │
-│                                       │ ⑥ UBX-NAV-PVT    │                  │
-│                                       │   受信・監視      │                  │
-│                                       │   f9p_fix_monitor │                  │
-│                                       │   .py             │                  │
+│                                       │ ⑦ Fix監視        │                  │
+│                                       │   gcs_fix_monitor │                  │
+│                                       │   .py (新方式)    │                  │
+│                                       │   GCS REST API    │                  │
+│                                       │   /api/drones     │                  │
 │                                       │                  │                  │
-│                                       │ ⑦ ログ記録        │                  │
+│                                       │ ⑧ ログ記録        │                  │
 │                                       │   rtcm_injection  │                  │
 │                                       │   .log            │                  │
 │                                       │   rtcm_fix_       │                  │
@@ -333,17 +352,18 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 | ① | NTRIP Caster にTCP接続しRTCM3ストリームを取得 | `rtk_forwarder_service.py` | NTRIP応答 `ICY 200 OK` |
 | ② | RTCM3バイナリデータを4096バイト単位で受信 | `rtk_forwarder_service.py` `_run_ntrip_once()` | ログ: `Forward stats:` |
 | ③ | 受信データをUSB-Serial経由でF9P UART2 RX2へ送信 | `rtk_forwarder_service.py` `_forward_chunk()` | シリアルポート `/dev/ttyAMA4` |
-| ④ | F9PがRTCM3補正データを処理しRTK測位演算を実行 | F9P ファームウェア | carrSoln 遷移観測 |
-| ⑤ | F9PがUBX-NAV-PVTメッセージをUART2 TX2から出力 | F9P ファームウェア | UBXメッセージ (0x01 0x07) |
-| ⑥ | RaspiがUBX-NAV-PVTを受信しcarrSolnを監視 | `f9p_fix_monitor.py` `poll_nav_pvt()` | carrSoln=2 検出 |
-| ⑦ | 注入統計とFix遷移をCSVログに記録 | `RtcmForwarderService` / `F9pFixMonitor` | `logs/` 以下のCSVファイル |
+| ④ | F9PがRTCM3補正データを処理しRTK測位演算を実行 | F9P ファームウェア | fix_type 遷移観測 |
+| ⑤ | F9PがRTK位置情報をDroneCAN経由でPixhawkへ出力 | F9P ファームウェア + CAN | MAVLink GPS_RAW_INT |
+| ⑥ | PixhawkがMAVLink GPS_RAW_INTをテレメトリで送信 | ArduPilot | GCS `/api/drones` の `gps_fix` |
+| ⑦ | GCS REST APIからfix_typeを監視 | `gcs_fix_monitor.py`（新方式） | fix_type=6 検出 |
+| ⑧ | 注入統計とFix遷移をCSVログに記録 | `RtcmForwarderService` / `GcsFixMonitor` | `logs/` 以下のCSVファイル |
 
 ### 検証の前提条件
 
 検証を開始する前に、以下が完了していることを確認してください：
 
 - [ ] Raspi に USB-Serial アダプタが接続され、`/dev/ttyAMA4`（または `/dev/ttyUSB*`）として認識されている
-- [ ] F9P Rover の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み
+- [ ] F9P Rover の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み（UART2=RTCM注入専用）
 - [ ] 基地局 F9P が Survey-In 完了済み（`python scripts/ublox_survey_in.py --status` で確認）
 - [ ] 基地局が NTRIP Caster として RTCM3 ストリームを配信中
 - [ ] Rover F9P の UART2 が設定済み（初回のみ `f9p_rover_config.py` を実行）
@@ -352,7 +372,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 
 #### STEP 1: Rover F9P UART2 設定確認
 
-F9P Rover の UART2 が RTCM3 入力 + UBX-NAV-PVT 出力に設定されていることを確認します。
+F9P Rover の UART2 が RTCM3 入力専用に設定されていることを確認します（UBX出力=無効）。
 
 ```bash
 cd ~/GCS-UmemotoLab
@@ -370,7 +390,7 @@ python rtk_tools/f9p_rover_config.py --port /dev/ttyAMA4 --verify-only
 UART2 Config Verification Results
   CFG-UART2-BAUDRATE           : expected=115200, actual=115200, OK
   CFG-UART2INPROT-RTCM3X       : expected=     1, actual=1, OK
-  CFG-UART2OUTPROT-UBX         : expected=     1, actual=1, OK
+  CFG-UART2OUTPROT-UBX         : expected=     0, actual=0, OK
   All verified: YES
 ```
 
@@ -422,17 +442,20 @@ Forward stats: packets=240, bytes=102400
 
 #### STEP 4: RTK FIXED 到達確認
 
-F9P の UBX-NAV-PVT 出力を監視し、`carrSoln=2`（RTK FIXED）への遷移を確認します。
+MAVLink GPS_RAW_INT.fix_type を GCS REST API 経由で監視し、`fix_type=6`（RTK FIXED）への遷移を確認します。
 
 ```bash
+# GCS起動済みを前提。Raspi または Mac で実行:
 # RTK Fixed 待機（最大120秒）
-python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --timeout 120
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --timeout 120
 
 # 単発ポーリング（現在の状態を一度だけ確認）
-python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --once
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once
 
 # 連続モニタリング（手動監視用）
-python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --monitor
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --monitor
+
+# ⛔ f9p_fix_monitor.py (UBX-NAV-PVT UART2直接読取) は非推奨
 ```
 
 **carrSoln 遷移の期待シーケンス:**
@@ -490,7 +513,7 @@ FINAL: READY FOR FLIGHT
 | ログファイル | 生成元 | 内容 |
 |-------------|--------|------|
 | `logs/rtcm_injection.log` | `rtk_forwarder_service.py` | RTCM注入統計（時刻・累積フレーム数・累積バイト数・転送レート・エラー数） |
-| `logs/rtcm_fix_transition.log` | `f9p_fix_monitor.py` | carrSoln遷移記録（時刻・経過時間・carrSoln・numSV・hAcc・位置・遷移イベント） |
+| `logs/rtcm_fix_transition.log` | `gcs_fix_monitor.py`（新） / `f9p_fix_monitor.py`（旧） | fix_type/carrSoln遷移記録（時刻・経過時間・carrSoln・numSV・hAcc・位置・遷移イベント） |
 | `logs/rtcm_proof_summary.txt` | `rtk_direct_inject.py` | 注入証明サマリ（総フレーム数・FLOAT/FIXED到達時間・最終ステータス） |
 | `logs/preflight_check_*.json` | `preflight_check.py` | プリフライトチェック全結果（JSON形式） |
 
@@ -503,8 +526,8 @@ FINAL: READY FOR FLIGHT
 | RTCM注入稼働 | `systemctl status rtk-uart4-inject` | `active (running)` | `journalctl -u rtk-uart4-inject -f` でエラー確認 |
 | RTCM注入流量 | `logs/rtcm_injection.log` 最終行 | `frames_per_min > 0`（通常 数百〜数千フレーム/分） | 基地局-Raspi間のネットワーク確認 |
 | RTK FLOAT 到達 | `logs/rtcm_fix_transition.log` | `0→1` 遷移が記録されている | 周辺環境（上空視界）確認、アンテナ位置調整 |
-| RTK FIXED 到達 | `f9p_fix_monitor.py --once` | `carrSoln=2(FIXED)` | タイムアウト時間延長（`--timeout 300`）、基地局距離確認 |
-| 水平精度 | `f9p_fix_monitor.py --once` | FIXED時 `hAcc < 0.05m` | FLOATのままなら継続待機 |
+| RTK FIXED 到達 | `gcs_fix_monitor.py --gcs-url http://localhost:8000 --once` | `fix_type=6(RTK_FIXED)` | タイムアウト時間延長（`--timeout 300`）、基地局距離確認 |
+| 水平精度 | GCS `/api/drones` の hdop 値 | FIXED時 `hdop < 1.0` | FLOATのままなら継続待機 |
 | プリフライト PASS | `preflight_check.py` | `FINAL: READY FOR FLIGHT` | 各FAIL項目の `notes` を参照 |
 
 #### systemd サービスの健全性確認
@@ -566,7 +589,7 @@ Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
     └→ GND (Pin 6)     ↔ USB-Serial GND
   
   ⑦ F9P が UBX-NAV-PVT を出力しているか？
-    └→ python rtk_tools/f9p_fix_monitor.py --port /dev/ttyAMA4 --once
+    └→ python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once
     └→ 応答がない場合: f9p_rover_config.py --port /dev/ttyAMA4 で再設定
 ```
 
@@ -579,7 +602,7 @@ Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
 | `ICY 200 OK` は返るが `Forward stats` が出ない | `forward.type` が `udp` のまま | `config/rtk_forwarder.yml` の `forward.type` を `serial` に変更 |
 | シリアルポート `Permission denied` | デバイス権限不足 | `sudo usermod -a -G dialout $USER` → 再ログイン |
 | `/dev/ttyAMA4` が存在しない | UART4 が有効化されていない | `/boot/firmware/config.txt` に `dtoverlay=uart4` を追加 |
-| `f9p_fix_monitor` が `(no data)` を返し続ける | F9P UART2 OUTPROT-UBX 未設定、または配線ミス | `f9p_rover_config.py --verify-only` で設定確認。TX/RX 配線の入れ替え確認 |
+| `gcs_fix_monitor` が `(no data)` を返し続ける | GCS未起動、またはMAVLink未接続 | GCS起動確認。`curl http://localhost:8000/api/drones` でテレメトリ確認 |
 | carrSoln が 0(NONE) から遷移しない | 基地局からのRTCM3が届いていない | `tail -f logs/rtcm_injection.log` でフレームカウント増加を確認 |
 | carrSoln が 1(FLOAT) で停滞 | 衛星数不足、マルチパス、基線長過大 | 空が見える場所に移動。基地局-Rover間距離が10km以内か確認 |
 | RTK FIXED 後にすぐ FLOAT に戻る | 基地局RTCM3の断続的な途切れ | `journalctl -u rtk-uart4-inject` で切断・再接続ログを確認 |
@@ -843,7 +866,8 @@ GCS-UmemotoLab/
 │   ├── rtk_forwarder_service.py   # ★ RTCM転送サービス (NTRIP→UART2)
 │   ├── f9p_rover_config.py        # ★ Rover側F9P UART2設定
 │   ├── f9p_configurator.py        # F9P設定モジュール
-│   ├── f9p_fix_monitor.py         # UBX-NAV-PVT Fix監視
+│   ├── gcs_fix_monitor.py         # MAVLink GPS_RAW_INT Fix監視 (新)
+│   ├── f9p_fix_monitor.py         # UBX-NAV-PVT Fix監視 (非推奨)
 │   ├── rtk_base_station_v2.py     # 基地局統合サービス
 │   ├── rtk_data_collector.py      # RTKデータコレクター
 │   └── config_loader.py           # 設定ローダー
@@ -896,7 +920,7 @@ GCS-UmemotoLab/
 - [ ] F9P Rover UART2 設定済み（`python rtk_tools/f9p_rover_config.py --port /dev/ttyUSB0` 初回実行済み）
 - [ ] 基地局 F9P Survey-In 完了（`python scripts/ublox_survey_in.py --status`）
 - [ ] `rtk-uart2-inject` サービス稼働中（`systemctl status rtk-uart2-inject`）
-- [ ] RTK FIXED 達成確認（`python rtk_tools/f9p_fix_monitor.py --port /dev/ttyUSB0` で carrSoln=2）
+- [ ] RTK FIXED 達成確認（`python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once` で fix_type=6）
 - [ ] プリフライトチェック PASS（`python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0`）
 
 ### トラブルシューティング
@@ -910,7 +934,7 @@ GCS-UmemotoLab/
 | SSH接続不可 | `ssh raspi` で接続確認。Tailscale: `tailscale status` |
 | UDPパケットが届かない (Tailscale) | SSHトンネル方式に切替: `ssh -f -N -L 14550:localhost:14550 raspi` |
 | `bytes.append` エラー | pymavlink バグ。`.venv/.../ardupilotmega.py` の `crcbuf = bytearray(msgbuf[...])` を確認 |
-| RTK FIXED にならない | `rtk_tools/f9p_fix_monitor.py` で carrSoln を確認。0=NONE, 1=FLOAT, 2=FIXED |
+| RTK FIXED にならない | `rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once` で fix_type を確認。6=RTK_FIXED |
 | RTCMが注入されない | `ls /dev/ttyUSB*` でデバイス認識確認。`sudo systemctl status rtk-uart2-inject` |
 | F9P UART2未応答 | `python rtk_tools/f9p_rover_config.py --port /dev/ttyUSB0` で再設定 |
 | RTK Forwarder が再接続しない | `journalctl -u rtk-uart2-inject -f` でログ確認。基地局IP到達性確認 |

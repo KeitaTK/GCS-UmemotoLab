@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-F9P Fix Monitor — UBX-NAV-PVT を F9P Rover UART2 TX2 から直接読み取り、
+[DEPRECATED] F9P Fix Monitor — UBX-NAV-PVT を F9P Rover UART2 TX2 から直接読み取り、
 RTK Fix 状態 (carrSoln) を監視するモジュール
+
+⛔ このモジュールは非推奨です。
+   Fix監視は gcs_fix_monitor.py（MAVLink GPS_RAW_INT経由）に移行されました。
+   UART2 は RTCM注入専用となり、UBX出力は無効化されています。
+
+   移行後:
+     python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --timeout 120
 
 UART2 は双方向:
   - Raspi TX → F9P RX2  : RTCM3 補正データ注入

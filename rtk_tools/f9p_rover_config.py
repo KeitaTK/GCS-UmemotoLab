@@ -40,14 +40,14 @@ _UART2_RTCM_CFG_KEYS = [
     ('CFG-UART2INPROT-UBX',       0),        # UBX 入力を無効化
     ('CFG-UART2INPROT-NMEA',      0),        # NMEA 入力を無効化
     ('CFG-UART2INPROT-RTCM3X',    1),        # ★ RTCM3 入力を有効化 ★
-    ('CFG-UART2OUTPROT-UBX',      1),        # ★ UBX 出力を有効化 (NAV-PVT 用) ★
+    ('CFG-UART2OUTPROT-UBX',      0),        # UBX 出力を無効化 (UART2=RTCM注入専用)
     ('CFG-UART2OUTPROT-NMEA',     0),        # NMEA 出力を無効化
     ('CFG-NAVHPG-DGNSSMODE',      3),        # RTK Fixed モード (3=RTK Fixed)
 
     # --- Output rate configuration (5 Hz) ---
     ('CFG-RATE-MEAS',                  200),   # ★ 測位演算周期 200ms (5Hz) ★
     ('CFG-RATE-NAV',                   1),     # ★ ナビゲーション出力比 1:1 ★
-    ('CFG-MSGOUT-UBX-NAV-PVT-UART2',   1),     # ★ NAV-PVTを毎測位演算で出力 ★
+    ('CFG-MSGOUT-UBX-NAV-PVT-UART2',   0),     # UBX NAV-PVT UART2出力 無効 (UART2=RTCM注入専用)
 ]
 
 # ------------------------------------------------------------------
@@ -184,15 +184,15 @@ class F9pRoverConfigurator:
 
     def configure_uart2_for_rtcm(self, save_to_flash: bool = True) -> bool:
         """
-        F9P Rover の UART2 を RTCM3 入力 + UBX 出力に設定する。
+        F9P Rover の UART2 を RTCM3 入力専用に設定する。
 
         UART2 設定:
           - 入力: RTCM3X のみ有効 (UBX/NMEA 入力は無効)
-          - 出力: UBX (NAV-PVT) のみ有効 (NMEA 出力は無効)
+          - 出力: 全プロトコル無効 (UART2=RTCM注入専用)
           - ボーレート: 115200
           - DGNSS モード: RTK Fixed (3)
           - 測位演算周期: 200ms (5Hz) — CFG-RATE-MEAS=200, CFG-RATE-NAV=1
-          - NAV-PVT UART2出力: 毎測位演算 — CFG-MSGOUT-UBX-NAV-PVT-UART2=1
+          - NAV-PVT UART2出力: 無効 (Fix監視はMAVLink GPS_RAW_INT経由に移行)
 
         Args:
             save_to_flash: True の場合 LAYER_ALL (RAM+BBR+Flash) に保存。
@@ -244,7 +244,7 @@ class F9pRoverConfigurator:
                     'expected': 1, 'actual': <int|None>, 'ok': <bool>
                 },
                 'CFG-UART2OUTPROT-UBX': {
-                    'expected': 1, 'actual': <int|None>, 'ok': <bool>
+                    'expected': 0, 'actual': <int|None>, 'ok': <bool>
                 },
                 'all_verified': <bool>,
             }
@@ -257,7 +257,7 @@ class F9pRoverConfigurator:
                 'expected': 1, 'actual': None, 'ok': False,
             },
             'CFG-UART2OUTPROT-UBX': {
-                'expected': 1, 'actual': None, 'ok': False,
+                'expected': 0, 'actual': None, 'ok': False,
             },
             'all_verified': False,
         }

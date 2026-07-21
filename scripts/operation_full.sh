@@ -5,8 +5,11 @@
 #
 # システム構成:
 #   Mac (u-blox F9P) ──TCP:2101──> Raspi (rtk_forwarder) ──/dev/ttyAMA4──> F9P Rover (CAN2→Pixhawk)
-#                                        │
+#                                        │                        UART2: RTCM注入専用
 #   Mac (GCS) <──SSH Tunnel── Raspi (mavlink-router) ──/dev/ttyAMA0──> Pixhawk (MAVLink)
+#                                        │
+#   Fix監視: MAVLink GPS_RAW_INT.fix_type (GCS REST API)  ← gcs_fix_monitor.py (新)
+#   ⛔ f9p_fix_monitor.py (UBX経由) は非推奨
 #
 # キー情報:
 #   Raspi IP      : 100.69.75.96  (Tailscale)
@@ -249,9 +252,11 @@ done
 echo ""
 
 # ===================================================================
-# STEP 5: RTCM注入状況 + MAVLink fix_type監視
+# STEP 5: RTCM注入状況 + MAVLink fix_type監視 (MAVLink GPS_RAW_INT)
 # ===================================================================
-echo "━━━ [5/7] RTCM注入状況 + fix_type監視 ━━━"
+echo "━━━ [5/7] RTCM注入状況 + fix_type監視 (MAVLink) ━━━"
+echo "  Fix監視方式: MAVLink GPS_RAW_INT.fix_type (GCS REST API経由)"
+echo "  UART2: RTCM注入専用 (UBX出力=無効)"
 
 if [ "$SKIP_RASPI_SETUP" = false ]; then
     echo "  Raspi rtk_forwarder 状態確認..."
@@ -275,7 +280,7 @@ if [ "$SKIP_RASPI_SETUP" = false ]; then
 fi
 
 echo ""
-echo "  最新GPS fix_type:"
+echo "  最新GPS fix_type (MAVLink GPS_RAW_INT):"
 DRONE_DATA=$(curl -s "http://localhost:${GCS_API_PORT}/api/drones" 2>/dev/null || true)
 if [ -n "$DRONE_DATA" ]; then
     echo "$DRONE_DATA" | python3 -c "
@@ -293,6 +298,11 @@ for drone in d.get('drones', []):
     print(f'    lat={lat:.7f} lon={lon:.7f} alt={alt:.1f}m')
 " 2>/dev/null || echo "    (parse error)"
 fi
+
+echo ""
+echo "  💡 MAVLink Fix監視スクリプト (gcs_fix_monitor.py):"
+echo "      python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:${GCS_API_PORT} --timeout 120"
+echo "  ⛔ f9p_fix_monitor.py (UBX経由) は非推奨 (UART2=RTCM注入専用)"
 echo ""
 
 # ===================================================================
