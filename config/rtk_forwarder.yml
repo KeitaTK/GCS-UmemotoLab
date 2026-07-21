@@ -1,6 +1,6 @@
 # Raspi用 rtk_forwarder 設定
 # Mac側のRTK基地局（TCP:2101）からRTCMを受信し、
-# /dev/ttyAMA10（GPIO32,33,34 → F9P Rover UART）へ注入する
+# /dev/ttyAMA4（GPIO12,13 → F9P Rover UART）へ注入する
 source:
   # ntrip または serial
   source_type: ntrip
@@ -28,8 +28,8 @@ forward:
   host: 127.0.0.1
   port: 50010
 
-  # type: serial の場合（F9P Rover UART: /dev/ttyAMA10）
-  serial_port: /dev/ttyAMA10
+  # type: serial の場合（F9P Rover UART: /dev/ttyAMA4）
+  serial_port: /dev/ttyAMA4
   baudrate: 115200
 
 retry:

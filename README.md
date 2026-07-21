@@ -143,7 +143,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │       └───────────────────────────────────────────────────────────────────────┘       │
 │                                                                                      │
 │  【経路凡例】                                                                          │
-│  ──→  RTCM注入(パスB): Mac u-blox → TCP:2101 → rtk_forwarder → /dev/ttyAMA10 → F9P   │
+│  ──→  RTCM注入(パスB): Mac u-blox → TCP:2101 → rtk_forwarder → /dev/ttyAMA4 → F9P    │
 │  ←──  MAVLink(パスA): Pixhawk TELEM1 → /dev/ttyAMA0 → mavlink-router → Mac GCS       │
 │  ──→  位置情報: F9P Rover → CAN2 → Pixhawk CAN1 (DroneCAN, 既存維持)                   │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -166,14 +166,14 @@ Pixhawk TELEM1 → GPIO8(TX),10(RX),11(RTS) → /dev/ttyAMA0 → mavlink-router 
 ### 経路B: RTCM注入（RTK補正データ）
 
 ```
-Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA10 → F9P UART2 → CAN2 → Pixhawk CAN1
+Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P UART2 → CAN2 → Pixhawk CAN1
 ```
 
 | 区間 | デバイス/プロトコル | 詳細 |
 |------|-------------------|------|
 | u-blox → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
 | Raspi 受信 | `rtk_forwarder_service.py` | NTRIPクライアント / TCP Socket |
-| Raspi 転送 | `/dev/ttyAMA10` @ 115200bps | GPIO32(TX), GPIO33(RX), GPIO34(CTS) |
+| Raspi 転送 | `/dev/ttyAMA4` @ 115200bps | GPIO12(TX), GPIO13(RX) |
 | F9P 受信 | UART2 RX2 (Pin 2) | RTCM3 → RTK測位演算 |
 | F9P → Pixhawk | CAN2 → CAN1 (DroneCAN) | 位置情報供給（既存維持） |
 
@@ -193,13 +193,12 @@ Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA10 → F9P
 | `/dev/ttyAMA0` | GPIO8 | Pin 8 | TX | Pixhawk TELEM1 RX | MAVLink送信 |
 | `/dev/ttyAMA0` | GPIO10 | Pin 10 | RX | Pixhawk TELEM1 TX | MAVLink受信 |
 | `/dev/ttyAMA0` | GPIO11 | Pin 11 | RTS | Pixhawk TELEM1 CTS | フロー制御 |
-| `/dev/ttyAMA10` | GPIO32 | Pin 32 | TX | F9P Rover UART2 RX2 | RTCM3データ注入 |
-| `/dev/ttyAMA10` | GPIO33 | Pin 33 | RX | F9P Rover UART2 TX2 | UBX-NAV-PVT受信 |
-| `/dev/ttyAMA10` | GPIO34 | Pin 34 | CTS | F9P Rover (予備) | フロー制御 |
+| `/dev/ttyAMA4` | GPIO12 | Pin 32 | TX | F9P Rover UART2 RX2 | RTCM3データ注入 |
+| `/dev/ttyAMA4` | GPIO13 | Pin 33 | RX | F9P Rover UART2 TX2 | UBX-NAV-PVT受信 |
 
 > **Pi 5 注意**:
 > - `/dev/ttyAMA0` は BCM2712 の PL011 AXI UART。`enable_uart=1` + `dtoverlay=uart0` で有効化。
-> - `/dev/ttyAMA10` は RP1 チップの追加 UART。`dtoverlay=uart4` 等で有効化。
+> - `/dev/ttyAMA4` は `dtoverlay=uart4` で有効化。物理Pin 32(GPIO12/TX), 33(GPIO13/RX) を使用。
 > - Pixhawk TELEM1 接続では `/dev/ttyAMA0` を直接指定する方が安定する。
 
 ---

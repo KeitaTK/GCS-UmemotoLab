@@ -5,7 +5,7 @@
 # 前提条件:
 #   1. mavlink-router がインストール済み（apt install mavlink-router）
 #   2. /dev/ttyAMA0 が有効化済み（config.txt: enable_uart=1）
-#   3. /dev/ttyAMA10 が有効化済み（dtoverlayで追加UART有効）
+#   3. /dev/ttyAMA4 が有効化済み（dtoverlay=uart4 で追加UART有効）
 #   4. rtk_forwarder用のPython仮想環境が準備済み
 #   5. config/rtk_forwarder.yml の host がMacのTailscale IPに設定されていること
 #
@@ -39,10 +39,10 @@ else
     exit 1
 fi
 
-if [ -e /dev/ttyAMA10 ]; then
-    echo "  ✓ /dev/ttyAMA10 (F9P Rover UART) found"
+if [ -e /dev/ttyAMA4 ]; then
+    echo "  ✓ /dev/ttyAMA4 (F9P Rover UART) found"
 else
-    echo "  ✗ /dev/ttyAMA10 NOT FOUND — check dtoverlay for UART5"
+    echo "  ✗ /dev/ttyAMA4 NOT FOUND — check dtoverlay=uart4"
     exit 1
 fi
 
@@ -87,7 +87,7 @@ sleep 2
 
 # ── 2. rtk_forwarder 起動 ──────────────────────────
 echo ""
-echo "[2/3] Starting rtk_forwarder (Mac:${MAC_IP}:2101 → /dev/ttyAMA10)..."
+echo "[2/3] Starting rtk_forwarder (Mac:${MAC_IP}:2101 → /dev/ttyAMA4)..."
 
 # 既存プロセスをkill
 pkill -f rtk_forwarder_service.py 2>/dev/null || true
@@ -139,7 +139,7 @@ echo "================================================"
 echo "  Raspi services started!"
 echo "  MAVLink  : UDP:14550 (GCS connect here) + TCP:5760 (备用)"
 echo "  RTCM IN  : NTRIP from Mac:${MAC_IP}:2101"
-echo "  RTCM OUT : /dev/ttyAMA10 → F9P Rover"
+echo "  RTCM OUT : /dev/ttyAMA4 → F9P Rover"
 echo ""
 echo "  Monitor:"
 echo "    tail -f ${LOG_DIR}/rtk_forwarder.log"

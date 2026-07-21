@@ -4,7 +4,7 @@
 # ============================================================================
 #
 # システム構成:
-#   Mac (u-blox F9P) ──TCP:2101──> Raspi (rtk_forwarder) ──/dev/ttyAMA10──> F9P Rover (CAN2→Pixhawk)
+#   Mac (u-blox F9P) ──TCP:2101──> Raspi (rtk_forwarder) ──/dev/ttyAMA4──> F9P Rover (CAN2→Pixhawk)
 #                                        │
 #   Mac (GCS) <──SSH Tunnel── Raspi (mavlink-router) ──/dev/ttyAMA0──> Pixhawk (MAVLink)
 #
@@ -12,7 +12,7 @@
 #   Raspi IP      : 100.69.75.96  (Tailscale)
 #   Mac u-blox    : /dev/tty.usbmodem*
 #   Raspi MAVLink : /dev/ttyAMA0   (GPIO8,10,11 → Pixhawk TELEM1)
-#   Raspi RTCM    : /dev/ttyAMA10  (GPIO32,33,34 → F9P Rover)
+#   Raspi RTCM    : /dev/ttyAMA4   (GPIO12,13 → F9P Rover)
 #   Pixhawk→F9P   : CAN2
 #
 # Usage:
