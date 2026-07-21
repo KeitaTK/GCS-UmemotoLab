@@ -554,3 +554,89 @@ pkill -f "ssh.*-L.*45760"
 ssh taki@100.69.75.96 "pkill -f rtk_forwarder_service.py"
 ```
 
+---
+
+## 実機RTKテスト #4 (2026-07-22 00:31-00:48 -- UART2 TX総合検証 + MAVLink代替パス)
+
+### テスト環境
+
+| 項目 | 値 |
+|------|-----|
+| 日時 | 2026-07-22 00:31-00:48 JST |
+| Mac (GCS/基地局) | Tailscale IP: 100.80.225.4, macOS |
+| Raspi5-1 (Rover側) | Tailscale IP: 100.69.75.96 |
+| u-blox基地局 | /dev/tty.usbmodem114301 @ 115200bps, TMODE3 FIXED |
+
+### Step 1: F9P UART2設定検証 ❌
+
+| 確認項目 | 結果 |
+|----------|------|
+| `--verify-only` (115200) | ❌ CFG-UART2-BAUDRATE= None, RTCM3X=None, OUTPROT-UBX=None |
+| ボーレートスキャン (9600-230400) | ❌ 全ボーレートでACK/CFG-VALGET無応答 |
+| UBX NAV-PVT受信 | ✅ 5Hz, fix=3, carrSoln=0(NONE) |
+| GPIO12 pinmux | ✅ a2=TXD4, 正常 |
+| GPIO12 GPIO出力テスト | ✅ high/low駆動可能（ピンドライバ正常） |
+
+### Step 2: 別経路通信確認 ❌
+
+| 確認項目 | 結果 |
+|----------|------|
+| CFG-PRT ポーリング (port 0-4) | ❌ 全ポート無応答 |
+| UBX-MON-VER ポーリング | ❌ 無応答 |
+| Break信号送信 | ❌ 無応答 |
+| NMEA PUBXコマンド | ❌ 無応答 |
+| MAVLink/DroneCAN経由 | ❌ pymavlinkでUAVCAN_NODE_STATUS未受信 |
+
+### Step 3: UART2設定強制書き込み ❌ (未実施)
+
+CFG-VALSET/CFG-VALGET が全く通らないため、強制書き込み不可能。
+
+### Step 4: パイプライン起動 + Fix監視
+
+| 項目 | 結果 |
+|------|------|
+| rtk_base_station_v2.py 起動 | ✅ TCP:2101, RTCM3フレーム出力中 |
+| MAVLink RTCM注入 (v1) | ✅ 700+フレーム注入 (~15fps, 58KB RTCM) |
+| gcs_fix_monitor.py | ❌ fix_type=3(3D_FIX) carrSoln=0(NONE) 変化なし |
+| MAVLink RTCM注入 (pymavlink v2) | ⚠️ bytearrayエラーで正常動作せず |
+
+### Step 5: GPSデータ収集 ❌ (スキップ)
+
+RTK Fix未達のため未実施。
+
+### 考察
+
+#### 決定的証拠
+
+**GPIO12 (Raspi TX) → F9P UART2 RX2 間の信号がF9Pに到達していない。**
+
+証拠:
+1. GPIO12はUART TXとして正しく設定 (pinctrl a2=TXD4, stty -crtscts)
+2. GPIO12ピンドライバは正常 (GPIO出力としてhigh/low切替可能)
+3. F9P TX2→GPIO13は正常 (NAV-PVT 5Hz受信中 = F9P生存確認)
+4. 6ボーレート全種でF9Pが全UBXコマンド(CFG-VALGET/CFG-PRT/MON-VER)に無応答
+5. Break信号にも無反応
+6. MAVLink GPS_RTCM_DATA経由のRTCM注入でもfix改善なし
+
+#### 推定原因（優先度順）
+
+1. **【高】F9P RX2ピンの物理的損傷** — 静電気損傷または冷半田
+2. **【高】GPIO12→F9P RX2の配線断線** — コネクタ接触不良・断線
+3. **【中】F9P UART2が内部で無効化/再割当て** — F9PのピンリマップによりRX2が別機能に
+4. **【低】Raspi UART4 TXクロック異常** — PL011 AXI UARTのTXのみ不具合（可能性低）
+
+#### MAVLink代替パスについて
+
+MAVLink GPS_RTCM_DATAによる注入も試行したが、fix改善なし。以下の要因が考えられる:
+- Pixhawk側 `GPS_INJECT_TO` パラメータ未確認
+- MAVLink→DroneCAN→F9P UART1 の転送パス未検証
+- F9P UART1入力プロトコル設定未確認
+
+#### 推奨アクション
+
+1. **【最優先】テスターでGPIO12(物理Pin32)→F9P RX2間の導通チェック**
+2. F9PモジュールのRX2ピンを目視確認（ルーペ使用）
+3. 予備のHolybro H-RTK F9Pがあれば交換テスト
+4. F9P USB-Cポートに直接USB接続しu-centerでUART2設定を確認
+5. QGroundControl等でPixhawkの`GPS_INJECT_TO`パラメータ確認
+
