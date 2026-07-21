@@ -1,10 +1,10 @@
 {
-    "mode": "survey_in",
+    "mode": "time",
     "serial_port": "/dev/tty.usbmodem114301",
-    "baudrate": 38400,
+    "baudrate": 115200,
     "fixed_lat": 36.0751418,
     "fixed_lon": 136.2133477,
     "fixed_alt": 10.50,
     "save_to_flash": true,
-    "auto_obs_duration": 60
+    "auto_obs_duration": 300
 }

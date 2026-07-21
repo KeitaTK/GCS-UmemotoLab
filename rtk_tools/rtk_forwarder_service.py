@@ -117,9 +117,11 @@ class RtcmForwarderService:
                     self._run_ntrip_once()
                 elif self.config.source.source_type == "serial":
                     self._run_serial_once()
+                elif self.config.source.source_type == "tcp":
+                    self._run_tcp_once()
                 else:
                     raise ValueError(
-                        "source.source_type must be 'ntrip' or 'serial'"
+                        "source.source_type must be 'tcp', 'ntrip' or 'serial'"
                     )
             except KeyboardInterrupt:
                 self.logger.info("Stopped by user")
@@ -243,6 +245,55 @@ class RtcmForwarderService:
 
                     frame = b0 + header_tail + payload_and_crc
                     self._forward_chunk(fwd_obj, frame)
+        finally:
+            self._close_forward(fwd_obj)
+
+    def _run_tcp_once(self) -> None:
+        """Raw TCP source: connect directly and forward RTCM stream (no NTRIP handshake).
+
+        rtk_base_station_v2.py provides a raw TCP stream (not NTRIP), so we
+        simply connect and stream bytes without any HTTP/NTRIP negotiation.
+        Added per: docs/04-testing/2026-07-21_rtk_failure_analysis.md Section 9.2
+        """
+        src = self.config.source
+        fwd_obj = self._open_forward()
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_sock:
+                tcp_sock.settimeout(src.timeout_sec)
+                tcp_sock.connect((src.host, src.port))
+                self.logger.info(
+                    "Connected to raw TCP source: %s:%s",
+                    src.host,
+                    src.port,
+                )
+
+                buffer = bytearray()
+                while True:
+                    try:
+                        chunk = tcp_sock.recv(4096)
+                    except socket.timeout:
+                        continue
+                    if not chunk:
+                        raise ConnectionError(
+                            "TCP stream closed by server"
+                        )
+                    buffer.extend(chunk)
+
+                    # Extract and forward complete RTCM v3 frames (preamble 0xD3)
+                    while len(buffer) >= 6:
+                        if buffer[0] != 0xD3:
+                            buffer.pop(0)
+                            continue
+                        reserved = buffer[1] >> 6
+                        frame_len = ((buffer[1] & 0x3F) << 8) | buffer[2]
+                        total_len = 6 + frame_len
+
+                        if len(buffer) < total_len:
+                            break
+
+                        frame = bytes(buffer[:total_len])
+                        buffer = buffer[total_len:]
+                        self._forward_chunk(fwd_obj, frame)
         finally:
             self._close_forward(fwd_obj)
 

@@ -500,6 +500,18 @@ class RtkBaseStation:
             self.logger.info("F9P configuration skipped (--skip-f9p-config)")
             return True
 
+        # mode="time": F9P 事前設定済み TIME モード（7/1成功構成）
+        #   基地局F9PがTIMEモードで既設定であることを前提とし、
+        #   本スクリプトではF9Pの再設定を行わない。
+        if self.config.mode == "time":
+            self.logger.info(
+                "mode='time': F9P assumed pre-configured in TIME mode. "
+                "Skipping F9P configuration. "
+                "(Ref: 2026-07-01 successful config, "
+                "docs/04-testing/2026-07-21_rtk_failure_analysis.md)"
+            )
+            return True
+
         # mode="auto": 将来対応（単独測位で自動取得）
         if self.config.mode == "auto":
             self.logger.warning(

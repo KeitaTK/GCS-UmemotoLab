@@ -11,6 +11,6 @@ drones:
     endpoint: "127.0.0.1:14552"
     name: "Pixhawk6C (sysid=2)"
 
-rtcm_enabled: true
+rtcm_enabled: false
 rtcm_host: 127.0.0.1
 rtcm_tcp_port: 2101

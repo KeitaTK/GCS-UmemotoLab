@@ -35,11 +35,15 @@ LAYER_ALL   = LAYER_RAM | LAYER_BBR | LAYER_FLASH
 # ------------------------------------------------------------------
 # UART2 CFG-VALSET keys for Rover configuration
 # ------------------------------------------------------------------
+# 【検証済み: 2026-07-21】 CFG-UART2INPROT-RTCM3X=1 が正しく設定されている。
+#   UART2 は RTCM3 入力専用 (UBX/NMEA入力無効、全出力無効)。
+#   修正不要 — RTK FIXED未達の原因は本設定ではなくRTCM注入パイプライン側。
+#   ref: docs/04-testing/2026-07-21_rtk_failure_analysis.md Section 7
 _UART2_RTCM_CFG_KEYS = [
     ('CFG-UART2-BAUDRATE',        115200),   # ボーレート 115200 bps
     ('CFG-UART2INPROT-UBX',       0),        # UBX 入力を無効化
     ('CFG-UART2INPROT-NMEA',      0),        # NMEA 入力を無効化
-    ('CFG-UART2INPROT-RTCM3X',    1),        # ★ RTCM3 入力を有効化 ★
+    ('CFG-UART2INPROT-RTCM3X',    1),        # ★ RTCM3 入力を有効化 ★ [検証済み ✓]
     ('CFG-UART2OUTPROT-UBX',      0),        # UBX 出力を無効化 (UART2=RTCM注入専用)
     ('CFG-UART2OUTPROT-NMEA',     0),        # NMEA 出力を無効化
     ('CFG-NAVHPG-DGNSSMODE',      3),        # RTK Fixed モード (3=RTK Fixed)

@@ -1,13 +1,21 @@
 # Raspi用 rtk_forwarder 設定
 # Mac側のRTK基地局（TCP:2101）からRTCMを受信し、
 # /dev/ttyAMA4（GPIO12,13 → F9P Rover UART）へ注入する
+#
+# 【修正: 2026-07-21】 source_type=tcp（生TCPストリーム、NTRIPハンドシェイク不要）
+#   ref: docs/04-testing/2026-07-21_rtk_failure_analysis.md Section 9.2
 source:
-  # ntrip または serial
-  source_type: ntrip
+  # tcp / ntrip / serial
+  #   tcp   = 生TCPストリーム (rtk_base_station_v2.py の出力)
+  #   ntrip = NTRIP caster (HTTPハンドシェイク有り)
+  #   serial= シリアルポート直受け
+  source_type: tcp
 
-  # source_type: ntrip の場合 → MacのRTK基地局（Tailscale IP）
-  host: MAC_TAILSCALE_IP
+  # source_type: tcp の場合 → MacのRTK基地局（Tailscale IP直指定）
+  host: 100.80.225.4
   port: 2101
+
+  # source_type: ntrip の場合（使用しない）
   mountpoint: UBLOX_EVK_F9P
   user_agent: NTRIP PythonClient
   username: ""
