@@ -581,3 +581,33 @@ async def cmd_param_request(req: ParamRequest):
         "system_id": req.system_id
     }
 
+
+# ==========================================================================
+# POST /api/param/request_list — Request all parameters from a component
+# ==========================================================================
+
+class ParamListRequest(BaseModel):
+    system_id: int = Field(default=1)
+    component_id: int = Field(default=1)
+
+
+@router.post("/param/request_list")
+async def cmd_param_request_list(req: ParamListRequest):
+    """Send PARAM_REQUEST_LIST to a component (get all parameters)."""
+    conn = _get_conn()
+
+    msg = conn.mav.param_request_list_encode(req.system_id, req.component_id)
+    frame = msg.pack(conn.mav)
+    conn.send(req.system_id, frame)
+    logger.info(
+        "PARAM_REQUEST_LIST sent: sys=%d comp=%d",
+        req.system_id, req.component_id,
+    )
+
+    return {
+        "status": "sent",
+        "system_id": req.system_id,
+        "component_id": req.component_id,
+        "note": "PARAM_VALUE responses will appear in GCS logs / message router",
+    }
+
