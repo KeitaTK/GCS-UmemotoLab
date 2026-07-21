@@ -678,11 +678,11 @@ ReportStats=true    # デバッグ用に統計出力を有効化
 [UartEndpoint pixhawk]
 Device = /dev/ttyAMA0    # Pi 5: ttyAMA10 でなく ttyAMA0 を指定
 Baud = 115200
+FlowControl = true
 
-[UdpEndpoint gcs]
+[TcpEndpoint gcs]
 Address = 0.0.0.0
-Port = 14550
-Mode = Server
+Port = 5760
 ```
 
 ### 3. サービスの有効化
