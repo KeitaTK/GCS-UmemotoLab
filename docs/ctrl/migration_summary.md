@@ -274,3 +274,171 @@ python3 rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --timeout 3
 - File: tests/e2e_rtk_pipeline_test.py
 - E2E test runs: Mock MAVLink drone + GCS server + fix monitoring + GPS collect + error calc
 - All code compiles and passes syntax validation
+
+---
+
+## 実機RTKテスト #2 (2026-07-21 -- 旧コード完全削除後クリーン状態)
+
+### 事前コードベース検証 ✅
+
+| 検証項目 | 結果 |
+|----------|------|
+| `rtk_base_station.py` (v1) 削除 | ✅ rtk_tools/ legacy/ 両方に存在せず |
+| `app/rtk_tools/rtcm_injector.py` 削除 | ✅ 消滅 |
+| `app/rtk_tools/rtcm_reader.py` 削除 | ✅ 消滅 |
+| MAVLink GPS_RTCM_DATA 注入パス消滅 | ✅ 注入コードなし |
+| `rtk_base_station_v2.py` 0x03 bitmask | ✅ line 239 |
+| `rtk_forwarder_service.py` _run_tcp_once | ✅ line 251-298 |
+| `rtk_forwarder_service.py` 0x03 bitmask | ✅ line 288 |
+| `config/rtk_forwarder.yml` source_type=tcp | ✅ |
+| `config/base_station.json` mode=manual FIXED | ✅ |
+| `gcs_fix_monitor.py` MAVLink GPS_RAW_INT | ✅ |
+
+### テスト環境
+
+| 項目 | 値 |
+|------|-----|
+| Mac (GCS/基地局) | Tailscale IP: 100.80.225.4, macOS |
+| Raspi5-1 (Rover側) | Tailscale IP: 100.69.75.96 |
+| u-blox基地局 | /dev/tty.usbmodem* (38400bps) |
+| Pixhawk drone | system_id=1 |
+
+### 実行手順
+
+#### Step 1: ハードウェア確認 (Raspi側)
+
+```bash
+ssh taki@100.69.75.96
+ls -la /dev/ttyAMA4
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+# 最重要: F9P UART2設定確認 (前回未達原因 #1)
+python rtk_tools/f9p_rover_config.py --port /dev/ttyAMA4 --verify-only
+# 期待: CFG-UART2INPROT-RTCM3X=1, UBX out=0, All verified: YES
+# 未設定の場合: python rtk_tools/f9p_rover_config.py --port /dev/ttyAMA4
+systemctl status mavlink-router
+```
+
+#### Step 2: 基地局起動 + TCP:2101確認 (Mac側)
+
+```bash
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+pkill -f rtk_base_station_v2.py 2>/dev/null || true; sleep 1
+nohup python rtk_tools/rtk_base_station_v2.py \
+    --config config/base_station.json --tcp-port 2101 \
+    > logs/rtk_base_station.log 2>&1 &
+sleep 5
+grep "started successfully" logs/rtk_base_station.log
+lsof -i TCP:2101 -sTCP:LISTEN
+timeout 3 nc localhost 2101 | xxd | head -3
+# 期待: 0xd3 preamble RTCM3 frames
+```
+
+#### Step 3: RTCM注入起動 + RTCM3確認 (Raspi側)
+
+```bash
+ssh taki@100.69.75.96
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+pkill -f rtk_forwarder_service.py 2>/dev/null || true; sleep 1
+nohup python rtk_tools/rtk_forwarder_service.py \
+    --config config/rtk_forwarder.yml > logs/rtk_forwarder.log 2>&1 &
+sleep 3
+grep "RTK forwarder start" logs/rtk_forwarder.log
+grep "Connected to raw TCP source" logs/rtk_forwarder.log
+tail -3 logs/rtcm_injection.log
+timeout 3 sudo cat /dev/ttyAMA4 | xxd | head -3
+# 期待: 0xd3 preamble on /dev/ttyAMA4
+```
+
+#### Step 4: GCS接続 + Fix監視 (Mac側)
+
+```bash
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+# SSHトンネル
+pkill -f "ssh.*-L.*45760" 2>/dev/null || true; sleep 1
+ssh -f -N -L 45760:localhost:5760 -o StrictHostKeyChecking=no taki@100.69.75.96
+# ブリッジ
+pkill -f udp_tcp_bridge.py 2>/dev/null || true; sleep 1
+python scripts/udp_tcp_bridge.py 14552 45760 > logs/bridge.log 2>&1 &
+# GCS接続
+curl -s -X POST http://localhost:8000/api/disconnect > /dev/null 2>&1 || true
+sleep 1
+curl -s -X POST http://localhost:8000/api/connect \
+    -H 'Content-Type: application/json' \
+    -d '{"endpoint":"127.0.0.1:14552","connection_type":"udp"}'
+sleep 2
+curl -s http://localhost:8000/api/drones | python3 -m json.tool
+# Fix監視 (timeout=600s, 最大10分)
+python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --timeout 600
+```
+
+**期待fix遷移:** 3(3D_FIX)→4(DGPS, ~5s)→5(RTK_FLOAT, 30s-2min)→6(RTK_FIXED, 2-5min)
+
+#### Step 5: GPS比較データ収集 (fix=6到達後, Mac側)
+
+```bash
+cd ~/GCS-UmemotoLab && source .venv/bin/activate
+UBLOX=$(ls /dev/tty.usbmodem* 2>/dev/null | head -1)
+python scripts/gps_compare_collect.py \
+    --ublox "$UBLOX" --ublox-baud 38400 \
+    --gcs-url http://localhost:8000 \
+    --count 30 --interval 2.0 --max-duration 120 \
+    --output logs/gps_error_20260721_test2.csv
+
+### テスト結果
+
+#### Step 1: ハードウェア確認
+| 確認項目 | 結果 |
+|----------|------|
+| /dev/ttyAMA4 | |
+| F9P UART2 verify (CFG-UART2INPROT-RTCM3X) | |
+| mavlink-router status | |
+| 物理結線 (F9P RX2←GPIO12 TX) | |
+
+#### Step 2: 基地局起動
+| 確認項目 | 结果 |
+|----------|------|
+| Base Station started | |
+| TCP:2101 LISTEN | |
+| RTCM3 0xD3 preamble | |
+
+#### Step 3: RTCM注入
+| 確認項目 | 结果 |
+|----------|------|
+| Forwarder started (source=tcp, dest=/dev/ttyAMA4) | |
+| Raw TCP connected to 100.80.225.4:2101 | |
+| RTCM injection stats (frames/min) | |
+| /dev/ttyAMA4 RTCM3 0xD3 output | |
+
+#### Step 4: Fix監視
+| 時刻 | fix_type | 名称 | sats | hdop | 備考 |
+|------|----------|------|------|------|------|
+| | | | | | |
+
+- fix=5 (RTK_FLOAT) 到達: ___s
+- fix=6 (RTK_FIXED) 到達: ___s
+
+#### Step 5: GPS比較データ (30 RTK FIXED samples)
+
+| 指標 | 水平 (cm) | 垂直 (cm) |
+|------|----------|----------|
+| Mean | | |
+| StdDev | | |
+| RMS | | |
+| Max | | |
+| Min | | |
+
+- サンプル数: ____
+- 目標: 水平 1-3cm
+
+#### 考察
+
+
+
+#### Step 6: 後片付け
+
+```bash
+pkill -f rtk_base_station_v2.py
+pkill -f udp_tcp_bridge.py
+ssh taki@100.69.75.96 "pkill -f rtk_forwarder_service.py"
+```
+
