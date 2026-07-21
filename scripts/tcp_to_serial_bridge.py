@@ -126,7 +126,7 @@ class TcpToSerialBridge:
                     if buf[0] != 0xD3:
                         buf.pop(0)
                         continue
-                    flen = ((buf[1] & 0x3F) << 8) | buf[2]
+                    flen = ((buf[1] & 0x03) << 8) | buf[2]
                     tlen = 6 + flen
                     if len(buf) < tlen:
                         break
