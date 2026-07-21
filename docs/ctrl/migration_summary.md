@@ -442,3 +442,115 @@ pkill -f udp_tcp_bridge.py
 ssh taki@100.69.75.96 "pkill -f rtk_forwarder_service.py"
 ```
 
+---
+
+## 実機RTKテスト #3 (2026-07-22 00:06-00:22 -- GPIO12→F9P RX2配線検証)
+
+### テスト環境
+
+| 項目 | 値 |
+|------|-----|
+| 日時 | 2026-07-22 00:06-00:22 JST |
+| Mac (GCS/基地局) | Tailscale IP: 100.80.225.4, macOS |
+| Raspi5-1 (Rover側) | Tailscale IP: 100.69.75.96, hostname: raspi5 |
+| u-blox基地局 | /dev/tty.usbmodem114301 @ 115200bps |
+| Pixhawk drone | system_id=1, mode=STABILIZE, armed=false |
+
+### Step 1: ハードウェア確認
+
+| 確認項目 | 結果 |
+|----------|------|
+| USBモデム | ✅ `/dev/tty.usbmodem114301` + `/dev/tty.usbmodemSN234567892` (2台) |
+| Tailscale接続 | ✅ `raspi5-1` active, direct connection, ping 10ms |
+| /dev/ttyAMA4 | ✅ `crw-rw---- 1 root dialout 204, 68` 存在 |
+| GPIO12/13 pinmux | ✅ `a2` (ALT2=TXD4/RXD4), UART4正しく設定 |
+| dtoverlay=uart4 | ✅ `/boot/firmware/config.txt` に設定済み（重複あり） |
+| F9P UART2 通信 (TX2→GPIO13) | ✅ UBX NAV-PVTデータ受信確認 (0xB5 0x62 preamble) |
+| F9P CFG-VALGET検証 | ❌ No response — actual=None (全項目FAIL) |
+| F9P CFG-VALSET送信 | ⚠️ 送信成功 (TX write OK) だが応答なし = F9P RX2未受信の可能性 |
+| mavlink-routerd | ⚠️ CPU 97%異常 → restartで0%に回復 |
+| Raspi電源 | ⚠️ Undervoltage検出複数回 (dmesg) |
+
+### Step 2: 基地局起動
+
+| 確認項目 | 结果 |
+|----------|------|
+| Base Station started | ✅ PID 6495, `--skip-f9p-config` (F9pConfiguratorがハングするため) |
+| TCP:2101 LISTEN | ✅ `lsof -i TCP:2101` 確認 |
+| RTCM3 0xD3 preamble | ✅ `d3001e...` 確認 |
+| 基地局RTCM Message Types | ✅ MSM4: 1074(GPS), 1084(GLO), 1124(BDS), + type400(大容量) |
+
+### Step 3: RTCM注入
+
+| 確認項目 | 结果 |
+|----------|------|
+| Forwarder started (source=tcp, dest=/dev/ttyAMA4) | ✅ PID 7554 |
+| Raw TCP connected to 100.80.225.4:2101 | ✅ |
+| RTCM injection stats | ✅ 2834 frames, 126,375 bytes |
+| /dev/ttyAMA4 write | ✅ Serial write成功 (GPIO12 TX) |
+| /dev/ttyAMA4 read (F9P→Raspi) | ✅ UBX NAV-PVT受信中 (GPIO13 RX) |
+
+### Step 4: Fix監視
+
+| 時刻 | fix_type | 名称 | sats | hdop | 備考 |
+|------|----------|------|------|------|------|
+| 00:17-00:22 (全321秒間) | 3 | 3D_FIX | 21 | 0.83 | 変化なし |
+
+- fix=5 (RTK_FLOAT) 到達: **未達 (321秒間3D_FIXのまま)**
+- fix=6 (RTK_FIXED) 到達: **未達**
+
+### Step 5: GPS比較データ ❌ (スキップ)
+
+RTK Fix未達のため `gps_compare_collect.py` による比較データ収集は未実施。
+
+### Step 6: 考察
+
+#### 確認済み正常項目
+- ✅ 基地局 F9P: RTCM3 MSM4データ活発に生成 (1074/1084/1124)
+- ✅ Mac→Raspi TCP接続: Tailscale経由で2848フレーム転送成功
+- ✅ Forwarder: `/dev/ttyAMA4` に2834 RTCMフレーム注入 (126KB)
+- ✅ F9P UART2 TX2→GPIO13: UBX NAV-PVT受信確認（F9P生存確認）
+- ✅ MAVLinkテレメトリ: GPS_RAW_INT受信中、fix_type=3安定
+- ✅ GCS REST API: 正常動作、drone監視可能
+- ✅ GPIO/UART: pinmux正しく設定 (ALT2=TXD4/RXD4)
+
+#### 根本原因特定
+
+**GPIO12 (Raspi TX) → F9P UART2 RX2 (Pin 2) の物理配線が未接続/断線の可能性が極めて高い。**
+
+証拠:
+1. GPIO12/13 はUART4として正しく設定 (`pinctrl` で `a2` 確認)
+2. F9P TX2→GPIO13 (受信) は正常動作（UBX NAV-PVTデータ受信中）
+3. GPIO12→F9P RX2 (送信) は未応答:
+   - CFG-VALGET ポーリングにF9Pが応答しない（3回試行すべて `actual=None`）
+   - CFG-VALSET writeはPython側で成功するが、F9PからのACK/NAKなし
+   - RTCM注入2834フレーム後もfix遷移ゼロ（321秒間3D_FIXのまま）
+4. 前回テスト#1でも同様の現象報告あり（fix未達）
+
+#### 追加要因
+- **mavlink-routerd CPU 97%異常**: restartで回復。Pixhawk未接続時のloopが原因か
+- **F9pConfiguratorハング**: 基地局F9Pとの通信でタイムアウト。
+- **基地局F9Pモード未確認**: `--skip-f9p-config` 使用のためTMODE3設定未実行。ただしRTCM3 MSM4は出力中
+- **UDPブリッジポート不一致**: GCS listen 14551 vs ブリッジ送信 14550 → 修正済み
+
+#### 推奨アクション
+1. **【最優先】物理配線確認**: GPIO12(物理Pin32) → F9P UART2 RX2(ピン2) の導通チェック
+2. **配線修正後**: `f9p_rover_config.py --port /dev/ttyAMA4` でF9P再設定
+3. **基地局F9P TMODE3確認**: F9pConfiguratorのハング原因を調査し設定実行
+4. **電源安定化**: Undervoltage警告が複数回 → 電源見直し
+
+#### Step 7: 後片付け (テスト#3)
+
+```bash
+# Mac側
+pkill -f rtk_base_station_v2.py
+pkill -f gcs_fix_monitor
+pkill -f "udp_tcp_bridge\|14552.*45760"
+
+# SSHトンネル
+pkill -f "ssh.*-L.*45760"
+
+# Raspi側
+ssh taki@100.69.75.96 "pkill -f rtk_forwarder_service.py"
+```
+
