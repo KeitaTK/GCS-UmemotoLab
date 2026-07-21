@@ -93,12 +93,6 @@ async def on_shutdown():
             app.state.mav_conn.stop()
         except Exception as e:
             logger.warning(f"mav_conn.stop() failed: {e}")
-    if hasattr(app.state, "rtcm_reader"):
-        try:
-            app.state.rtcm_reader.stop()
-        except Exception as e:
-            logger.warning(f"rtcm_reader.stop() failed: {e}")
-
     logger.info("=== Server shutdown complete ===")
 
 

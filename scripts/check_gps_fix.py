@@ -178,7 +178,7 @@ def check_pixhawk_gps(config_path, duration_sec=30):
             logger.info("  1. より広い空が見える場所に移動")
         elif fix in (3, 4):
             logger.info("  1. RTK補正を有効にする (rtcm_enabled: true)")
-            logger.info("  2. u-center / rtk_base_station.py を起動")
+            logger.info("  2. rtk_base_station_v2.py を起動")
         elif fix == 5:
             logger.info("  1. RTK Float → RTK Fixed への収束を待つ（通常1-3分）")
         elif fix >= 6:

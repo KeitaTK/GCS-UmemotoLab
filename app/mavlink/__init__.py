@@ -25,14 +25,7 @@ command_dispatcher : ドローン制御コマンド
 guided_control : ガイドモード制御
     - 位置指定飛行
     - 速度制御
-    
-rtcm_reader : RTK補正データ受信
-    - TCP/Ntripソケット接続
-    - RTCMメッセージ解析
-    
-rtcm_injector : RTK補正データ送信
-    - GPS_RTCM_DATA メッセージ生成
-    - 大容量データチャンク化
+
 
 Examples
 --------

@@ -24,7 +24,3 @@ drones:
     system_id: 1
     endpoint: "127.0.0.1:14550"  # SSHトンネル経由でローカルホストに転送
     name: "Pixhawk6C Main"
-
-rtcm_enabled: false
-rtcm_host: 127.0.0.1
-rtcm_tcp_port: 2101

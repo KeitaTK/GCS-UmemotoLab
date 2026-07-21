@@ -239,11 +239,8 @@ sudo systemctl start rtk-uart2-inject
 systemctl status rtk-uart2-inject   # 確認
 journalctl -u rtk-uart2-inject -f   # ログ追跡
 
-# 方法B: 手動ワンショット（テスト用）
-python rtk_tools/rtk_direct_inject.py \
-  --uart-port /dev/ttyUSB0 \
-  --base-host 192.168.11.100 \
-  --timeout 120
+# 方法B: 手動起動（テスト・デバッグ用）
+python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml
 ```
 
 ### 3. RTK FIXED 確認
@@ -399,11 +396,8 @@ UART2 Config Verification Results
 基地局の NTRIP Caster が RTCM3 データを配信していることを確認します。
 
 ```bash
-# 自動チェック（NTRIPハンドシェイク + RTCM3プリアンブル確認）
-python rtk_tools/rtk_direct_inject.py \
-  --uart-port /dev/ttyAMA4 \
-  --base-host 192.168.11.100 \
-  --timeout 10
+# NTRIPハンドシェイク + RTCM3接続確認
+python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml --dry-run
 
 # 出力の STEP 2 部分を確認:
 #   STEP 2: Verify Base Station RTCM3 Stream
@@ -514,7 +508,6 @@ FINAL: READY FOR FLIGHT
 |-------------|--------|------|
 | `logs/rtcm_injection.log` | `rtk_forwarder_service.py` | RTCM注入統計（時刻・累積フレーム数・累積バイト数・転送レート・エラー数） |
 | `logs/rtcm_fix_transition.log` | `gcs_fix_monitor.py`（新） / `f9p_fix_monitor.py`（旧） | fix_type/carrSoln遷移記録（時刻・経過時間・carrSoln・numSV・hAcc・位置・遷移イベント） |
-| `logs/rtcm_proof_summary.txt` | `rtk_direct_inject.py` | 注入証明サマリ（総フレーム数・FLOAT/FIXED到達時間・最終ステータス） |
 | `logs/preflight_check_*.json` | `preflight_check.py` | プリフライトチェック全結果（JSON形式） |
 
 #### 期待される出力と判定基準
@@ -522,7 +515,7 @@ FINAL: READY FOR FLIGHT
 | 確認項目 | コマンド | 合格基準 | 不合格時の対応 |
 |---------|---------|---------|---------------|
 | F9P UART2 設定 | `f9p_rover_config.py --verify-only` | `All verified: YES` | STEP 1 再実行 |
-| 基地局 RTCM3 到達 | `rtk_direct_inject.py` STEP 2 | `ICY 200 OK` + `preamble=0xD3` | 基地局のSurvey-In状態・ネットワーク確認 |
+| 基地局 RTCM3 到達 | `nc -zv <base-host> 2101` | TCP接続成功 | 基地局のSurvey-In状態・ネットワーク確認 |
 | RTCM注入稼働 | `systemctl status rtk-uart4-inject` | `active (running)` | `journalctl -u rtk-uart4-inject -f` でエラー確認 |
 | RTCM注入流量 | `logs/rtcm_injection.log` 最終行 | `frames_per_min > 0`（通常 数百〜数千フレーム/分） | 基地局-Raspi間のネットワーク確認 |
 | RTK FLOAT 到達 | `logs/rtcm_fix_transition.log` | `0→1` 遷移が記録されている | 周辺環境（上空視界）確認、アンテナ位置調整 |
@@ -572,7 +565,7 @@ Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
     └→ 基地局のIPアドレス・ポートが正しいか確認
   
   ③ RTCM3データが流れているか？
-    └→ python rtk_tools/rtk_direct_inject.py --timeout 10
+    └→ nc -zv <base-host> 2101
     └→ STEP 2 で ICY 200 OK と 0xD3 preamble を確認
   
   ④ rtk_forwarder_service は稼働しているか？
@@ -859,15 +852,11 @@ GCS-UmemotoLab/
 │       ├── command_dispatcher.py  # コマンド送信（Arm/ForceArm等）
 │       ├── guided_control.py      # Guidedモード制御
 │       ├── telemetry_store.py     # テレメトリデータ保持
-│       ├── rtcm_reader.py         # RTCM TCP受信（基地局→Raspi）
-│       └── rtcm_injector.py       # RTCM→GPS_RTCM_DATA変換（UART2新方式では撤廃）
-├── rtk_tools/                  # RTKツール（Raspi側: UART2直接注入パス）
-│   ├── rtk_direct_inject.py       # ★ RTCM注入+RTK FIXED待機 自動化
+├── rtk_tools/                  # RTKツール（UART2直接注入パス + 基地局）
 │   ├── rtk_forwarder_service.py   # ★ RTCM転送サービス (NTRIP→UART2)
 │   ├── f9p_rover_config.py        # ★ Rover側F9P UART2設定
 │   ├── f9p_configurator.py        # F9P設定モジュール
 │   ├── gcs_fix_monitor.py         # MAVLink GPS_RAW_INT Fix監視 (新)
-│   ├── f9p_fix_monitor.py         # UBX-NAV-PVT Fix監視 (非推奨)
 │   ├── rtk_base_station_v2.py     # 基地局統合サービス
 │   ├── rtk_data_collector.py      # RTKデータコレクター
 │   └── config_loader.py           # 設定ローダー
@@ -896,8 +885,7 @@ GCS-UmemotoLab/
     ├── 03-operations/          # 運用マニュアル
     ├── 04-testing/             # テストレポート
     └── 05-implementation/      # 実装設計書
-        ├── rtk_direct_uart2_injection_plan.md  # ★ UART2注入設計書
-        └── preflight_rtk_checklist_uart2.md    # ★ プリフライトRTKチェックリスト
+            └── preflight_rtk_checklist_uart2.md    # ★ プリフライトRTKチェックリスト
 ```
 
 ---
@@ -944,7 +932,6 @@ GCS-UmemotoLab/
 ## 参考資料
 
 ### プロジェクト内ドキュメント
-- [RTK UART2 直接注入 設計書](docs/05-implementation/rtk_direct_uart2_injection_plan.md)
 - [プリフライト RTK チェックリスト (UART2)](docs/05-implementation/preflight_rtk_checklist_uart2.md)
 - [RTK基地局 実装計画](docs/05-implementation/RTK_BASE_STATION_IMPLEMENTATION.md)
 - [RTK統合ガイド](docs/03-operations/rtk_integration_guide.md)

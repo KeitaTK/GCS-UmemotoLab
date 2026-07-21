@@ -18,7 +18,7 @@ class GuiSignals(QObject):
     update_command_status = Signal()
 
 class MainWindow(QMainWindow):
-    def __init__(self, telemetry_store, dispatcher=None, connection=None, rtcm_reader=None):
+    def __init__(self, telemetry_store, dispatcher=None, connection=None):
         super().__init__()
         
         # Initialize GUI signals for thread-safe updates
@@ -31,7 +31,6 @@ class MainWindow(QMainWindow):
         self.telemetry_store = telemetry_store
         self.dispatcher = dispatcher
         self.connection = connection  # MavlinkConnection instance
-        self.rtcm_reader = rtcm_reader
         self.setWindowTitle("GCS Telemetry")
         self.resize(1200, 800)
         
@@ -584,7 +583,6 @@ class MainWindow(QMainWindow):
         self.update_graph()
         self.update_raw_data()
         self._update_connection_status_display()
-        self.update_rtk_status_from_reader()
 
     def update_dashboard(self):
         """Update dashboard tab telemetry displays"""
@@ -751,16 +749,4 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, title, message)
 
     def update_rtk_status_from_reader(self):
-        if not self.rtcm_reader:
-            return
-        try:
-            stats = getattr(self.rtcm_reader, 'stats', {})
-            status = (
-                f"enabled={getattr(self.rtcm_reader, 'enabled', False)} "
-                f"messages={stats.get('messages_received', 0)} "
-                f"connections={stats.get('connections', 0)} "
-                f"reconnects={stats.get('reconnects', 0)}"
-            )
-            self.update_rtk_status(status)
-        except Exception as e:
-            logger.debug(f"Error updating RTK status: {e}")
+        pass  # Legacy MAVLink RTCM removed; use gcs_fix_monitor.py instead

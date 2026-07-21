@@ -7,7 +7,7 @@ Broadcasts to all connected clients at 1Hz:
 - battery: voltage, current, remaining from SYS_STATUS
 - gps: fix_type, satellites, lat/lon/alt, hdop
 - command_state: pending count, last ACK status
-- rtk: RtcmReader statistics
+- rtk: RTK forwarder and fix state statistics
 """
 
 import asyncio
@@ -76,7 +76,7 @@ async def broadcast_loop():
                 api_srv.telemetry_store,
                 api_srv.connection,
                 api_srv.dispatcher,
-                api_srv.rtcm_reader,
+
                 rtk_forwarder_stats=getattr(api_srv, "rtk_forwarder_stats", None),
                 f9p_fix_state=getattr(api_srv, "f9p_fix_state", None),
             )
@@ -120,7 +120,7 @@ _COPTER_MODES = {
 OFFLINE_TIMEOUT = 10.0  # seconds without telemetry → consider drone offline
 
 
-def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader,
+def _build_payload(telemetry_store, connection, dispatcher,
                    rtk_forwarder_stats=None, f9p_fix_state=None) -> dict | None:
     """Build the complete telemetry payload for broadcast.
 
@@ -138,7 +138,7 @@ def _build_payload(telemetry_store, connection, dispatcher, rtcm_reader,
         "timestamp": t_now,
         "connection": _build_connection_status(connection),
         "drones": {},
-        "rtk": _build_rtk_status(rtcm_reader, rtk_forwarder_stats, f9p_fix_state),
+        "rtk": _build_rtk_status(rtk_forwarder_stats, f9p_fix_state),
     }
 
     last_seen_all = {}
@@ -316,7 +316,7 @@ def _build_status_texts(store, sysid: int) -> list:
         return []
 
 
-def _build_rtk_status(rtcm_reader, rtk_forwarder_stats=None, f9p_fix_state=None) -> dict:
+def _build_rtk_status(rtk_forwarder_stats=None, f9p_fix_state=None) -> dict:
     """Build enriched RTK status payload with architecture detection.
 
     Priority: UART2 direct injection > Legacy MAVLink RTCM path > default/disabled.
@@ -375,20 +375,5 @@ def _build_rtk_status(rtcm_reader, rtk_forwarder_stats=None, f9p_fix_state=None)
                 }
         except Exception:
             pass
-
-    # ── Legacy MAVLink GPS_RTCM_DATA path ──────────────────────────────
-    if result["architecture"] == "none" and rtcm_reader is not None:
-        result["architecture"] = "mavlink_gps_rtcm_data"
-        try:
-            stats = getattr(rtcm_reader, "stats", {})
-            result["enabled"] = getattr(rtcm_reader, "enabled", False)
-            result["messages_received"] = stats.get("messages_received", 0)
-            result["connections"] = stats.get("connections", 0)
-            result["reconnects"] = stats.get("reconnects", 0)
-        except Exception:
-            result["enabled"] = False
-            result["messages_received"] = 0
-            result["connections"] = 0
-            result["reconnects"] = 0
 
     return result

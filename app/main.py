@@ -131,9 +131,6 @@ if __name__ == "__main__":
         from mavlink.connection import MavlinkConnection
         from mavlink.message_router import MessageRouter
         from rtk_tools.telemetry_store import TelemetryStore
-        from rtk_tools.rtcm_reader import RtcmReader
-        # [DEPRECATED] RtcmInjectorは撤廃。新方式: rtk_direct_inject.py (UART2直接注入)
-        from rtk_tools.rtcm_injector import RtcmInjector
         import threading
 
         config_path = resolve_config_path()
@@ -172,34 +169,11 @@ if __name__ == "__main__":
 
         threading.Thread(target=request_streams, daemon=True).start()
 
-        rtcm_enabled = mav_conn.config.get('rtcm_enabled', True)
-        rtcm_host = mav_conn.config.get('rtcm_host', '127.0.0.1')
-        rtcm_port = mav_conn.config.get('rtcm_tcp_port', 15000)
-
-        rtcm_reader = RtcmReader(host=rtcm_host, port=rtcm_port, enabled=rtcm_enabled)
-        rtcm_injector = RtcmInjector(enabled=rtcm_enabled)
-
-        def send_rtcm_message(frame_data):
-            try:
-                mav_conn.send_to_system(1, frame_data)
-                mav_conn.send_to_system(2, frame_data)
-                logger.debug(f"RTCM frame sent to all systems: {len(frame_data)} bytes")
-            except Exception as e:
-                logger.error(f"Failed to send RTCM frame: {e}")
-
-        rtcm_injector.set_send_callback(send_rtcm_message)
-
-        def on_rtcm_data(data):
-            rtcm_injector.inject(data)
-
-        rtcm_reader.register_callback(on_rtcm_data)
-        rtcm_reader.start()
-
         from PySide6.QtWidgets import QApplication
         from ui.main_window import MainWindow
 
         app = QApplication(sys.argv)
-        window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn, rtcm_reader=rtcm_reader)
+        window = MainWindow(telemetry_store, dispatcher=dispatcher, connection=mav_conn)
         window.show()
 
         logger.info("GUIイベントループを開始します。")
@@ -208,8 +182,6 @@ if __name__ == "__main__":
         logger.info("終了処理中...")
         router.stop()
         mav_conn.stop()
-        rtcm_reader.stop()
-        logger.info("RTCM injection stopped.")
         sys.exit(exit_code)
 
     else:
