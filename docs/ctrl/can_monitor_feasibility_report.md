@@ -7,21 +7,54 @@
 
 ## 1. 調査結果サマリ
 
-### Step 1-3: GCS接続 (127.0.0.1:14551) → 利用不可
+### Phase 1 (2026-07-21 初回): GCS接続不可
 
 ```
 Scanning for components...
 Done. Found 0 components.
 ```
 
-GCS MAVLink接続 (`udp:127.0.0.1:14551`) が確立できなかったため、Step 1（Component ID特定）、Step 2（PARAM_REQUEST_LIST）、Step 3（CAN_GNSS_*パラメータ確認）は**未実施**。
+GCS MAVLink接続 (`udp:127.0.0.1:14551`) が確立できなかったため、Step 1〜3は**未実施**。
 
-**推奨**: 実機が接続可能な状態で再度実行し、以下の実パラメータを確認すること:
-- `CAN_GNSS_FIX2_RATE` — 送信レート (デフォルト 10 Hz)
-- `CAN_GNSS_FIX2_EN` — 有効/無効 (デフォルト 1)
-- `CAN_GNSS_FIX2_ID` — DroneCAN message ID
+### Phase 2 (2026-07-21 再調査): GCS接続復旧、実測実施
 
-### Step 4: F9P UART2 UBX-NAV-PVT 出力レート設定 → 未設定（デフォルト依存）
+GCS-UDP不通の根本原因修正（commit daa0e29, 7651be3）後、Tailscale経由でGCS再接続に成功。
+
+#### 2.1 GCS接続確立 ✅
+- Tailscale: `raspi5-1` (100.69.75.96) オンライン確認
+- SSHトンネル: Mac:14553 → Raspi mavlink-router TCP:5760
+- ブリッジ: UDP:14552 ↔ TCP:14553 (Python実装)
+- GCS設定: `connection_type: udp`, `udp_listen_port: 14550`, `endpoint: 127.0.0.1:14552`
+- 接続結果: `is_connected=true`, `packets_received=20,815+`, `drones: [1, 0]`
+
+#### 2.2 Component検出
+- **Sys=1 Comp=1**: Pixhawk 6C (ArduPilot) — type=2 (QUADROTOR), HEARTBEAT受信 ✅
+- **Sys=0**: 検出されるがHEARTBEATなし。`UNKNOWN_11039` メッセージのみ断続的に受信。
+
+#### 2.3 PARAM_REQUEST_LIST 結果
+
+**Pixhawk (Sys=1 Comp=1)** → 1,062パラメータ取得成功 ✅:
+| パラメータ | 値 | 意味 |
+|---|---|---|
+| `CAN_P1_DRIVER` | 1 | CAN1 有効 |
+| `CAN_P2_DRIVER` | 1 | CAN2 有効 |
+| `CAN_D1_PROTOCOL` | 1 | DroneCAN プロトコル |
+| `CAN_D2_PROTOCOL` | 1 | DroneCAN プロトコル |
+| `CAN_P1_BITRATE` | 1000000 | 1 Mbps |
+| `GPS1_TYPE` | 9 | DroneCAN (AP_Periph Fix1 使用中) |
+| **`GPS2_TYPE`** | **0** | **無効（GPS2未使用）** ⚠️ |
+
+**AP_Periph (Sys=0, Comp=0/1/200/220/221)** → 全応答なし ❌:
+- `PARAM_REQUEST_LIST` を Sys=0 の全候補コンポーネントに送信したが、PARAM_VALUE 応答ゼロ
+- AP_PeriphはMAVLinkパラメータ要求に応答しない（MAVLinkフォワーディング未構成の可能性大）
+
+#### 2.4 CAN_GNSS_FIX2 パラメータ考察
+- `CAN_GNSS_FIX2_RATE`, `CAN_GNSS_FIX2_EN`, `CAN_GNSS_FIX2_ID` は **AP_Periphファームウェア固有** のパラメータであり、Pixhawkのパラメータリストには存在しない
+- AP_PeriphがMAVLinkに応答しないため、これらのパラメータは **MAVLink経由では取得不可能**
+- Pixhawkの `GPS2_TYPE=0` から、`CAN_GNSS_FIX2_EN` は **0（無効）** と推定される
+- 直接確認には **DroneCANツール（UAVCAN GUI Tool 等）でCANバスに接続** する必要がある
+
+### Step 4: F9P UART2 UBX-NAV-PVT 出力レート設定 → 未設定（デフォルト依存）（変更なし）
 
 `rtk_tools/f9p_rover_config.py` の `_UART2_RTCM_CFG_KEYS` を調査:
 
@@ -61,9 +94,9 @@ u-blox F9Pのデフォルト動作:
 | 項目 | レート | 更新間隔 | 備考 |
 |---|---|---|---|
 | **F9P UART2 UBX-NAV-PVT** (現在のFix監視) | **1 Hz** (推定) | 1000 ms | 設定未指定のためF9Pデフォルト値 |
-| **AP_Periph CAN_GNSS_FIX2** (CAN監視候補) | **10 Hz** (デフォルト) | 100 ms | 実測未。GCS接続不可のため未確認 |
+| **AP_Periph CAN_GNSS_FIX2** (CAN監視候補) | **10 Hz** (デフォルト) / **0 Hz** (推定:無効) | 100 ms / N/A | MAVLink経由では実測不可。`GPS2_TYPE=0`より`CAN_GNSS_FIX2_EN=0`と推定 |
 
-**逆転現象**: F9PのUBX出力が1 Hzなら、むしろAP_PeriphのDroneCAN 10 Hzの方が**10倍高速**。
+**逆転現象（条件付き）**: F9PのUBX出力が1 Hz、AP_PeriphのDroneCAN Fix2が無効（推定）のため、現状では**UART2直接監視が唯一の有効な監視手段**。Fix2を有効化すれば10 Hzで10倍高速になる可能性がある。
 
 ---
 
@@ -138,13 +171,35 @@ def poll_nav_pvt(self, timeout: float = 3.0) -> Optional[dict]:
 
 ## 5. 結論
 
-**CAN監視への移行は「条件付きで推奨」。**
+**CAN監視への移行は「フェーズ分けで検討」。現状はUART2直接監視を継続すべき。**
 
-現在のF9P UBX-NAV-PVT出力レートが推定1 Hz（デフォルト）であり、AP_PeriphのDroneCAN Fix2（デフォルト10 Hz）より低レートである。したがって、CAN監視に移行することで監視の分解能が向上する可能性が高い。
+### 5.1 現在の状態
+- F9P UART2 UBX-NAV-PVT: 1 Hz（デフォルト）で監視可能 ✅
+- AP_Periph CAN_GNSS_FIX2: `GPS2_TYPE=0`より**無効**と推定 ❌
+- CAN_GNSS_FIX2パラメータ: MAVLink経由では**取得不可能**（AP_PeriphがMAVLink応答しない）
 
-ただし、以下の前提条件を満たす必要がある:
+### 5.2 即時アクション（推奨）
+1. **F9P UBX出力レートの向上**（短期・必須）
+   - `CFG-RATE-MEAS=200`（5 Hz）+ `CFG-MSGOUT-UBX-NAV-PVT-UART2=1` を設定
+   - 現行のUART2監視の分解能を即座に5倍に向上
+   
+2. **CAN_GNSS_FIX2_ENの確認**（中期）
+   - DroneCANツール（UAVCAN GUI Tool / dronecan-py）でCANバスに直接接続
+   - `CAN_GNSS_FIX2_EN=1` に設定し、Fix2を有効化
+   - Pixhawkの `GPS2_TYPE=9`（DroneCAN）を設定してGPS2として認識
+
+### 5.3 段階的移行プラン（更新版）
+| Phase | 内容 | 所要作業 |
+|-------|------|---------|
+| Phase 1 | F9P UBXレートを5Hzに引き上げ、UART2監視を継続 | `f9p_rover_config.py` 修正 |
+| Phase 2 | CAN I/FをRaspiに追加し、CAN監視モジュールを試験実装 | MCP2515等のSPI-CANモジュール追加 |
+| Phase 3 | DroneCANツールでCAN_GNSS_FIX2_EN=1を確認・設定 | UAVCAN GUI Tool / dronecan-py |
+| Phase 4 | 両監視を並行稼働させてデータ一致を確認 | 比較テスト |
+| Phase 5 | UART2監視を廃止、CAN監視に完全移行 | コード整理 |
+
+### 5.4 前提条件
 1. Raspi側にCANインターフェース（ハードウェア）を追加すること
-2. AP_Periphの `CAN_GNSS_FIX2_RATE` 実値を確認し、十分なレート（≧5 Hz）であること
+2. AP_Periphの `CAN_GNSS_FIX2_EN=1`、`CAN_GNSS_FIX2_RATE≧5 Hz` をDroneCAN経由で設定すること
 3. F9P UART2のUBX-NAV-PVTレートを明示的に設定し、少なくとも5 Hzに引き上げること
 
 これらの条件が満たされれば、UART2をRTCM注入専用にできる運用上のメリットが、CAN監視への移行コストを上回る。
@@ -217,3 +272,42 @@ for k, v in sorted(can_gnss_params.items()):
 if not can_gnss_params:
     print('  (none - may use different firmware version)')
 ```
+
+> **Phase 2結果**: 上記スクリプトは`udp:127.0.0.1:14551`接続を前提としているが、実際の接続はSSHトンネル経由。Phase 2では別途専用ブリッジ+スクリプトで実測した。
+
+## 付録C: Phase 2 実装詳細
+
+### 接続アーキテクチャ
+```
+Mac (GCS)                  SSH Tunnel          Raspi
+UDP:14550 ─send→ UDP:14552 ──→ TCP:14553 ──→ TCP:5760 (mavlink-routerd)
+    ↑                        ↑                    ↑
+    └── receive ←── UDP:14552 ←── TCP:14553 ←── (Pixhawk TELEM1)
+         (bridge v2)           (ssh -L)
+```
+
+### 新規追加APIエンドポイント
+`POST /api/param/request_list` — 指定コンポーネントの全パラメータを要求
+```json
+{"system_id": 0, "component_id": 0}
+→ {"status": "sent", "note": "PARAM_VALUE responses appear in GCS logs"}
+```
+
+### ブリッジ実装 (`/tmp/bridge_v2.py`)
+双方向UDP↔TCPブリッジ。GCSのUDPパケットをSSHトンネル(TCP)経由でRaspi mavlink-routerに転送。
+
+### 測定結果サマリ
+| 測定項目 | 結果 |
+|---------|------|
+| Tailscale接続 | ✅ raspi5-1 (100.69.75.96) online |
+| GCS MAVLink接続 | ✅ 20,815+ packets received |
+| Pixhawk HEARTBEAT | ✅ Sys=1 Comp=1, type=QUADROTOR |
+| AP_Periph HEARTBEAT | ❌ 未検出 (Sys=0, UNKNOWN_11039のみ) |
+| Pixhawkパラメータ | ✅ 1,062件受信 |
+| CAN_GNSS_FIX2_RATE | ❌ MAVLink経由では取得不可 |
+| CAN_GNSS_FIX2_EN | ❌ 推定値: 0 (GPS2_TYPE=0より) |
+| CAN_GNSS_FIX2_ID | ❌ MAVLink経由では取得不可 |
+| CAN_P1_DRIVER | 1 (CAN1有効) |
+| CAN_P1_BITRATE | 1,000,000 bps |
+| GPS1_TYPE | 9 (DroneCAN) |
+| GPS2_TYPE | **0 (無効)** ⚠️ |
