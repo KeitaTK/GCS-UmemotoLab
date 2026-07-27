@@ -28,6 +28,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | **Preflight Check** | GPS/EKF/バッテリー/モーター/RTK UART2 自動総合チェック |
 | **systemd サービス** | Raspi起動時にRTK注入を自動開始（`rtk-uart2-inject.service`） |
 | **F9P 設定ツール** | Rover/基地局F9Pの自動設定（FIXED, RTCM3入出力, UBX出力） |
+| **F9P全設定管理** | `f9p_config_all.py`: 基地局12キー+移動局18キー=全30キーの一括書き込み→CFG-VALGET確認（write-verify） |
 | **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
 
@@ -631,6 +632,69 @@ gnuplot -e "set datafile separator ','; plot 'logs/rtcm_injection.log' using 4 w
 
 ---
 
+## F9P全設定ツール (f9p_config_all.py)
+
+`f9p_config_all.py` は、基地局（12キー）+ 移動局（18キー）= **全30設定キー**を単一スクリプトで管理する統合ツールです。
+既存の `f9p_configurator.py`（基地局）、`f9p_rover_config.py`（移動局）、`f9p_verify_config.py`（確認）の機能を統合し、
+**write-verify**（書き込み→CFG-VALGET確認）を自動実行します。
+
+### スクリプトの特徴
+
+| 特徴 | 説明 |
+|------|------|
+| **全30キー対応** | 基地局12キー（TMODE3, RTCM3出力, ポート設定 等）+ 移動局18キー（UART2 RTCM3入力, UBX出力制御, 測位設定 等） |
+| **write-verify** | CFG-VALSET 書き込み後、CFG-VALGET で自動確認。設定漏れや不整合を即時検出 |
+| **role別モード** | `--role base` / `--role rover` / `--role both` で基地局・移動局を切り替え |
+| **JSON出力** | `--json` で機械可読なJSON形式の確認結果を出力 |
+| **統合設計** | `f9p_configurator.py` + `f9p_rover_config.py` + `f9p_verify_config.py` の3スクリプトを1つに集約 |
+
+### 使用例
+
+#### 設定確認のみ（verify モード）
+
+```bash
+# 基地局の設定確認
+python rtk_tools/f9p_config_all.py --role base --port /dev/tty.usbmodemXXX --mode verify
+
+# 移動局の設定確認
+python rtk_tools/f9p_config_all.py --role rover --port /dev/ttyAMA4 --mode verify
+```
+
+#### 書き込み→確認（デフォルト動作）
+
+```bash
+# 移動局の設定（書き込み後、自動で確認を実行）
+python rtk_tools/f9p_config_all.py --role rover --port /dev/ttyAMA4
+```
+
+`--mode` を省略した場合、デフォルトで **write-verify**（書き込み→確認）が実行されます。
+
+#### 基地局・移動局 両方同時設定
+
+```bash
+python rtk_tools/f9p_config_all.py --role both --base-port /dev/tty.usbmodemXXX --rover-port /dev/ttyAMA4
+```
+
+#### JSON出力
+
+```bash
+# 確認結果をJSON形式で出力（ログやCI/CD連携用）
+python rtk_tools/f9p_config_all.py --role base --port /dev/tty.usbmodemXXX --mode verify --json
+```
+
+### 従来スクリプトとの対応
+
+| 従来スクリプト | f9p_config_all.py での対応 |
+|---------------|--------------------------|
+| `f9p_configurator.py` | `--role base`（基地局12キー設定 + TMODE3 FIXED） |
+| `f9p_rover_config.py` | `--role rover`（移動局18キー設定 + UART2 RTCM3入力） |
+| `f9p_verify_config.py` | `--mode verify` または write-verify の後半（CFG-VALGET確認） |
+
+> **Note**: 既存の `f9p_configurator.py`、`f9p_rover_config.py`、`f9p_verify_config.py` は個別にも引き続き使用可能です。
+> `f9p_config_all.py` はこれらを統合し、より簡便な運用を提供します。
+
+---
+
 ## セットアップ
 
 ### 前提条件
@@ -856,6 +920,7 @@ GCS-UmemotoLab/
 │   ├── rtk_forwarder_service.py   # ★ RTCM転送サービス (NTRIP→UART2)
 │   ├── f9p_rover_config.py        # ★ Rover側F9P UART2設定
 │   ├── f9p_configurator.py        # F9P設定モジュール
+│   ├── f9p_config_all.py          # ★ F9P全設定の一括書き込み・確認（統合スクリプト）
 │   ├── gcs_fix_monitor.py         # MAVLink GPS_RAW_INT Fix監視 (新)
 │   ├── rtk_base_station_v2.py     # 基地局統合サービス
 │   ├── rtk_data_collector.py      # RTKデータコレクター
