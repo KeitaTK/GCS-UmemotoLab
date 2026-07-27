@@ -27,7 +27,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | **UBX-NAV-PVT 監視** | F9P UART2から直接 Fix状態（carrSoln）をポーリング、RTK FIXEDを確実に検出 |
 | **Preflight Check** | GPS/EKF/バッテリー/モーター/RTK UART2 自動総合チェック |
 | **systemd サービス** | Raspi起動時にRTK注入を自動開始（`rtk-uart2-inject.service`） |
-| **F9P 設定ツール** | Rover/基地局F9Pの自動設定（Survey-In, RTCM3入出力, UBX出力） |
+| **F9P 設定ツール** | Rover/基地局F9Pの自動設定（FIXED, RTCM3入出力, UBX出力） |
 | **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
 
@@ -50,7 +50,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │  ▼ パスB: RTK UART2直接注入（新アーキテクチャ）                              │
 │  ┌──────────┐   NTRIP/TCP     ┌──────────────┐  USB-Serial   ┌──────────┐ │
 │  │ 基地局F9P │────────────────→│ Raspberry Pi 5│─────────────→│F9P Rover │ │
-│  │(Survey-In)│  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │UART2直結 │ │
+│  │(FIXED)    │  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │UART2直結 │ │
 │  └──────────┘                 │               │              │          │ │
 │                               │  UART2=RTCM注入専用          │RTK測位演算│ │
 │                               │  (UBX出力=無効)              └─────┬─────┘ │
@@ -112,7 +112,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │  │                          │              │                                      │  │
 │  │  ┌──────────────────┐    │  TCP:2101    │  ┌──────────────────────────────┐    │  │
 │  │  │ u-blox F9P(基準局)│────┼────────────→│  │ rtk_forwarder               │    │  │
-│  │  │ Survey-In / TIME │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
+│  │  │ FIXED            │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
 │  │  │ /dev/tty.usbmodem*│   │              │  │                              │    │  │
 │  │  └──────────────────┘    │              │  │ NTRIP受信 → Serial転送        │    │  │
 │  │                          │              │  └──────────────┬───────────────┘    │  │
@@ -187,7 +187,7 @@ Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P 
 
 | コンポーネント | 役割 |
 |--------------|------|
-| **u-blox F9P (Mac)** | RTK基準局。Survey-Inモードで基準位置を確定し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
+| **u-blox F9P (Mac)** | RTK基準局。FIXEDモードであらかじめ設定した座標で動作し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
 | **Raspberry Pi 5** | 機体搭載の通信ブリッジ。`mavlink-router` でMAVLinkをUART↔UDP中継。`rtk_forwarder` でRTCM3をTCP→シリアル変換。2系統の通信を1台で処理。 |
 | **F9P Rover (H-RTK F9P Helical)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
 | **Pixhawk 6C (ArduPilot)** | フライトコントローラ。TELEM1でMAVLink通信、CAN1でF9PからRTK位置情報を受信。ArduPilotがGPS_AUTO_SWITCHで最適GPSソースを自動選択。 |
@@ -216,7 +216,7 @@ RTK UART2 直接注入の最小セットアップ手順です。詳細は [rtk_d
 ### 0. 前提
 
 - Rover側 F9P の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み
-- 基地局 F9P が Survey-In 完了済み（`scripts/ublox_survey_in.py` で確認）
+- 基地局 F9P が FIXED モードで設定済み（座標が適切に設定されていること）
 - 基地局が RTCM3 ストリームを配信中
 
 ### 1. Rover F9P 設定（初回のみ）
@@ -277,7 +277,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 │                                                                              │
 │  ┌──────────────┐     NTRIP/TCP        ┌──────────────────┐                  │
 │  │  基地局 F9P   │─────────────────────→│  Raspberry Pi 5   │                  │
-│  │  (Survey-In)  │   RTCM3 stream      │                  │                  │
+│  │  (FIXED)      │   RTCM3 stream      │                  │                  │
 │  │              │   port 2101          │ rtk_forwarder_   │                  │
 │  │  RTCM3 0xD3  │                     │ service.py       │                  │
 │  │  preamble    │                     │                  │                  │
@@ -361,7 +361,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 
 - [ ] Raspi に USB-Serial アダプタが接続され、`/dev/ttyAMA4`（または `/dev/ttyUSB*`）として認識されている
 - [ ] F9P Rover の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み（UART2=RTCM注入専用）
-- [ ] 基地局 F9P が Survey-In 完了済み（`python scripts/ublox_survey_in.py --status` で確認）
+- [ ] 基地局 F9P が FIXED モードで設定済み（座標が適切に設定されていること）
 - [ ] 基地局が NTRIP Caster として RTCM3 ストリームを配信中
 - [ ] Rover F9P の UART2 が設定済み（初回のみ `f9p_rover_config.py` を実行）
 
@@ -515,7 +515,7 @@ FINAL: READY FOR FLIGHT
 | 確認項目 | コマンド | 合格基準 | 不合格時の対応 |
 |---------|---------|---------|---------------|
 | F9P UART2 設定 | `f9p_rover_config.py --verify-only` | `All verified: YES` | STEP 1 再実行 |
-| 基地局 RTCM3 到達 | `nc -zv <base-host> 2101` | TCP接続成功 | 基地局のSurvey-In状態・ネットワーク確認 |
+| 基地局 RTCM3 到達 | `nc -zv <base-host> 2101` | TCP接続成功 | 基地局のFIXEDモード設定・ネットワーク確認 |
 | RTCM注入稼働 | `systemctl status rtk-uart4-inject` | `active (running)` | `journalctl -u rtk-uart4-inject -f` でエラー確認 |
 | RTCM注入流量 | `logs/rtcm_injection.log` 最終行 | `frames_per_min > 0`（通常 数百〜数千フレーム/分） | 基地局-Raspi間のネットワーク確認 |
 | RTK FLOAT 到達 | `logs/rtcm_fix_transition.log` | `0→1` 遷移が記録されている | 周辺環境（上空視界）確認、アンテナ位置調整 |
@@ -557,8 +557,8 @@ Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
 ```
 診断フロー:
   ① 基地局は起動しているか？
-    └→ python scripts/ublox_survey_in.py --status
-    └→ Survey-In が完了しているか？（最長300秒）
+    └→ F9P が FIXED モードで動作しているか？（TMODE3 MODE=2）
+    └→ python rtk_tools/f9p_configurator.py で STEP3 設定確認
   
   ② NTRIP Caster にTCP接続できるか？
     └→ nc -zv 192.168.11.100 2101
@@ -906,7 +906,7 @@ GCS-UmemotoLab/
 - [ ] F9P UART2 (JST-GH 6pin) → USB-Serialアダプタ → Raspi の配線完了
 - [ ] USB-Serialアダプタが `/dev/ttyUSB0` として認識（`ls /dev/ttyUSB*`）
 - [ ] F9P Rover UART2 設定済み（`python rtk_tools/f9p_rover_config.py --port /dev/ttyUSB0` 初回実行済み）
-- [ ] 基地局 F9P Survey-In 完了（`python scripts/ublox_survey_in.py --status`）
+- [ ] 基地局 F9P FIXED モード設定済み（座標が適切に設定されていること）
 - [ ] `rtk-uart2-inject` サービス稼働中（`systemctl status rtk-uart2-inject`）
 - [ ] RTK FIXED 達成確認（`python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once` で fix_type=6）
 - [ ] プリフライトチェック PASS（`python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0`）
