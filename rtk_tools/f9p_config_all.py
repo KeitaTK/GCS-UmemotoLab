@@ -46,9 +46,9 @@ _ICON_WARN = "\u26a0\ufe0f"
 # ==========================================================================
 _KEY_TMODE_MODE           = 0x20030001
 _KEY_TMODE_POS_TYPE       = 0x20030002
-_KEY_TMODE_LAT            = 0x40030003
-_KEY_TMODE_LON            = 0x40030004
-_KEY_TMODE_HEIGHT         = 0x40030005
+_KEY_TMODE_LAT            = 0x40030009
+_KEY_TMODE_LON            = 0x4003000A
+_KEY_TMODE_HEIGHT         = 0x4003000B
 _KEY_UART1_BAUDRATE       = 0x40520001
 _KEY_UART1OUTPROT_UBX     = 0x40520005
 _KEY_UART2_BAUDRATE       = 0x40590001
