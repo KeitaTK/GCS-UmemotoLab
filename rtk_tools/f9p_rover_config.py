@@ -22,7 +22,7 @@ import time
 from typing import Optional
 
 import serial
-from pyubx2 import UBXMessage, UBXReader, UBX_PROTOCOL
+from pyubx2 import UBXMessage
 
 # ------------------------------------------------------------------
 # Layer bitmask for config_set (from f9p_configurator.py)
@@ -143,43 +143,95 @@ class F9pRoverConfigurator:
 
     def _read_ubx_response(self, cls: int, mid: int,
                            timeout: float = 3.0) -> Optional[bytes]:
-        """指定された Class/ID の UBX 応答を UBXReader で読み取る (raw bytes)"""
+        """指定された Class/ID の UBX 応答を raw byte search で読み取る (raw bytes)
+
+        UBXReader ではなく raw serial read + UBX sync pattern (0xB5 0x62)
+        検索を使用する。これにより RTCM3 ストリーム (0xD3 sync) と UBX フレームが
+        混在する低ボーレート環境（38400bps など）でも堅牢に UBX 応答を検出できる。
+        """
         if not self._ser or not self._ser.is_open:
             return None
 
-        ubr = UBXReader(self._ser, protfilter=UBX_PROTOCOL)
         deadline = time.time() + timeout
+        buf = b''
 
         while time.time() < deadline:
-            try:
-                raw, parsed = ubr.read()
-                if parsed and parsed.msg_cls == cls and parsed.msg_id == mid:
-                    self.logger.debug(
-                        f"Received UBX: cls=0x{cls:02X} mid=0x{mid:02X}"
-                    )
-                    return raw
-            except Exception:
-                time.sleep(0.05)
+            # Read whatever is available
+            waiting = self._ser.in_waiting
+            if waiting > 0:
+                chunk = self._ser.read(waiting)
+                buf += chunk
+
+            # Scan for UBX sync pattern 0xB5 0x62
+            idx = 0
+            while True:
+                sync_pos = buf.find(b'\xb5\x62', idx)
+                if sync_pos < 0:
+                    # Keep trailing byte if it could be partial sync (0xB5)
+                    if len(buf) > 0 and buf[-1:] == b'\xb5':
+                        buf = b'\xb5'
+                    elif len(buf) > 0:
+                        buf = b''
+                    break  # need more data
+
+                # Need at least 6 header bytes after sync (CLASS,ID,LEN_L,LEN_H)
+                if sync_pos + 6 > len(buf):
+                    buf = buf[sync_pos:]
+                    break
+
+                frame_cls = buf[sync_pos + 2]
+                frame_id = buf[sync_pos + 3]
+                payload_len = buf[sync_pos + 4] | (buf[sync_pos + 5] << 8)
+
+                # Total frame: SYNC(2)+CLASS(1)+ID(1)+LEN(2)+PAYLOAD+CHK(2)
+                total_len = 8 + payload_len
+
+                if sync_pos + total_len > len(buf):
+                    # Incomplete frame; keep from sync_pos
+                    buf = buf[sync_pos:]
+                    break
+
+                # Extract candidate frame
+                frame = buf[sync_pos:sync_pos + total_len]
+
+                # Verify UBX checksum (8-bit Fletcher over CLASS..PAYLOAD_END)
+                ck_a = 0
+                ck_b = 0
+                for b in frame[2:6 + payload_len]:
+                    ck_a = (ck_a + b) & 0xFF
+                    ck_b = (ck_b + ck_a) & 0xFF
+
+                expected_ck_a = frame[6 + payload_len]
+                expected_ck_b = frame[6 + payload_len + 1]
+
+                if ck_a == expected_ck_a and ck_b == expected_ck_b:
+                    # Valid UBX frame
+                    if frame_cls == cls and frame_id == mid:
+                        self.logger.debug(
+                            f"Received UBX: cls=0x{cls:02X} mid=0x{mid:02X}"
+                        )
+                        return frame
+                    # Not the frame we want; skip this frame
+                    idx = sync_pos + total_len
+                else:
+                    # Corrupt frame; skip past sync
+                    idx = sync_pos + 2
+
+            if not self._ser.in_waiting:
+                time.sleep(0.01)
 
         return None
 
     def _read_ubx_valget_response(self, timeout: float = 3.0):
-        """CFG-VALGET (0x06, 0x8B) 応答を読み取り、raw と parsed のタプルで返す"""
-        if not self._ser or not self._ser.is_open:
-            return None, None
+        """CFG-VALGET (0x06, 0x8B) 応答を読み取り、raw フレームを返す。
 
-        ubr = UBXReader(self._ser, protfilter=UBX_PROTOCOL)
-        deadline = time.time() + timeout
-
-        while time.time() < deadline:
-            try:
-                raw, parsed = ubr.read()
-                if parsed and parsed.msg_cls == 0x06 and parsed.msg_id == 0x8B:
-                    self.logger.debug("Received CFG-VALGET response")
-                    return raw, parsed
-            except Exception:
-                time.sleep(0.05)
-
+        _read_ubx_response() を利用して堅牢な raw byte search で応答を取得する。
+        parsed オブジェクトは deprecated（常に None）。
+        """
+        raw = self._read_ubx_response(0x06, 0x8B, timeout=timeout)
+        if raw is not None:
+            self.logger.debug("Received CFG-VALGET response")
+            return raw, None
         return None, None
 
     # ------------------------------------------------------------------

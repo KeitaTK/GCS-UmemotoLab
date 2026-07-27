@@ -11,7 +11,7 @@ Usage:
 import argparse, json, logging, sys, time
 from typing import Any, Dict, List, Optional, Tuple
 import serial
-from pyubx2 import UBXMessage, UBXReader, UBX_PROTOCOL
+from pyubx2 import UBXMessage
 
 LAYER_RAM = 1; LAYER_BBR = 2; LAYER_FLASH = 4
 LAYER_ALL = LAYER_RAM | LAYER_BBR | LAYER_FLASH
@@ -62,14 +62,44 @@ class F9pVerifier:
         self._ser.write(msg); self._ser.flush()
 
     def _read_ubx(self, cls: int, mid: int, timeout: float = 3.0) -> Optional[bytes]:
+        """Read UBX response by raw byte-level frame detection.
+
+        Uses raw serial read + UBX sync pattern (0xB5 0x62) scanning instead of
+        UBXReader to avoid interference from RTCM3 streams at low baudrates.
+        """
         if not self._ser or not self._ser.is_open: return None
-        ubr = UBXReader(self._ser, protfilter=UBX_PROTOCOL)
-        dl = time.time() + timeout
-        while time.time() < dl:
-            try:
-                raw, p = ubr.read()
-                if p and p.msg_cls == cls and p.msg_id == mid: return raw
-            except Exception: time.sleep(0.05)
+        deadline = time.time() + timeout
+        buf = b''
+        while time.time() < deadline:
+            waiting = self._ser.in_waiting
+            if waiting > 0:
+                chunk = self._ser.read(waiting)
+                buf += chunk
+            idx = 0
+            while True:
+                sync_pos = buf.find(b'\xb5\x62', idx)
+                if sync_pos < 0:
+                    if len(buf) > 0 and buf[-1:] == b'\xb5': buf = b'\xb5'
+                    elif len(buf) > 0: buf = b''
+                    break
+                if sync_pos + 6 > len(buf):
+                    buf = buf[sync_pos:]; break
+                frame_cls = buf[sync_pos + 2]
+                frame_id = buf[sync_pos + 3]
+                payload_len = buf[sync_pos + 4] | (buf[sync_pos + 5] << 8)
+                total_len = 8 + payload_len
+                if sync_pos + total_len > len(buf):
+                    buf = buf[sync_pos:]; break
+                frame = buf[sync_pos:sync_pos + total_len]
+                ck_a = 0; ck_b = 0
+                for b in frame[2:6 + payload_len]:
+                    ck_a = (ck_a + b) & 0xFF; ck_b = (ck_b + ck_a) & 0xFF
+                if ck_a == frame[6 + payload_len] and ck_b == frame[6 + payload_len + 1]:
+                    if frame_cls == cls and frame_id == mid: return frame
+                    idx = sync_pos + total_len
+                else:
+                    idx = sync_pos + 2
+            if not self._ser.in_waiting: time.sleep(0.01)
         return None
 
     def _device_alive(self) -> bool:
