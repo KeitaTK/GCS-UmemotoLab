@@ -82,7 +82,7 @@ _VERIFY_KEYS = [
 # against the actual u-blox NEO-F9P Interface Description.
 # ------------------------------------------------------------------
 _KEY_CFG_UART2_BAUDRATE       = 0x40590001   # CFG-UART2-BAUDRATE
-_KEY_CFG_UART2INPROT_RTCM3X   = 0x40590003   # CFG-UART2INPROT-RTCM3X
+_KEY_CFG_UART2INPROT_RTCM3X   = 0x40590004   # CFG-UART2INPROT-RTCM3X
 _KEY_CFG_UART2OUTPROT_UBX     = 0x40590005   # CFG-UART2OUTPROT-UBX
 
 # Key ID → human-readable name mapping
