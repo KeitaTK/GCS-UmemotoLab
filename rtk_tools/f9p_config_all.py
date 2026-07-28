@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-f9p_config_all.py — DroneCAN F9P (NEO-F9P) 全設定値の「書き込み→確認」ツール
+f9p_config_all.py — DroneCAN F9P (ZED-F9P) 全設定値の「書き込み→確認」ツール
 
 基地局・移動局の F9P 全30設定キーを単一スクリプトで管理する。
 pyubx2 の UBXMessage.config_set() / config_poll() (CFG-VALSET / CFG-VALGET) を使用。
@@ -221,7 +221,7 @@ _GNSS_SIGNAL_CFG_KEYS = [
 # ==========================================================================
 
 class F9pAllConfigurator:
-    """DroneCAN F9P (NEO-F9P) 全設定値の書き込みと確認を行う。"""
+    """DroneCAN F9P (ZED-F9P) 全設定値の書き込みと確認を行う。"""
 
     def __init__(self, serial_port: str, baudrate: int = 38400,
                  logger: Optional[logging.Logger] = None):
@@ -765,7 +765,7 @@ def _print_write_summary(write_results: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="DroneCAN F9P (NEO-F9P) 全設定値 書込/確認ツール",
+        description="DroneCAN F9P (ZED-F9P) 全設定値 書込/確認ツール",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"

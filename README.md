@@ -51,8 +51,10 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │                                                                          │
 │  ▼ パスB: RTK UART2直接注入（新アーキテクチャ）                              │
 │  ┌──────────┐   NTRIP/TCP     ┌──────────────┐  USB-Serial   ┌──────────┐ │
-│  │ 基地局F9P │────────────────→│ Raspberry Pi 5│─────────────→│F9P Rover │ │
-│  │(FIXED)    │  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │UART2直結 │ │
+│  │ 基地局F9P  │────────────────→│ Raspberry Pi 5│─────────────→│移動局F9P  │ │
+│  │(ZED-F9P,  │  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │(ZED-F9P, │ │
+│  │ Macに     │                │               │              │DroneCAN,  │ │
+│  │ USB接続)  │                │               │              │機体搭載)  │ │
 │  └──────────┘                 │               │              │          │ │
 │                               │  UART2=RTCM注入専用          │RTK測位演算│ │
 │                               │  (UBX出力=無効)              └─────┬─────┘ │
@@ -113,9 +115,9 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │  │         Mac              │              │         Raspberry Pi 5               │  │
 │  │                          │              │                                      │  │
 │  │  ┌──────────────────┐    │  TCP:2101    │  ┌──────────────────────────────┐    │  │
-│  │  │ u-blox F9P(基準局)│────┼────────────→│  │ rtk_forwarder               │    │  │
-│  │  │ FIXED            │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
-│  │  │ /dev/tty.usbmodem*│   │              │  │                              │    │  │
+│  │  │ 基地局F9P      │────┼────────────→│  │ rtk_forwarder               │    │  │
+│  │  │ (ZED-F9P,       │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
+│  │  │  MacにUSB接続)  │    │              │  │                              │    │  │
 │  │  └──────────────────┘    │              │  │ NTRIP受信 → Serial転送        │    │  │
 │  │                          │              │  └──────────────┬───────────────┘    │  │
 │  │  ┌──────────────────┐    │ MAVLink UDP  │                 │                    │  │
@@ -137,9 +139,10 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │       │                    機体側                              │               │       │
 │       │                                                       │               │       │
 │       │  ┌──────────────────────────┐     ┌───────────────────▼──────────────┐│       │
-│       │  │ F9P Rover                │     │   Pixhawk 6C (ArduPilot)        ││       │
-│       │  │ (H-RTK F9P Helical)      │     │                                  ││       │
-│       │  │                          │     │ TELEM1 ← MAVLink通信             ││       │
+│       │  │ 移動局F9P                │     │   Pixhawk 6C (ArduPilot)        ││       │
+│       │  │ (ZED-F9P,                │     │                                  ││       │
+│       │  │  DroneCAN接続,           │     │ TELEM1 ← MAVLink通信             ││       │
+│       │  │  機体搭載)               │     │   (GPIO14/15 → Raspi)           ││       │
 │       │  │ UART2 RX2 ← RTCM3注入    │     │   (GPIO14/15 → Raspi)           ││       │
 │       │  │ UART2 TX2 → UBX-NAV-PVT  │     │                                  ││       │
 │       │  │                          │     │ CAN2 ──────────┐                 ││       │
@@ -151,9 +154,9 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │       └───────────────────────────────────────────────────────────────────────┘       │
 │                                                                                      │
 │  【経路凡例】                                                                          │
-│  ──→  RTCM注入(パスB): Mac u-blox → TCP:2101 → rtk_forwarder → /dev/ttyAMA4 → F9P    │
+│  ──→  RTCM注入(パスB): 基地局F9P(ZED-F9P,USB接続)→TCP:2101→rtk_forwarder→ttyAMA4→移動局F9P│
 │  ←──  MAVLink(パスA): Pixhawk TELEM1 → /dev/ttyAMA0 → mavlink-router → Mac GCS       │
-│  ──→  位置情報: F9P Rover → CAN2 → Pixhawk CAN1 (DroneCAN, 既存維持)                   │
+│  ──→  位置情報: 移動局F9P(ZED-F9P,DroneCAN) → CAN2 → Pixhawk CAN1 (既存維持)              │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -174,12 +177,12 @@ Pixhawk TELEM1 → GPIO8(TX),10(RX),11(RTS) → /dev/ttyAMA0 → mavlink-router 
 ### 経路B: RTCM注入（RTK補正データ）
 
 ```
-Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P UART2 → CAN2 → Pixhawk CAN1
+基地局F9P(ZED-F9P,MacにUSB接続) → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → 移動局F9P UART2 → CAN2 → Pixhawk CAN1
 ```
 
 | 区間 | デバイス/プロトコル | 詳細 |
 |------|-------------------|------|
-| u-blox → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
+| 基地局F9P → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
 | Raspi 受信 | `rtk_forwarder_service.py` | NTRIPクライアント / TCP Socket |
 | Raspi 転送 | `/dev/ttyAMA4` @ 115200bps | GPIO12(TX), GPIO13(RX) |
 | F9P 受信 | UART2 RX2 (Pin 2) | RTCM3 → RTK測位演算 |
@@ -189,9 +192,9 @@ Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P 
 
 | コンポーネント | 役割 |
 |--------------|------|
-| **u-blox F9P (Mac)** | RTK基準局。FIXEDモードであらかじめ設定した座標で動作し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
+| **基地局 F9P (ZED-F9P, MacにUSB接続)** | RTK基準局。FIXEDモードであらかじめ設定した座標で動作し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
 | **Raspberry Pi 5** | 機体搭載の通信ブリッジ。`mavlink-router` でMAVLinkをUART↔UDP中継。`rtk_forwarder` でRTCM3をTCP→シリアル変換。2系統の通信を1台で処理。 |
-| **F9P Rover (H-RTK F9P Helical)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
+| **移動局 F9P (ZED-F9P, DroneCAN接続, 機体搭載)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
 | **Pixhawk 6C (ArduPilot)** | フライトコントローラ。TELEM1でMAVLink通信、CAN1でF9PからRTK位置情報を受信。ArduPilotがGPS_AUTO_SWITCHで最適GPSソースを自動選択。 |
 
 ### デバイス名とGPIOピン対応表
@@ -298,7 +301,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 │                                               │ (3.3V TTL)                  │
 │                                               ▼                             │
 │                                       ┌──────────────────┐                  │
-│                                       │  Rover F9P       │                  │
+│                                       │  Rover F9P (移動局)│                  │
 │                                       │  (UART2 RX2)     │                  │
 │                                       │                  │                  │
 │                                       │ ④ RTCM3処理      │                  │
@@ -1065,7 +1068,7 @@ GCS-UmemotoLab/
 - [mavlink-router](https://github.com/mavlink-router/mavlink-router)
 - [pyubx2 (u-blox UBX protocol)](https://pypi.org/project/pyubx2/)
 - [Holybro H-RTK F9P Docs](https://docs.holybro.com/gps-and-rtk-system/h-rtk-neo-f9p-series-rm3100-compass)
-- [u-blox NEO-F9P Datasheet](https://www.u-blox.com/en/product/neo-f9p)
+- [u-blox ZED-F9P Datasheet](https://www.u-blox.com/en/product/zed-f9p)
 - [PySide6](https://doc.qt.io/qtforpython/)
 
 ## ライセンス

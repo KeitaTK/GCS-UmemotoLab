@@ -6,7 +6,7 @@ Rover 側 F9P の UART2 を RTCM3 補正データ受信 + UBX-NAV-PVT 出力用�
 pyubx2 の UBXMessage.config_set() (CFG-VALSET) を f9p_configurator.py の
 パターンに従って使用し、冪等な設定を行う。
 
-対象: Rover 側 Holybro DroneCAN H-RTK F9P Helical (NEO-F9P)
+対象: Rover 側 Holybro DroneCAN H-RTK F9P Helical (ZED-F9P)
 用途: UART2 へ Raspberry Pi から RTCM3 補正データを直接注入する構成の初期設定
 
 既存の CAN 接続 (F9P→Pixhawk 位置情報供給) は変更なし。
@@ -80,7 +80,7 @@ _VERIFY_KEYS = [
 # CFG key IDs for response parsing (CFG-VALGET raw payload)
 # NOTE: These key IDs are derived from the u-blox F9P protocol.
 # If verification returns unexpected values, verify these key IDs
-# against the actual u-blox NEO-F9P Interface Description.
+# against the actual u-blox ZED-F9P Interface Description.
 # ------------------------------------------------------------------
 _KEY_CFG_UART2_BAUDRATE       = 0x40590001   # CFG-UART2-BAUDRATE
 _KEY_CFG_UART2INPROT_RTCM3X   = 0x40590004   # CFG-UART2INPROT-RTCM3X
