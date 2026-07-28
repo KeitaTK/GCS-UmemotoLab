@@ -19,7 +19,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import serial
-from pyubx2 import UBXMessage
+from pyubx2 import UBXMessage, SET
 
 # ==========================================================================
 # Layer bitmask for config_set
@@ -557,7 +557,7 @@ class F9pAllConfigurator:
         self._ser = self._open_serial()
         try:
             # UBX-CFG-RST: class=0x06(CFG), id=0x04(RST)
-            rst_msg = UBXMessage(0x06, 0x04, navBbrMask=0x0000, resetMode=0x00)
+            rst_msg = UBXMessage(0x06, 0x04, SET, navBbrMask=0x0000, resetMode=0x00)
             self._send_ubx(rst_msg.serialize())
             self.logger.info("UBX-CFG-RST sent (HW reset immediately, hot start)")
             return True
