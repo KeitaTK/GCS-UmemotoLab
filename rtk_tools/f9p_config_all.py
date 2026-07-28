@@ -62,22 +62,31 @@ _KEY_RATE_MEAS            = 0x30210001
 _KEY_RATE_NAV             = 0x30210002
 _KEY_MSGOUT_UBX_NAV_PVT_UART2 = 0x20910006
 
+# RTCM3 USB 出力キーID（実機確認済み）
+_KEY_MSGOUT_RTCM3_TYPE1005_USB = 0x209102C0
+_KEY_MSGOUT_RTCM3_TYPE1006_USB = 0x209102C5
+_KEY_MSGOUT_RTCM3_TYPE1074_USB = 0x20910361
+_KEY_MSGOUT_RTCM3_TYPE1084_USB = 0x20910366
+_KEY_MSGOUT_RTCM3_TYPE1094_USB = 0x2091036B
+_KEY_MSGOUT_RTCM3_TYPE1124_USB = 0x20910370
+_KEY_MSGOUT_RTCM3_TYPE1230_USB = 0x20910306
+
 _U4_KEY_IDS = {_KEY_UART1_BAUDRATE, _KEY_UART2_BAUDRATE}
 _I4_KEY_IDS = {_KEY_TMODE_LAT, _KEY_TMODE_LON, _KEY_TMODE_HEIGHT}
 _U2_KEY_IDS = {_KEY_RATE_MEAS, _KEY_RATE_NAV}
 
 # ==========================================================================
-# Full 30-key Configuration Table
+# Full 37-key Configuration Table (12 base UART1 + 7 base USB + 18 rover)
 # ==========================================================================
 
 def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
-    """Build the full 30-key configuration table with resolved dynamic values."""
+    """Build the full 37-key configuration table with resolved dynamic values."""
     lat_e7 = int(lat * 1e7)
     lon_e7 = int(lon * 1e7)
     alt_cm = int(alt * 100)
 
     return [
-        # === Base Station (12 keys: #1-12) ===
+        # === Base Station (19 keys: #1-12 UART1 + #31-37 USB) ===
         {"id": 1, "key": "CFG-TMODE-MODE",
          "expected": 2, "type": "U1", "role": "base",
          "desc": "FIXED Mode (2=Fixed)", "key_id": _KEY_TMODE_MODE},
@@ -114,6 +123,30 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
         {"id": 12, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS bias (1230)", "key_id": None},
+
+
+        # === Base Station USB RTCM3 (7 keys: #31-37) ===
+        {"id": 31, "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "Station ARP USB (1005)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1005_USB},
+        {"id": 32, "key": "CFG-MSGOUT-RTCM_3X_TYPE1006_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "Station ARP+Ant USB (1006)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1006_USB},
+        {"id": 33, "key": "CFG-MSGOUT-RTCM_3X_TYPE1074_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "GPS MSM4 USB (1074)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1074_USB},
+        {"id": 34, "key": "CFG-MSGOUT-RTCM_3X_TYPE1084_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "GLONASS MSM4 USB (1084)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1084_USB},
+        {"id": 35, "key": "CFG-MSGOUT-RTCM_3X_TYPE1094_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "Galileo MSM4 USB (1094)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1094_USB},
+        {"id": 36, "key": "CFG-MSGOUT-RTCM_3X_TYPE1124_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "BeiDou MSM4 USB (1124)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1124_USB},
+        {"id": 37, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_USB",
+         "expected": 1, "type": "U1", "role": "base",
+         "desc": "GLONASS bias USB (1230)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1230_USB},
 
         # === Rover (18 keys: #13-30) ===
         {"id": 13, "key": "CFG-UART2-BAUDRATE",
@@ -183,7 +216,7 @@ def _get_keys_by_role(keys: List[dict], role: str) -> List[dict]:
 # ==========================================================================
 # CFG-VALSET key groups (for write operations)
 # ==========================================================================
-_RTCM_MSG_KEYS = [
+_RTCM_MSG_KEYS_UART1 = [
     "CFG-MSGOUT-RTCM_3X_TYPE1005_UART1",
     "CFG-MSGOUT-RTCM_3X_TYPE1006_UART1",
     "CFG-MSGOUT-RTCM_3X_TYPE1074_UART1",
@@ -192,6 +225,36 @@ _RTCM_MSG_KEYS = [
     "CFG-MSGOUT-RTCM_3X_TYPE1124_UART1",
     "CFG-MSGOUT-RTCM_3X_TYPE1230_UART1",
 ]
+
+_RTCM_MSG_KEYS_USB = [
+    "CFG-MSGOUT-RTCM_3X_TYPE1005_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1006_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1074_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1084_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1094_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1124_USB",
+    "CFG-MSGOUT-RTCM_3X_TYPE1230_USB",
+]
+
+# Combined list (UART1 + USB)
+_RTCM_MSG_KEYS = _RTCM_MSG_KEYS_UART1 + _RTCM_MSG_KEYS_USB
+
+
+def _get_rtcm_keys_for_port(port_type: str) -> List[str]:
+    """port_type に応じた RTCM キーリストを返す。
+
+    Args:
+        port_type: "both", "uart1", "usb"
+    Returns:
+        キー名のリスト
+    """
+    if port_type == "uart1":
+        return _RTCM_MSG_KEYS_UART1
+    elif port_type == "usb":
+        return _RTCM_MSG_KEYS_USB
+    else:
+        return _RTCM_MSG_KEYS  # "both": all 14 keys
+
 
 _UART2_ROVER_CFG_KEYS = [
     ("CFG-UART2-BAUDRATE",              115200),
@@ -224,9 +287,11 @@ class F9pAllConfigurator:
     """DroneCAN F9P (ZED-F9P) 全設定値の書き込みと確認を行う。"""
 
     def __init__(self, serial_port: str, baudrate: int = 38400,
-                 logger: Optional[logging.Logger] = None):
+                 logger: Optional[logging.Logger] = None,
+                 port_type: str = "both"):
         self.serial_port = serial_port
         self.baudrate = baudrate
+        self.port_type = port_type  # "both", "uart1", "usb"
         self.logger = logger or logging.getLogger("F9pAllConfigurator")
         self._ser: Optional[serial.Serial] = None
 
@@ -475,12 +540,13 @@ class F9pAllConfigurator:
         """STEP2: RTCM3 出力メッセージ有効化 (CFG-VALSET)"""
         self._ser = self._open_serial()
         try:
-            cfg_data = [(k, 1) for k in _RTCM_MSG_KEYS]
+            keys = _get_rtcm_keys_for_port(self.port_type)
+            cfg_data = [(k, 1) for k in keys]
             layers = LAYER_ALL if save_to_flash else LAYER_RAM
             msg = UBXMessage.config_set(layers, 0, cfg_data)
             self._send_ubx(msg.serialize())
             self.logger.info(
-                f"[BASE Write] RTCM3: {len(_RTCM_MSG_KEYS)} msgs "
+                f"[BASE Write] RTCM3 ({self.port_type}): {len(keys)} msgs "
                 f"({'Flash' if save_to_flash else 'RAM'})"
             )
             if save_to_flash:
@@ -574,6 +640,12 @@ class F9pAllConfigurator:
     def verify_role(self, role: str, key_table: List[dict]) -> dict:
         """Verify all keys for a given role."""
         role_keys = _get_keys_by_role(key_table, role)
+        # Filter RTCM keys by port_type for verification
+        if role == "base" and self.port_type != "both":
+            if self.port_type == "uart1":
+                role_keys = [k for k in role_keys if "_USB" not in k["key"]]
+            elif self.port_type == "usb":
+                role_keys = [k for k in role_keys if "_UART1" not in k["key"]]
         label = "BASE" if role == "base" else "ROVER"
 
         summary = {
@@ -798,6 +870,10 @@ def main() -> int:
                         help="Base longitude (default: 139.1234567)")
     parser.add_argument("--alt", type=float, default=100.0,
                         help="Base altitude in meters (default: 100.0)")
+    parser.add_argument("--port-type", default="both",
+                        choices=["both", "uart1", "usb"],
+                        help="RTCM output port type: both(default), uart1, usb")
+
     parser.add_argument("--no-flash", action="store_true",
                         help="Skip Flash save (RAM only)")
     parser.add_argument("--no-reset", action="store_true",
@@ -848,7 +924,8 @@ def main() -> int:
             print(f"Error: --port required for --role {role}", file=sys.stderr)
             return 1
 
-        cfg = F9pAllConfigurator(serial_port=port, baudrate=baud, logger=logger)
+        cfg = F9pAllConfigurator(serial_port=port, baudrate=baud, logger=logger,
+                                  port_type=args.port_type)
 
         if args.mode == "write":
             write_ok: Dict[str, bool] = {}

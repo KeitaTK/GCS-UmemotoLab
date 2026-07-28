@@ -328,7 +328,8 @@ class F9pConfigMonitor:
         self.logger = logger or logging.getLogger("F9pConfigMonitor")
         self._baseline_path = baseline_path or _baseline_path(role, port)
         self._configurator = F9pAllConfigurator(
-            serial_port=port, baudrate=baudrate, logger=self.logger
+            serial_port=port, baudrate=baudrate, logger=self.logger,
+            port_type="both"
         )
 
     @property

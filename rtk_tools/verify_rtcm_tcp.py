@@ -382,9 +382,10 @@ def _print_summary(results: dict) -> None:
         print("      確認事項:")
         print("        1. CFG-MSGOUT-RTCM_3X_TYPE1005_UART1 = 1 ?")
         print("        2. CFG-MSGOUT-RTCM_3X_TYPE1006_UART1 = 1 ?")
-        print("        3. 再設定: python rtk_tools/f9p_config_all.py --role base \\")
+        print("        3. EVK-F9P(USB接続)の場合: CFG-MSGOUT-RTCM_3X_TYPE1005_USB = 1 ?")
+        print("        4. 再設定: python rtk_tools/f9p_config_all.py --role base \\")
         print("                        --port /dev/tty.usbmodemXXX")
-        print("        4. F9P のリブートを試す")
+        print("        5. F9P のリブートを試す")
 
     if not has_msm4 and not has_msm7:
         print()
