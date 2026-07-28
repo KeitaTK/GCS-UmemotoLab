@@ -29,6 +29,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | **systemd サービス** | Raspi起動時にRTK注入を自動開始（`rtk-uart2-inject.service`） |
 | **F9P 設定ツール** | Rover/基地局F9Pの自動設定（FIXED, RTCM3入出力, UBX出力） |
 | **F9P全設定管理** | `f9p_config_all.py`: 基地局12キー+移動局18キー=全30キーの一括書き込み→CFG-VALGET確認（write-verify） |
+| **F9P設定継続監視** | `f9p_config_monitor.py`: ベースライン比較・定期差分チェック |
 | **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
 
@@ -410,6 +411,36 @@ python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml --dr
 - NTRIP Caster が `ICY 200 OK` を返すこと
 - 受信データの先頭バイトが `0xD3`（RTCM3 プリアンブル）であること
 
+#### RTCM3 メッセージタイプ解析（verify_rtcm_tcp.py）
+
+`verify_rtcm_tcp.py` を使うと、RTCM3 ストリームに含まれるメッセージタイプを解析し、RTK 品質評価を行うことができます。
+
+```bash
+# 30秒間受信してメッセージタイプ分布を解析
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --duration 30
+
+# 単発受信（1メッセージ）
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --once
+
+# 継続モニタリング
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --monitor
+```
+
+**解析対象メッセージタイプ:**
+| MT | 内容 | RTK品質への寄与 |
+|----|------|---------------|
+| 1005 | Stationary RTK Reference Station ARP | 基地局座標定義（必須） |
+| 1006 | Stationary RTK Reference Station ARP with height | 基地局座標 + アンテナ高 |
+| 1074 | GPS MSM4 | GPS完全擬似距離 + 搬送波位相 |
+| 1084 | GPS MSM7 | GPS拡張擬似距離 + 搬送波位相（高精度） |
+| 1094 | Galileo MSM7 | Galileo拡張擬似距離 + 搬送波位相 |
+| 1124 | BeiDou MSM7 | BeiDou拡張擬似距離 + 搬送波位相 |
+| 1230 | GLONASS Code-Phase Biases | GLONASSコード位相バイアス |
+
+**RTK品質評価:**
+- Station ARP（1005/1006）の有無 → 基地局座標が正しく定義されているか
+- MSM4/MSM7 の有無 → 搬送波位相補正データが利用可能か（FIXED 到達に必須）
+
 #### STEP 3: RTCM 注入サービス起動
 
 `rtk_forwarder_service.py` を起動し、基地局からのRTCM3データを F9P UART2 に転送します。
@@ -693,6 +724,28 @@ python rtk_tools/f9p_config_all.py --role base --port /dev/tty.usbmodemXXX --mod
 > **Note**: 既存の `f9p_configurator.py`、`f9p_rover_config.py`、`f9p_verify_config.py` は個別にも引き続き使用可能です。
 > `f9p_config_all.py` はこれらを統合し、より簡便な運用を提供します。
 
+### 継続監視モード (f9p_config_monitor.py)
+
+`f9p_config_monitor.py` は、F9P の全設定を継続的に監視するツールです。初回実行時に現在の設定状態を**ベースライン**として保存し、以降は指定間隔で設定を再取得してベースラインとの差分を検出します。これにより、意図しない設定変更や設定の劣化を早期に発見できます。
+
+```bash
+# 移動局 F9P を30秒間隔で継続監視
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --interval 30
+
+# 基地局 F9P の監視
+python rtk_tools/f9p_config_monitor.py --role base --port /dev/tty.usbmodemXXX --interval 60
+```
+
+**主な機能:**
+| 機能 | 説明 |
+|------|------|
+| **ベースライン保存** | 初回実行時に現在の全設定をベースラインとして JSON に保存 |
+| **定期 verify** | 指定間隔（`--interval` 秒）で設定を再取得し、CFG-VALGET で確認 |
+| **差分検出** | ベースラインとの比較により `changed`（値変更）/ `missing`（キー消失）/ `new`（新規キー）を検出 |
+| **JSON 出力** | 差分検出結果を JSON 形式で出力（ログや CI/CD 連携に利用可能） |
+
+> **運用シナリオ**: 長時間のフライト前や定期メンテナンス時に実行し、F9P の設定が意図した状態を維持していることを確認します。基地局の TMODE3 設定や移動局の UART2 入出力プロトコル設定の変化を即座に検知できます。
+
 ---
 
 ## セットアップ
@@ -924,7 +977,9 @@ GCS-UmemotoLab/
 │   ├── gcs_fix_monitor.py         # MAVLink GPS_RAW_INT Fix監視 (新)
 │   ├── rtk_base_station_v2.py     # 基地局統合サービス
 │   ├── rtk_data_collector.py      # RTKデータコレクター
-│   └── config_loader.py           # 設定ローダー
+│   ├── config_loader.py           # 設定ローダー
+│   ├── f9p_config_monitor.py      # F9P設定継続監視
+│   └── verify_rtcm_tcp.py         # RTCM3メッセージタイプ解析
 ├── deploy/                     # デプロイメント
 │   ├── rtk-uart2-inject.service   # systemd サービス定義
 │   ├── install_rtk_uart2_service.sh
