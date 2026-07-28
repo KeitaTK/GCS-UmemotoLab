@@ -542,6 +542,32 @@ class F9pAllConfigurator:
             self._close_serial()
 
     # ------------------------------------------------------------------
+    # Reset
+    # ------------------------------------------------------------------
+
+    def send_reset(self) -> bool:
+        """Send UBX-CFG-RST to reset the F9P (hardware reset immediately, hot start).
+
+        Payload:
+          - navBbrMask: 0x0000 (hot start — don't clear BBR)
+          - resetMode:  0x00   (hardware reset immediately)
+
+        Returns True on success, False on error.
+        """
+        self._ser = self._open_serial()
+        try:
+            # UBX-CFG-RST: class=0x06(CFG), id=0x04(RST)
+            rst_msg = UBXMessage(0x06, 0x04, navBbrMask=0x0000, resetMode=0x00)
+            self._send_ubx(rst_msg.serialize())
+            self.logger.info("UBX-CFG-RST sent (HW reset immediately, hot start)")
+            return True
+        except Exception as e:
+            self.logger.error(f"UBX-CFG-RST failed: {e}")
+            return False
+        finally:
+            self._close_serial()
+
+    # ------------------------------------------------------------------
     # Verify: Full role check
     # ------------------------------------------------------------------
 
@@ -604,8 +630,17 @@ class F9pAllConfigurator:
 
     def write_and_verify(self, role: str, key_table: List[dict],
                          lat: float = 0, lon: float = 0, alt: float = 0,
-                         save_to_flash: bool = True) -> dict:
-        """Write all config for a role, then verify."""
+                         save_to_flash: bool = True,
+                         no_reset: bool = False,
+                         reset_delay: int = 3) -> dict:
+        """Write all config for a role, optionally reset, then verify.
+
+        When save_to_flash=True and no_reset=False:
+          1. Write all config to Flash
+          2. Send UBX-CFG-RST (HW reset immediately)
+          3. Wait ``reset_delay`` seconds for device reboot
+          4. Verify all keys
+        """
         write_results: Dict[str, bool] = {}
         label = "BASE" if role == "base" else "ROVER"
 
@@ -613,6 +648,8 @@ class F9pAllConfigurator:
         self.logger.info(f"F9P {label}: Write -> Verify")
         self.logger.info(f"  Port: {self.serial_port} @ {self.baudrate}")
         self.logger.info(f"  Save: {'Flash' if save_to_flash else 'RAM'}")
+        self.logger.info(
+            f"  Reset: {'skip' if no_reset else f'UBX-CFG-RST (delay={reset_delay}s)'}")
         self.logger.info("=" * 60)
 
         if role == "base":
@@ -627,10 +664,23 @@ class F9pAllConfigurator:
             write_results["gnss_uart1"] = self.write_rover_gnss(
                 save_to_flash)
 
+        write_all_ok = all(write_results.values())
+
+        # --- Device reset ---
+        if write_all_ok and not no_reset:
+            self.logger.info(f"Sending UBX-CFG-RST to {label}...")
+            if self.send_reset():
+                self.logger.info(
+                    f"Reset sent. Waiting {reset_delay}s for device reboot...")
+                time.sleep(reset_delay)
+            else:
+                self.logger.warning(
+                    "Reset failed — verify may read stale values")
+
         verify_result = self.verify_role(role, key_table)
 
         all_ok = (
-            all(write_results.values())
+            write_all_ok
             and verify_result.get("all_verified", False)
         )
 
@@ -750,6 +800,10 @@ def main() -> int:
                         help="Base altitude in meters (default: 100.0)")
     parser.add_argument("--no-flash", action="store_true",
                         help="Skip Flash save (RAM only)")
+    parser.add_argument("--no-reset", action="store_true",
+                        help="Skip UBX-CFG-RST after write (no device reset)")
+    parser.add_argument("--reset-delay", type=int, default=3,
+                        help="Wait seconds after reset before verify (default: 3)")
     parser.add_argument("--json", action="store_true",
                         help="Output as JSON")
     parser.add_argument("--log-level", default="WARNING",
@@ -807,11 +861,21 @@ def main() -> int:
             else:
                 write_ok["uart2"] = cfg.write_rover_uart2(save_to_flash)
                 write_ok["gnss_uart1"] = cfg.write_rover_gnss(save_to_flash)
+
+            write_all_ok = all(write_ok.values())
+
+            # --- Device reset after write ---
+            if write_all_ok and not args.no_reset:
+                logger.info(
+                    f"Sending UBX-CFG-RST to {role.upper()}...")
+                if not cfg.send_reset():
+                    logger.warning("Reset failed")
+
             results[role] = {
                 "role": role, "port": port,
-                "write": write_ok, "all_ok": all(write_ok.values()),
+                "write": write_ok, "all_ok": write_all_ok,
             }
-            if not results[role]["all_ok"]:
+            if not write_all_ok:
                 exit_code = 1
 
         elif args.mode == "verify":
@@ -827,6 +891,8 @@ def main() -> int:
                 role, key_table,
                 lat=args.lat, lon=args.lon, alt=args.alt,
                 save_to_flash=save_to_flash,
+                no_reset=args.no_reset,
+                reset_delay=args.reset_delay,
             )
             results[role] = result
             if not result.get("all_ok"):
