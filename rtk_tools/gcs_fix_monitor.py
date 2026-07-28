@@ -13,7 +13,7 @@ MAVLink fix_type マッピング（carrSoln 互換ログ用）:
   fix_type 6 (RTK_FIXED)     → carrSoln=2 (FIXED)
 
 ログフォーマット: rtcm_fix_transition.log との互換性を維持
-  timestamp, elapsed_sec, carrSoln, carrSoln_name, numSV, hAcc, lat, lon, transition
+  timestamp, elapsed_sec, carrSoln, carrSoln_name, numSV, hAcc, vdop, lat, lon, transition
 
 【使用例】
   # RTK Fixed 待機 (最大120秒)
@@ -32,6 +32,7 @@ MAVLink fix_type マッピング（carrSoln 互換ログ用）:
 
 import argparse
 import csv
+import json
 import logging
 import os
 import sys
@@ -85,6 +86,7 @@ class GcsFixMonitor:
 
     FIX_TRANSITION_LOG_DIR = "logs"
     FIX_TRANSITION_LOG_FILE = os.path.join(FIX_TRANSITION_LOG_DIR, "rtcm_fix_transition.log")
+    FIX_JSON_LOG_FILE = os.path.join(FIX_TRANSITION_LOG_DIR, "rtcm_fix_transition.jsonl")
 
     def __init__(
         self,
@@ -137,6 +139,7 @@ class GcsFixMonitor:
                     "lon": drone.get("lon"),
                     "alt": drone.get("alt"),
                     "hdop": drone.get("hdop"),
+                    "vdop": drone.get("vdop"),
                 }
 
         return None
@@ -163,6 +166,27 @@ class GcsFixMonitor:
                 "transition",
             ])
             csv_file.flush()
+        if os.path.getsize(self.FIX_TRANSITION_LOG_FILE) == 0:
+            csv_writer.writerow([
+                "timestamp",
+                "elapsed_sec",
+                "carrSoln",
+                "carrSoln_name",
+                "numSV",
+                "hAcc",
+                "vdop",
+                "lat",
+                "lon",
+                "transition",
+            ])
+            csv_file.flush()
+        return csv_file, csv_writer
+
+    def _write_json_record(self, record: dict) -> None:
+        """Write a single JSON line record for structured analysis."""
+        os.makedirs(self.FIX_TRANSITION_LOG_DIR, exist_ok=True)
+        with open(self.FIX_JSON_LOG_FILE, "a") as f:
+            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
         return csv_file, csv_writer
 
     # ------------------------------------------------------------------
@@ -227,11 +251,28 @@ class GcsFixMonitor:
                     result.get("carrSoln_name", "?"),
                     result.get("numSV", 0),
                     f"{result.get('hdop', 0) or 0:.3f}",
+                    f"{result.get('vdop', '') or ''}",
                     f"{result.get('lat', 0) or 0:.7f}",
                     f"{result.get('lon', 0) or 0:.7f}",
                     transition,
                 ])
                 csv_file.flush()
+
+                # JSON Lines record
+                json_rec = {
+                    "timestamp": now_str,
+                    "elapsed_sec": round(elapsed, 1),
+                    "carrSoln": cs,
+                    "carrSoln_name": result.get("carrSoln_name", "?"),
+                    "numSV": result.get("numSV", 0),
+                    "hdop": result.get("hdop"),
+                    "vdop": result.get("vdop"),
+                    "lat": result.get("lat"),
+                    "lon": result.get("lon"),
+                    "alt": result.get("alt"),
+                    "transition": transition or None,
+                }
+                self._write_json_record(json_rec)
 
                 logger.info(
                     f"  t={elapsed:5.1f}s  fix_type={fix_type}"

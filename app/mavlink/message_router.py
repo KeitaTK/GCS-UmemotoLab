@@ -5,11 +5,13 @@ from pymavlink import mavutil
 from rtk_tools.telemetry_store import TelemetryStore
 
 class MessageRouter:
-    def __init__(self, mavlink_conn, telemetry_store, command_dispatcher=None):
+    def __init__(self, mavlink_conn, telemetry_store,
+                 command_dispatcher=None, gps_logger=None):
         self.logger = logging.getLogger(__name__)
         self.mavlink_conn = mavlink_conn
         self.telemetry_store = telemetry_store
         self.command_dispatcher = command_dispatcher
+        self.gps_logger = gps_logger
         self.running = False
         self.thread = None
 
@@ -142,6 +144,21 @@ class MessageRouter:
                 # Store telemetry data (skip STATUSTEXT as it's stored separately in ring buffer)
                 if msg_type != 'STATUSTEXT':
                     self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
+                # Store telemetry data (skip STATUSTEXT as it's stored separately in ring buffer)
+                if msg_type != 'STATUSTEXT':
+                    self.telemetry_store.update(system_id=system_id, message_type=msg_type, payload=msg)
+
+                # ── GPS Logger integration ──────────────────────────
+                if self.gps_logger is not None:
+                    try:
+                        if msg_type == 'HEARTBEAT':
+                            self.gps_logger.on_heartbeat(system_id, msg)
+                        elif msg_type in ('GPS_RAW_INT', 'GPS_GLOBAL_ORIGIN',
+                                          'GPS_RTK', 'GPS2_RTK',
+                                          'GLOBAL_POSITION_INT'):
+                            self.gps_logger.on_gps_message(system_id, msg)
+                    except Exception as e:
+                        self.logger.debug(f"GPS logger error: {e}")
             
         except Exception as e:
             self.logger.debug(f"MAVLink parse error: {e}")
