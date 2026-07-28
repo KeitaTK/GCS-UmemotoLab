@@ -120,8 +120,8 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "expected": 115200, "type": "U4", "role": "rover",
          "desc": "UART2 baudrate", "key_id": _KEY_UART2_BAUDRATE},
         {"id": 14, "key": "CFG-UART2INPROT-UBX",
-         "expected": 0, "type": "U1", "role": "rover",
-         "desc": "UBX input disabled", "key_id": _KEY_UART2INPROT_UBX},
+         "expected": 1, "type": "U1", "role": "rover",
+         "desc": "UBX input enabled (RTCM3+UBX mixed)", "key_id": _KEY_UART2INPROT_UBX},
         {"id": 15, "key": "CFG-UART2INPROT-NMEA",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NMEA input disabled", "key_id": _KEY_UART2INPROT_NMEA},
@@ -195,7 +195,7 @@ _RTCM_MSG_KEYS = [
 
 _UART2_ROVER_CFG_KEYS = [
     ("CFG-UART2-BAUDRATE",              115200),
-    ("CFG-UART2INPROT-UBX",             0),
+    ("CFG-UART2INPROT-UBX",             1),
     ("CFG-UART2INPROT-NMEA",            0),
     ("CFG-UART2INPROT-RTCM3X",          1),
     ("CFG-UART2OUTPROT-UBX",            0),
