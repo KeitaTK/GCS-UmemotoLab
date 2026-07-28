@@ -32,6 +32,7 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | **F9P設定継続監視** | `f9p_config_monitor.py`: ベースライン比較・定期差分チェック |
 | **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
+| **MAVLink GPSデータ収集** | `gps_logger.py`: GPS_RAW_INT/GPS_RTK等をCSV/JSONLで保存 |
 
 ---
 
@@ -416,7 +417,7 @@ python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml --dr
 
 #### RTCM3 メッセージタイプ解析（verify_rtcm_tcp.py）
 
-`verify_rtcm_tcp.py` を使うと、RTCM3 ストリームに含まれるメッセージタイプを解析し、RTK 品質評価を行うことができます。
+`verify_rtcm_tcp.py` は、TCP:2101 から RTCM3 ストリームをキャプチャし、含まれるメッセージタイプを集計・解析して RTK 品質評価を行うツールです。1005/1006/1074/1084/1094/1124/1230 の各メッセージタイプの出現回数を分析し、Station ARP や MSM4/MSM7 の有無から RTK FIXED 到達可能性を評価します。
 
 ```bash
 # 30秒間受信してメッセージタイプ分布を解析
@@ -737,6 +738,12 @@ python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --interv
 
 # 基地局 F9P の監視
 python rtk_tools/f9p_config_monitor.py --role base --port /dev/tty.usbmodemXXX --interval 60
+
+# 単発チェック（一度だけ） → 差分検出結果をJSON出力
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --once --json
+
+# ベースラインをリセットして再取得
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --reset-baseline
 ```
 
 **主な機能:**
@@ -967,7 +974,8 @@ GCS-UmemotoLab/
 │   ├── mavlink/
 │   │   ├── connection.py       # UDP/Serial接続管理
 │   │   ├── router.py           # メッセージルーター
-│   │   └── message_router.py
+│   │   ├── message_router.py
+│   │   └── gps_logger.py       # MAVLink GPSデータ収集（CSV/JSONL）
 │   └── rtk_tools/              # GCS側RTKツール（MAVLink経由: 従来パス）
 │       ├── command_dispatcher.py  # コマンド送信（Arm/ForceArm等）
 │       ├── guided_control.py      # Guidedモード制御
