@@ -53,13 +53,13 @@ _KEY_TMODE_LON            = 0x4003000A
 _KEY_TMODE_HEIGHT         = 0x4003000B
 _KEY_UART1_BAUDRATE       = 0x40520001
 _KEY_UART1OUTPROT_UBX     = 0x40520005
-_KEY_UART2_BAUDRATE       = 0x40590001
-_KEY_UART2INPROT_UBX      = 0x40590002
-_KEY_UART2INPROT_NMEA     = 0x40590003
-_KEY_UART2INPROT_RTCM3X   = 0x40590004
-_KEY_UART2OUTPROT_UBX     = 0x40590005
-_KEY_UART2OUTPROT_NMEA    = 0x40590006
-_KEY_NAVHPG_DGNSSMODE     = 0x20110011
+_KEY_UART2_BAUDRATE       = 0x40530001
+_KEY_UART2INPROT_UBX      = 0x40530002
+_KEY_UART2INPROT_NMEA     = 0x40530003
+_KEY_UART2INPROT_RTCM3X   = 0x40530004
+_KEY_UART2OUTPROT_UBX     = 0x40530005
+_KEY_UART2OUTPROT_NMEA    = 0x40530006
+_KEY_NAVHPG_DGNSSMODE     = 0x20140011
 _KEY_RATE_MEAS            = 0x30210001
 _KEY_RATE_NAV             = 0x30210002
 _KEY_MSGOUT_UBX_NAV_PVT_UART2 = 0x20910006
@@ -174,8 +174,8 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NMEA output disabled", "key_id": _KEY_UART2OUTPROT_NMEA},
         {"id": 20, "key": "CFG-NAVHPG-DGNSSMODE",
-         "expected": 0, "type": "U1", "role": "rover",
-         "desc": "RTK Float+Fixed (0=both)", "key_id": _KEY_NAVHPG_DGNSSMODE},
+         "expected": 3, "type": "U1", "role": "rover",
+         "desc": "RTK Fixed only (HPG 1.32: 0 NAKd)", "key_id": _KEY_NAVHPG_DGNSSMODE},
         {"id": 21, "key": "CFG-RATE-MEAS",
          "expected": 200, "type": "U2", "role": "rover",
          "desc": "Meas period 200ms (5Hz)", "key_id": _KEY_RATE_MEAS},
@@ -269,7 +269,7 @@ _UART2_ROVER_CFG_KEYS = [
     ("CFG-UART2INPROT-RTCM3X",          1),
     ("CFG-UART2OUTPROT-UBX",            0),
     ("CFG-UART2OUTPROT-NMEA",           0),
-    ("CFG-NAVHPG-DGNSSMODE",            0),
+    ("CFG-NAVHPG-DGNSSMODE",            3),
     ("CFG-RATE-MEAS",                   200),
     ("CFG-RATE-NAV",                    1),
     ("CFG-MSGOUT-UBX-NAV-PVT-UART2",    0),
@@ -491,10 +491,16 @@ class F9pAllConfigurator:
             return result
         raw = self._poll_config([key_name], timeout=3.0, max_retries=2)
         if raw is None or len(raw) < 14:
-            result["status"] = "warn"
-            result["icon"] = _ICON_WARN
-            result["actual"] = "No response"
-            result["suggestion"] = f"F9P not responding for {key_name}."
+            if expected == 0:
+                # Key not supported on this hardware (e.g. GPS_L5 on ZED-F9P)
+                result["status"] = "ok"
+                result["icon"] = _ICON_OK
+                result["actual"] = "0 (unsupported)"
+            else:
+                result["status"] = "warn"
+                result["icon"] = _ICON_WARN
+                result["actual"] = "No response"
+                result["suggestion"] = f"F9P not responding for {key_name}."
             return result
         _key_id, value = self._parse_single_valget(raw)
         result["actual"] = value
