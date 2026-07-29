@@ -906,7 +906,7 @@ def _run_full_mode(args, key_table, logger) -> int:
         phase += 1
         print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Write (SSH) ===\n{'='*70}")
         rover_port = args.rover_port
-        script = str(repo_root / "rtk_tools" / "f9p_config_all.py")
+        script = "rtk_tools/f9p_config_all.py"
         cmd = (f"cd {raspi_path} && python3 {script} "
                f"--role rover --mode write --port {rover_port} --baud {rover_baud} "
                f"--no-reset --log-level WARNING")
@@ -1006,8 +1006,8 @@ def _run_full_mode(args, key_table, logger) -> int:
     # ---- Phase 7: RTCM Injection ----
     phase += 1
     print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: RTCM Injection Start ===\n{'='*70}")
-    fwd_script = str(repo_root / "rtk_tools" / "rtk_forwarder_service.py")
-    fwd_conf = str(repo_root / "config" / "rtk_forwarder.yml")
+    fwd_script = "rtk_tools/rtk_forwarder_service.py"
+    fwd_conf = "config/rtk_forwarder.yml"
     subprocess.run(["ssh", "-o", "ConnectTimeout=10",
                     f"{raspi_user}@{args.raspi_host}",
                     "pkill -f rtk_forwarder_service.py 2>/dev/null; sleep 1"],
