@@ -1,0 +1,16 @@
+[Unit]
+Description=TCP-to-Serial Bridge (tcp2serial)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=taki
+WorkingDirectory=/home/taki/GCS-UmemotoLab
+ExecStart=/home/taki/.venv/bin/python /home/taki/GCS-UmemotoLab/rtk_tools/tcp2serial.py 0.0.0.0 2102 /dev/ttyAMA4
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
