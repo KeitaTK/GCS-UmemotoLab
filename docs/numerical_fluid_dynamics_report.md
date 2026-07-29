@@ -54,7 +54,11 @@ $$
 
 MAC系解法は，Harlowら（1965）によるMAC（Marker and Cell）法を源流とする非圧縮性流れの数値解析手法群である．MAC法では，自由表面を捉える目的で格子中に仮想点（Marker）を配置して流れに乗せて移動させるとともに，格子（Cell）を用いた非圧縮性流れの計算アルゴリズムが示された．流速を格子境界に，圧力やスカラー量を格子中心に配置するスタッガード格子（Staggered Grid）が用いられたことも，MAC法の提案の一部として登場した．
 
-その後，格子を用いた非圧縮性流れの数値解析法の部分だけに注目して改良されたSMAC（Simplified MAC）法，HSMAC（Highly Simplified MAC）法，Fractional Step法などが提案されている．また，これに関連する方法として，圧縮性流れと非圧縮性流れを統一的に解析できるICE（Implicit Continuous-fluid Eulerian）法★，移動や変形する物体周りの流れを解析するALE（Arbitrary Lagrangian-Eulerian）法★，気液混相流れを解析するVOF（Volume of Fluid）法★などがあり，MAC系解法として各方面に発展していった．
+その後，格子を用いた非圧縮性流れの数値解析法の部分だけに注目して改良されたSMAC（Simplified MAC）法，HSMAC（Highly Simplified MAC）法，Fractional Step法などが提案されている．また，これに関連する方法として，MAC系解法から派生した以下のような特殊な目的を持つ解法があり，各方面に発展していった．
+
+- **ICE（Implicit Continuous-fluid Eulerian）法 ★**：圧縮性流れと非圧縮性流れを統一的に解析できる解法である．圧縮性から非圧縮性までを同一の枠組みで扱うことを目的とし，マッハ数がゼロに近い非圧縮性極限まで解析可能であることが特徴である．
+- **ALE（Arbitrary Lagrangian-Eulerian）法 ★**：移動や変形する物体周りの流れを解析する解法である．格子を空間に固定せず物体の移動・変形に追従させることを目的とし，任意のLagrange-Euler的な記述により流体-構造連成問題に対応できることが特徴である．
+- **VOF（Volume of Fluid）法 ★**：気液混相流れを解析する解法である．気液界面を流体体積率により追跡することを目的とし，自由表面流れの数値解析を可能にすることが特徴である．
 
 ### 2.2 SMAC法はどのような手順で計算する方法か
 
