@@ -71,9 +71,9 @@ NTRIP_PASS = "xxu2w5"
 NTRIP_USER_AGENT = "NTRIP PythonClient"
 
 # GGA defaults (ichimill reference position)
-GGA_LAT = 36.069351
-GGA_LON = 136.241050
-GGA_ALT = 56.25
+GGA_LAT = 36.075716
+GGA_LON = 136.213434
+GGA_ALT = 51.0
 GGA_INTERVAL_SEC = 10
 
 # Defaults
