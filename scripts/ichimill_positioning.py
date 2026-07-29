@@ -3,12 +3,10 @@
 ichimill_positioning.py — イチミルNTRIP基地局 全自動測位スクリプト
 
 処理フロー:
-  1. シリアル接続:
-       UBX用: /dev/tty.usbmodem114301 (--port)
-       RTCM3補正入力用: /dev/tty.usbmodemSN234567892 (--rtcm-port)
+  1. シリアル接続 (/dev/tty.usbmodem114301, 115200)
   2. UBX-CFG-VALSET: TMODE3=0 (無効化)
   3. UBX-CFG-VALSET: CFG-UART1INPROT-RTCM3X=1 (key_id=0x40520004)
-  4. NTRIP受信スレッド起動 (GET+Basic認証+GGA+RTCM3→RTCMポートに注入)
+  4. NTRIP受信スレッド起動 (GET+Basic認証+GGA+RTCM3→シリアル注入)
   5. UBX-NAV-PVT ポーリング: fixType=6, carrSoln=2 を最大300秒待つ
   6. FIXED後 600秒間 1秒間隔で NAV-PVT 収集 (carrSoln=2 のみ)
   7. lat/lon/height の平均と標準偏差を算出
@@ -19,8 +17,6 @@ ichimill_positioning.py — イチミルNTRIP基地局 全自動測位スクリ�
 Usage:
   python scripts/ichimill_positioning.py
   python scripts/ichimill_positioning.py --port /dev/tty.usbmodem114301
-  python scripts/ichimill_positioning.py --rtcm-port /dev/tty.usbmodemSN234567892
-  python scripts/ichimill_positioning.py --port /dev/tty.usbmodem114301 --rtcm-port /dev/tty.usbmodemSN234567892
   python scripts/ichimill_positioning.py --collect-sec 600 --fix-timeout 300
 """
 
@@ -82,7 +78,6 @@ GGA_INTERVAL_SEC = 10
 
 # Defaults
 DEFAULT_PORT = "/dev/tty.usbmodem114301"
-DEFAULT_RTCM_PORT = "/dev/tty.usbmodemSN234567892"
 DEFAULT_BAUDRATE = 115200
 DEFAULT_FIX_TIMEOUT = 300
 DEFAULT_COLLECT_SEC = 600
@@ -448,20 +443,17 @@ class IchimillPositioner:
     def __init__(
         self,
         port: str = DEFAULT_PORT,
-        rtcm_port: str = DEFAULT_RTCM_PORT,
         baudrate: int = DEFAULT_BAUDRATE,
         fix_timeout: float = DEFAULT_FIX_TIMEOUT,
         collect_sec: float = DEFAULT_COLLECT_SEC,
         collect_interval: float = DEFAULT_COLLECT_INTERVAL,
     ):
         self.port = port
-        self.rtcm_port = rtcm_port
         self.baudrate = baudrate
         self.fix_timeout = fix_timeout
         self.collect_sec = collect_sec
         self.collect_interval = collect_interval
-        self._ubx_ser: serial.Serial | None = None
-        self._rtcm_ser: serial.Serial | None = None
+        self._ser: serial.Serial | None = None
         self._ntrip: NtripGgaClient | None = None
         self._shutdown = False
 
@@ -472,35 +464,25 @@ class IchimillPositioner:
         logger.info("Signal %d received, shutting down...", signum)
         self._shutdown = True
 
-    def _open_serials(self):
-        """Open both UBX and RTCM3 serial ports."""
-        logger.info("Opening UBX serial: %s @ %d bps", self.port, self.baudrate)
-        self._ubx_ser = serial.Serial(self.port, self.baudrate, timeout=1.0)
+    def _open_serial(self) -> serial.Serial:
+        logger.info("Opening serial: %s @ %d bps", self.port, self.baudrate)
+        ser = serial.Serial(self.port, self.baudrate, timeout=1.0)
         time.sleep(0.3)
-        self._ubx_ser.reset_input_buffer()
-        self._ubx_ser.reset_output_buffer()
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+        return ser
 
-        logger.info("Opening RTCM3 serial: %s @ %d bps", self.rtcm_port, self.baudrate)
-        self._rtcm_ser = serial.Serial(self.rtcm_port, self.baudrate, timeout=1.0)
-        time.sleep(0.3)
-        self._rtcm_ser.reset_input_buffer()
-        self._rtcm_ser.reset_output_buffer()
-
-    def _close_serials(self):
-        """Close both serial ports."""
-        if self._ubx_ser and self._ubx_ser.is_open:
-            self._ubx_ser.close()
-            self._ubx_ser = None
-        if self._rtcm_ser and self._rtcm_ser.is_open:
-            self._rtcm_ser.close()
-            self._rtcm_ser = None
+    def _close_serial(self):
+        if self._ser and self._ser.is_open:
+            self._ser.close()
+            self._ser = None
 
     def _send_ubx(self, data: bytes):
-        if not self._ubx_ser or not self._ubx_ser.is_open:
-            raise RuntimeError("UBX serial not open")
-        self._ubx_ser.reset_input_buffer()
-        self._ubx_ser.write(data)
-        self._ubx_ser.flush()
+        if not self._ser or not self._ser.is_open:
+            raise RuntimeError("Serial not open")
+        self._ser.reset_input_buffer()
+        self._ser.write(data)
+        self._ser.flush()
 
     # ── CFG-VALSET steps ────────────────────────────────────────────────
 
@@ -511,7 +493,7 @@ class IchimillPositioner:
             cfg_data = [("CFG-TMODE-MODE", 0)]
             msg = build_cfg_valset(cfg_data, LAYER_RAM)
             self._send_ubx(msg)
-            ack = read_ubx_response(self._ubx_ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=2.0)
+            ack = read_ubx_response(self._ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=2.0)
             if ack:
                 logger.info("  ✓ TMODE3 disabled (ACK received)")
             else:
@@ -528,7 +510,7 @@ class IchimillPositioner:
             cfg_data = [("CFG-UART1INPROT-RTCM3X", 1)]
             msg = build_cfg_valset(cfg_data, LAYER_RAM)
             self._send_ubx(msg)
-            ack = read_ubx_response(self._ubx_ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=2.0)
+            ack = read_ubx_response(self._ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=2.0)
             if ack:
                 logger.info("  ✓ RTCM3 input enabled (ACK received)")
             else:
@@ -545,7 +527,7 @@ class IchimillPositioner:
             self._send_ubx(poll)
         except Exception:
             return None
-        raw = read_ubx_response(self._ubx_ser, UBX_CLS_NAV, UBX_MID_NAV_PVT, timeout=timeout)
+        raw = read_ubx_response(self._ser, UBX_CLS_NAV, UBX_MID_NAV_PVT, timeout=timeout)
         if raw is None:
             return None
         return parse_nav_pvt(raw)
@@ -734,7 +716,7 @@ class IchimillPositioner:
             time.sleep(0.5)
 
             ack = read_ubx_response(
-                self._ubx_ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=3.0
+                self._ser, UBX_CLS_CFG, UBX_MID_ACK_ACK, timeout=3.0
             )
             if ack:
                 logger.info(
@@ -754,8 +736,7 @@ class IchimillPositioner:
         """Execute the full auto-positioning workflow."""
         logger.info("=" * 60)
         logger.info("  イチミルNTRIP基地局 全自動測位")
-        logger.info("  UBX Port:  %s @ %d bps", self.port, self.baudrate)
-        logger.info("  RTCM Port: %s @ %d bps", self.rtcm_port, self.baudrate)
+        logger.info("  Port: %s @ %d bps", self.port, self.baudrate)
         logger.info(
             "  Fix timeout: %.0fs  |  Collect: %.0fs",
             self.fix_timeout, self.collect_sec,
@@ -764,11 +745,11 @@ class IchimillPositioner:
 
         result = {"success": False, "lat": None, "lon": None, "alt": None}
 
-        # ── Open serial ports ──
+        # ── Open serial ──
         try:
-            self._open_serials()
+            self._ser = self._open_serial()
         except Exception as exc:
-            logger.error("Failed to open serial ports: %s", exc)
+            logger.error("Failed to open serial: %s", exc)
             return result
 
         try:
@@ -780,8 +761,8 @@ class IchimillPositioner:
                 return result
             time.sleep(0.3)
 
-            logger.info("STEP 3: Starting NTRIP + GGA client (RTCM port) ...")
-            self._ntrip = NtripGgaClient(serial_port=self._rtcm_ser)
+            logger.info("STEP 3: Starting NTRIP + GGA client ...")
+            self._ntrip = NtripGgaClient(serial_port=self._ser)
             self._ntrip.start()
             time.sleep(2.0)
 
@@ -829,7 +810,7 @@ class IchimillPositioner:
         finally:
             if self._ntrip:
                 self._ntrip.stop()
-            self._close_serials()
+            self._close_serial()
 
         if result["success"]:
             logger.info("")
@@ -856,11 +837,7 @@ def main():
     )
     parser.add_argument(
         "--port", default=DEFAULT_PORT,
-        help=f"UBX serial port (default: {DEFAULT_PORT})",
-    )
-    parser.add_argument(
-        "--rtcm-port", default=DEFAULT_RTCM_PORT,
-        help=f"RTCM3 correction serial port (default: {DEFAULT_RTCM_PORT})",
+        help=f"Serial port (default: {DEFAULT_PORT})",
     )
     parser.add_argument(
         "--baudrate", type=int, default=DEFAULT_BAUDRATE,
@@ -892,7 +869,6 @@ def main():
 
     positioner = IchimillPositioner(
         port=args.port,
-        rtcm_port=args.rtcm_port,
         baudrate=args.baudrate,
         fix_timeout=args.fix_timeout,
         collect_sec=args.collect_sec,
