@@ -14,6 +14,7 @@ Reference:
 import argparse
 import json
 import logging
+import struct
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -46,6 +47,7 @@ _ICON_WARN = "\u26a0\ufe0f"
 # ==========================================================================
 _KEY_TMODE_MODE           = 0x20030001
 _KEY_TMODE_POS_TYPE       = 0x20030002
+_KEY_TMODE_FIXED_POS_ACC  = 0x4003000C
 _KEY_TMODE_LAT            = 0x40030009
 _KEY_TMODE_LON            = 0x4003000A
 _KEY_TMODE_HEIGHT         = 0x4003000B
@@ -74,19 +76,20 @@ _KEY_MSGOUT_RTCM3_TYPE1230_USB = 0x20910306
 _U4_KEY_IDS = {_KEY_UART1_BAUDRATE, _KEY_UART2_BAUDRATE}
 _I4_KEY_IDS = {_KEY_TMODE_LAT, _KEY_TMODE_LON, _KEY_TMODE_HEIGHT}
 _U2_KEY_IDS = {_KEY_RATE_MEAS, _KEY_RATE_NAV}
+_R8_KEY_IDS = {_KEY_TMODE_FIXED_POS_ACC}
 
 # ==========================================================================
-# Full 37-key Configuration Table (12 base UART1 + 7 base USB + 18 rover)
+# Full 38-key Configuration Table (13 base UART1 + 7 base USB + 18 rover)
 # ==========================================================================
 
 def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
-    """Build the full 37-key configuration table with resolved dynamic values."""
+    """Build the full 38-key configuration table with resolved dynamic values."""
     lat_e7 = int(lat * 1e7)
     lon_e7 = int(lon * 1e7)
     alt_cm = int(alt * 100)
 
     return [
-        # === Base Station (19 keys: #1-12 UART1 + #31-37 USB) ===
+        # === Base Station (20 keys: #1-13 UART1 + #32-38 USB) ===
         {"id": 1, "key": "CFG-TMODE-MODE",
          "expected": 2, "type": "U1", "role": "base",
          "desc": "FIXED Mode (2=Fixed)", "key_id": _KEY_TMODE_MODE},
@@ -102,107 +105,110 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
         {"id": 5, "key": "CFG-TMODE-HEIGHT",
          "expected": alt_cm, "type": "I4", "role": "base",
          "desc": f"Height ({alt:.1f}m)", "key_id": _KEY_TMODE_HEIGHT},
-        {"id": 6, "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_UART1",
+        {"id": 6, "key": "CFG-TMODE-FIXED_POS_ACC",
+         "expected": 10.0, "type": "R8", "role": "base",
+         "desc": "FIXED Position Acc (10.0m)", "key_id": _KEY_TMODE_FIXED_POS_ACC},
+        {"id": 7, "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Station ARP (1005)", "key_id": None},
-        {"id": 7, "key": "CFG-MSGOUT-RTCM_3X_TYPE1006_UART1",
+        {"id": 8, "key": "CFG-MSGOUT-RTCM_3X_TYPE1006_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Station ARP+Ant (1006)", "key_id": None},
-        {"id": 8, "key": "CFG-MSGOUT-RTCM_3X_TYPE1074_UART1",
+        {"id": 9, "key": "CFG-MSGOUT-RTCM_3X_TYPE1074_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GPS MSM4 (1074)", "key_id": None},
-        {"id": 9, "key": "CFG-MSGOUT-RTCM_3X_TYPE1084_UART1",
+        {"id": 10, "key": "CFG-MSGOUT-RTCM_3X_TYPE1084_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS MSM4 (1084)", "key_id": None},
-        {"id": 10, "key": "CFG-MSGOUT-RTCM_3X_TYPE1094_UART1",
+        {"id": 11, "key": "CFG-MSGOUT-RTCM_3X_TYPE1094_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Galileo MSM4 (1094)", "key_id": None},
-        {"id": 11, "key": "CFG-MSGOUT-RTCM_3X_TYPE1124_UART1",
+        {"id": 12, "key": "CFG-MSGOUT-RTCM_3X_TYPE1124_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "BeiDou MSM4 (1124)", "key_id": None},
-        {"id": 12, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_UART1",
+        {"id": 13, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_UART1",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS bias (1230)", "key_id": None},
 
 
-        # === Base Station USB RTCM3 (7 keys: #31-37) ===
-        {"id": 31, "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_USB",
+        # === Base Station USB RTCM3 (7 keys: #32-38) ===
+        {"id": 32, "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Station ARP USB (1005)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1005_USB},
-        {"id": 32, "key": "CFG-MSGOUT-RTCM_3X_TYPE1006_USB",
+        {"id": 33, "key": "CFG-MSGOUT-RTCM_3X_TYPE1006_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Station ARP+Ant USB (1006)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1006_USB},
-        {"id": 33, "key": "CFG-MSGOUT-RTCM_3X_TYPE1074_USB",
+        {"id": 34, "key": "CFG-MSGOUT-RTCM_3X_TYPE1074_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GPS MSM4 USB (1074)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1074_USB},
-        {"id": 34, "key": "CFG-MSGOUT-RTCM_3X_TYPE1084_USB",
+        {"id": 35, "key": "CFG-MSGOUT-RTCM_3X_TYPE1084_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS MSM4 USB (1084)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1084_USB},
-        {"id": 35, "key": "CFG-MSGOUT-RTCM_3X_TYPE1094_USB",
+        {"id": 36, "key": "CFG-MSGOUT-RTCM_3X_TYPE1094_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "Galileo MSM4 USB (1094)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1094_USB},
-        {"id": 36, "key": "CFG-MSGOUT-RTCM_3X_TYPE1124_USB",
+        {"id": 37, "key": "CFG-MSGOUT-RTCM_3X_TYPE1124_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "BeiDou MSM4 USB (1124)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1124_USB},
-        {"id": 37, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_USB",
+        {"id": 38, "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_USB",
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS bias USB (1230)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1230_USB},
 
-        # === Rover (18 keys: #13-30) ===
-        {"id": 13, "key": "CFG-UART2-BAUDRATE",
+        # === Rover (18 keys: #14-31) ===
+        {"id": 14, "key": "CFG-UART2-BAUDRATE",
          "expected": 115200, "type": "U4", "role": "rover",
          "desc": "UART2 baudrate", "key_id": _KEY_UART2_BAUDRATE},
-        {"id": 14, "key": "CFG-UART2INPROT-UBX",
+        {"id": 15, "key": "CFG-UART2INPROT-UBX",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "UBX input enabled (RTCM3+UBX mixed)", "key_id": _KEY_UART2INPROT_UBX},
-        {"id": 15, "key": "CFG-UART2INPROT-NMEA",
+        {"id": 16, "key": "CFG-UART2INPROT-NMEA",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NMEA input disabled", "key_id": _KEY_UART2INPROT_NMEA},
-        {"id": 16, "key": "CFG-UART2INPROT-RTCM3X",
+        {"id": 17, "key": "CFG-UART2INPROT-RTCM3X",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "RTCM3 input enabled", "key_id": _KEY_UART2INPROT_RTCM3X},
-        {"id": 17, "key": "CFG-UART2OUTPROT-UBX",
+        {"id": 18, "key": "CFG-UART2OUTPROT-UBX",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "UBX output disabled", "key_id": _KEY_UART2OUTPROT_UBX},
-        {"id": 18, "key": "CFG-UART2OUTPROT-NMEA",
+        {"id": 19, "key": "CFG-UART2OUTPROT-NMEA",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NMEA output disabled", "key_id": _KEY_UART2OUTPROT_NMEA},
-        {"id": 19, "key": "CFG-NAVHPG-DGNSSMODE",
+        {"id": 20, "key": "CFG-NAVHPG-DGNSSMODE",
          "expected": 3, "type": "U1", "role": "rover",
          "desc": "RTK Fixed (3=RTK Fixed)", "key_id": _KEY_NAVHPG_DGNSSMODE},
-        {"id": 20, "key": "CFG-RATE-MEAS",
+        {"id": 21, "key": "CFG-RATE-MEAS",
          "expected": 200, "type": "U2", "role": "rover",
          "desc": "Meas period 200ms (5Hz)", "key_id": _KEY_RATE_MEAS},
-        {"id": 21, "key": "CFG-RATE-NAV",
+        {"id": 22, "key": "CFG-RATE-NAV",
          "expected": 1, "type": "U2", "role": "rover",
          "desc": "Nav output ratio 1:1", "key_id": _KEY_RATE_NAV},
-        {"id": 22, "key": "CFG-MSGOUT-UBX-NAV-PVT-UART2",
+        {"id": 23, "key": "CFG-MSGOUT-UBX-NAV-PVT-UART2",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NAV-PVT UART2 out disabled",
          "key_id": _KEY_MSGOUT_UBX_NAV_PVT_UART2},
-        {"id": 23, "key": "CFG-SIGNAL-GPS_ENA",
+        {"id": 24, "key": "CFG-SIGNAL-GPS_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "GPS L1C/A enabled", "key_id": None},
-        {"id": 24, "key": "CFG-SIGNAL-GPS_L5_ENA",
+        {"id": 25, "key": "CFG-SIGNAL-GPS_L5_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "GPS L5 enabled", "key_id": None},
-        {"id": 25, "key": "CFG-SIGNAL-GAL_ENA",
+        {"id": 26, "key": "CFG-SIGNAL-GAL_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "Galileo E1 enabled", "key_id": None},
-        {"id": 26, "key": "CFG-SIGNAL-GAL_E5A_ENA",
+        {"id": 27, "key": "CFG-SIGNAL-GAL_E5A_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "Galileo E5a enabled", "key_id": None},
-        {"id": 27, "key": "CFG-SIGNAL-BDS_ENA",
+        {"id": 28, "key": "CFG-SIGNAL-BDS_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "BeiDou B1I enabled", "key_id": None},
-        {"id": 28, "key": "CFG-SIGNAL-GLO_ENA",
+        {"id": 29, "key": "CFG-SIGNAL-GLO_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "GLONASS L1 enabled", "key_id": None},
-        {"id": 29, "key": "CFG-UART1OUTPROT-UBX",
+        {"id": 30, "key": "CFG-UART1OUTPROT-UBX",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "UART1 UBX -> AP_Periph",
          "key_id": _KEY_UART1OUTPROT_UBX},
-        {"id": 30, "key": "CFG-UART1-BAUDRATE",
+        {"id": 31, "key": "CFG-UART1-BAUDRATE",
          "expected": 115200, "type": "U4", "role": "rover",
          "desc": "UART1 baudrate", "key_id": _KEY_UART1_BAUDRATE},
     ]
@@ -461,6 +467,12 @@ class F9pAllConfigurator:
                     payload[value_start:value_start + 2], "little")
             else:
                 value = None
+        elif key_id in _R8_KEY_IDS:
+            if len(payload) >= value_start + 8:
+                value = struct.unpack("<d",
+                    payload[value_start:value_start + 8])[0]
+            else:
+                value = None
         else:
             if len(payload) >= value_start + 1:
                 value = payload[value_start]
@@ -518,6 +530,7 @@ class F9pAllConfigurator:
                 ("CFG-TMODE-LAT", lat_e7),
                 ("CFG-TMODE-LON", lon_e7),
                 ("CFG-TMODE-HEIGHT", alt_cm),
+                ("CFG-TMODE-FIXED_POS_ACC", 10.0),
             ]
             layers = LAYER_ALL if save_to_flash else LAYER_RAM
             msg = UBXMessage.config_set(layers, 0, cfg_data)
@@ -831,9 +844,213 @@ def _print_write_summary(write_results: dict) -> None:
     print("-" * 70)
 
 
+
 # ==========================================================================
-# CLI Entry Point
+# Full Automation Mode (--mode full)
 # ==========================================================================
+
+def _run_full_mode(args, key_table, logger) -> int:
+    """Execute the full 8-phase RTK automation pipeline."""
+    import getpass, os, subprocess
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    total_phases = 8
+    if args.skip_rover:
+        total_phases -= 2
+    if args.skip_fix_wait:
+        total_phases -= 1
+
+    phase = 0
+    failed = False
+    tcp_port = args.base_station_tcp_port
+    raspi_user = args.raspi_user or getpass.getuser()
+    base_port = args.port or args.base_port
+    base_baud = args.baud or args.base_baud
+    rover_baud = args.baud or args.rover_baud
+
+    # ---- Phase 1: Base Station Write ----
+    phase += 1
+    print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Base Station Write ===\n{'='*70}")
+    cfg = F9pAllConfigurator(serial_port=base_port, baudrate=base_baud,
+                              logger=logger, port_type=args.port_type)
+    write_ok = {"tmode3": cfg.write_base_tmode3(args.lat, args.lon, args.alt, True)}
+    write_ok["rtcm3"] = cfg.write_base_rtcm3(True) if write_ok["tmode3"] else False
+    if all(write_ok.values()) and not args.no_reset:
+        if cfg.send_reset():
+            time.sleep(args.reset_delay)
+    if all(write_ok.values()):
+        print(f"  \u2705 Phase {phase}: Write OK")
+    else:
+        print(f"  \u274c Phase {phase}: Write FAIL")
+        return 1
+
+    # ---- Phase 2: Base Station Verify ----
+    phase += 1
+    print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Base Station Verify ===\n{'='*70}")
+    base_verify = cfg.verify_role("base", key_table)
+    ok_count = base_verify.get("ok_count", 0)
+    total_count = ok_count + base_verify.get("fail_count", 0) + base_verify.get("warn_count", 0)
+    if base_verify.get("all_verified"):
+        print(f"  \u2705 Phase {phase}: {ok_count}/{total_count} OK")
+    else:
+        print(f"  \u274c Phase {phase}: {ok_count}/{total_count} OK")
+        for c in base_verify.get("checks", []):
+            if c.get("status") != "ok":
+                print(f"    FAIL: {c.get('key')} exp={c.get('expected')} act={c.get('actual')}")
+        return 1
+
+    if not args.skip_rover:
+        # ---- Phase 3: Rover Write (SSH) ----
+        phase += 1
+        print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Write (SSH) ===\n{'='*70}")
+        rover_port = args.rover_port
+        script = str(repo_root / "rtk_tools" / "f9p_config_all.py")
+        cmd = (f"cd {repo_root} && python3 {script} "
+               f"--role rover --mode write --port {rover_port} --baud {rover_baud} "
+               f"--no-reset --log-level WARNING")
+        print(f"  SSH: {raspi_user}@{args.raspi_host}")
+        try:
+            r = subprocess.run(["ssh", "-o", "ConnectTimeout=10",
+                                f"{raspi_user}@{args.raspi_host}", cmd],
+                               capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                print(f"  \u2705 Phase {phase}: Rover Write OK")
+            else:
+                print(f"  \u274c Phase {phase}: Rover Write FAIL (exit={r.returncode})")
+                if r.stderr:
+                    print(f"    stderr: {r.stderr[:200]}")
+                return 1
+        except subprocess.TimeoutExpired:
+            print(f"  \u274c Phase {phase}: SSH timeout"); return 1
+        except FileNotFoundError:
+            print(f"  \u274c Phase {phase}: ssh not found"); return 1
+
+        # ---- Phase 4: Rover Verify (SSH) ----
+        phase += 1
+        print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Verify (SSH) ===\n{'='*70}")
+        cmd = (f"cd {repo_root} && python3 {script} "
+               f"--role rover --mode verify --port {rover_port} --baud {rover_baud} "
+               f"--json --log-level WARNING")
+        print(f"  SSH: {raspi_user}@{args.raspi_host}")
+        try:
+            r = subprocess.run(["ssh", "-o", "ConnectTimeout=10",
+                                f"{raspi_user}@{args.raspi_host}", cmd],
+                               capture_output=True, text=True, timeout=120)
+            if r.returncode == 0:
+                try:
+                    data = json.loads(r.stdout)
+                    rr = data.get("rover", {})
+                    rok = rr.get("ok_count", 0)
+                    rtot = rok + rr.get("fail_count", 0) + rr.get("warn_count", 0)
+                    rv = rr.get("all_verified", False)
+                    print(f"  {'\u2705' if rv else '\u274c'} Phase {phase}: {rok}/{rtot} OK")
+                except json.JSONDecodeError:
+                    print(f"  \u26a0\ufe0f Phase {phase}: Bad JSON from rover")
+                    return 1
+            else:
+                print(f"  \u274c Phase {phase}: Rover Verify FAIL (exit={r.returncode})")
+                if r.stdout:
+                    print(f"    stdout: {r.stdout[:200]}")
+                return 1
+        except subprocess.TimeoutExpired:
+            print(f"  \u274c Phase {phase}: SSH timeout"); return 1
+    else:
+        print(f"\n  \u26a0\ufe0f Rover phases SKIPPED (--skip-rover)")
+        phase += 2
+
+    # ---- Phase 5: Base Station Start ----
+    phase += 1
+    print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Base Station Start ===\n{'='*70}")
+    base_script = str(repo_root / "rtk_tools" / "rtk_base_station_v2.py")
+    proc = subprocess.Popen(
+        [sys.executable, base_script, "--skip-f9p-config", "--tcp-port", str(tcp_port)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    started = False
+    dl = time.monotonic() + 10
+    while time.monotonic() < dl:
+        line = proc.stdout.readline()
+        if not line:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.1)
+            continue
+        print(f"  [base] {line.rstrip()}")
+        if "started successfully" in line:
+            started = True; break
+    if started:
+        print(f"  \u2705 Phase {phase}: Base station started (TCP:{tcp_port})")
+    else:
+        print(f"  \u274c Phase {phase}: Base station failed to start")
+        proc.terminate()
+        return 1
+
+    # ---- Phase 6: RTCM3 Verify ----
+    phase += 1
+    print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: RTCM3 Stream Verify ===\n{'='*70}")
+    try:
+        from rtk_tools.verify_rtcm_tcp import verify_rtcm_stream
+    except ImportError:
+        from verify_rtcm_tcp import verify_rtcm_stream
+    print(f"  Capturing localhost:{tcp_port} for 30s...")
+    rv = verify_rtcm_stream("localhost", tcp_port, duration=30.0)
+    if rv["ok"]:
+        print(f"  \u2705 Phase {phase}: All RTCM3 types detected")
+    else:
+        print(f"  \u26a0\ufe0f Phase {phase}: Missing types: {rv['missing_types']}")
+    print(f"    Frames: {rv['total_frames']}")
+    for mt, c in rv["type_counter"].items():
+        print(f"      {'\u2705' if c>0 else '\u26a0\ufe0f'} {mt}: {c}")
+
+    # ---- Phase 7: RTCM Injection ----
+    phase += 1
+    print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: RTCM Injection Start ===\n{'='*70}")
+    fwd_script = str(repo_root / "rtk_tools" / "rtk_forwarder_service.py")
+    fwd_conf = str(repo_root / "config" / "rtk_forwarder.yml")
+    subprocess.run(["ssh", "-o", "ConnectTimeout=10",
+                    f"{raspi_user}@{args.raspi_host}",
+                    "pkill -f rtk_forwarder_service.py 2>/dev/null; sleep 1"],
+                   capture_output=True, timeout=15)
+    cmd = (f"cd {repo_root} && nohup python3 {fwd_script} --config {fwd_conf} "
+           f"> /tmp/rtk_forwarder.log 2>&1 &")
+    print(f"  SSH: {raspi_user}@{args.raspi_host}")
+    r = subprocess.run(["ssh", "-o", "ConnectTimeout=10",
+                        f"{raspi_user}@{args.raspi_host}", cmd],
+                       capture_output=True, text=True, timeout=15)
+    if r.returncode == 0:
+        time.sleep(2)
+        print(f"  \u2705 Phase {phase}: RTCM forwarder launched")
+    else:
+        print(f"  \u274c Phase {phase}: SSH failed")
+
+    # ---- Phase 8: Fix Monitor ----
+    if not args.skip_fix_wait:
+        phase += 1
+        print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Fix Monitor ===\n{'='*70}")
+        try:
+            from rtk_tools.gcs_fix_monitor import GcsFixMonitor
+        except ImportError:
+            from gcs_fix_monitor import GcsFixMonitor
+        print(f"  GCS: {args.gcs_url}/api/drones  Timeout:300s")
+        m = GcsFixMonitor(gcs_url=args.gcs_url, system_id=args.system_id, poll_interval=1.0)
+        if m.wait_for_rtk_fixed(timeout=300.0):
+            print(f"  \u2705 Phase {phase}: RTK FIXED ACHIEVED!")
+        else:
+            print(f"  \u274c Phase {phase}: RTK Fixed NOT achieved (timeout)")
+            failed = True
+    else:
+        print(f"\n  \u26a0\ufe0f Fix Monitor SKIPPED (--skip-fix-wait)")
+        phase += 1
+
+    # ---- Final ----
+    print(f"\n{'='*70}")
+    if not failed:
+        print(f"  \U0001F389 ALL PHASES COMPLETE -- RTK FIXED ACHIEVED")
+    else:
+        print(f"  \u274c Some phases failed -- check output above")
+    print(f"{'='*70}\n")
+    return 0 if not failed else 1
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -850,7 +1067,7 @@ def main() -> int:
                         choices=["base", "rover", "both"],
                         help="Target role")
     parser.add_argument("--mode", default="write-verify",
-                        choices=["write", "verify", "write-verify"],
+                        choices=["write", "verify", "write-verify", "full"],
                         help="Operation mode (default: write-verify)")
     parser.add_argument("--port", default=None,
                         help="Serial port (single role)")
@@ -880,6 +1097,21 @@ def main() -> int:
                         help="Skip UBX-CFG-RST after write (no device reset)")
     parser.add_argument("--reset-delay", type=int, default=3,
                         help="Wait seconds after reset before verify (default: 3)")
+    # --mode full arguments
+    parser.add_argument("--raspi-host", default="raspi",
+                        help="SSH hostname for Rover (default: raspi)")
+    parser.add_argument("--raspi-user", default=None,
+                        help="SSH username (default: current user)")
+    parser.add_argument("--skip-rover", action="store_true",
+                        help="Skip Rover configuration (--mode full)")
+    parser.add_argument("--skip-fix-wait", action="store_true",
+                        help="Skip Fix monitoring (--mode full)")
+    parser.add_argument("--gcs-url", default="http://localhost:8000",
+                        help="GCS API URL (default: http://localhost:8000)")
+    parser.add_argument("--system-id", type=int, default=1,
+                        help="MAVLink system_id (default: 1)")
+    parser.add_argument("--base-station-tcp-port", type=int, default=2101,
+                        help="TCP port for base station (default: 2101)")
     parser.add_argument("--json", action="store_true",
                         help="Output as JSON")
     parser.add_argument("--log-level", default="WARNING",
@@ -905,6 +1137,10 @@ def main() -> int:
 
     key_table = _build_key_table(args.lat, args.lon, args.alt)
     save_to_flash = not args.no_flash
+
+    # --- Full automation mode ---
+    if args.mode == "full":
+        return _run_full_mode(args, key_table, logger)
 
     results: Dict[str, Any] = {}
     exit_code = 0

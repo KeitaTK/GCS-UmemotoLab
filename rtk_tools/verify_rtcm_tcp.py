@@ -396,6 +396,44 @@ def _print_summary(results: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Importable verification function (for f9p_config_all.py --mode full)
+# ---------------------------------------------------------------------------
+def verify_rtcm_stream(
+    host: str = "127.0.0.1",
+    port: int = 2101,
+    duration: float = 30.0,
+) -> dict:
+    """Capture RTCM3 from TCP and return verification result dict.
+
+    Returns a dict with keys:
+      ok: bool             — True if all key types (1005/1006/1074/1084/1094/1124/1230)
+                             were detected
+      total_frames: int    — total RTCM3 frames received
+      type_counter: dict   — {msg_type: count}
+      missing_types: list  — list of required types that were not detected
+      errors: list         — any errors encountered
+      connect_time: float  — TCP connect time in seconds
+    """
+    results = capture_from_tcp(host, port, timeout=duration)
+
+    type_counter: dict[int, int] = dict(results["type_counter"])
+
+    missing = [mt for mt in _KEY_TYPES if mt not in type_counter]
+
+    return {
+        "ok": len(missing) == 0 and results["total_frames"] > 0,
+        "total_frames": results["total_frames"],
+        "type_counter": {
+            str(mt): type_counter.get(mt, 0) for mt in _KEY_TYPES
+        },
+        "all_types": dict(type_counter),
+        "missing_types": missing,
+        "errors": results["errors"],
+        "connect_time": results.get("connect_time"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main() -> None:
