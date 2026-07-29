@@ -47,7 +47,7 @@ _UART2_RTCM_CFG_KEYS = [
     ('CFG-UART2INPROT-RTCM3X',    1),        # ★ RTCM3 入力を有効化 ★ [検証済み ✓]
     ('CFG-UART2OUTPROT-UBX',      0),        # UBX 出力を無効化 (UART2=RTCM注入専用)
     ('CFG-UART2OUTPROT-NMEA',     0),        # NMEA 出力を無効化
-    ('CFG-NAVHPG-DGNSSMODE',      3),        # RTK Fixed モード (3=RTK Fixed)
+    ('CFG-NAVHPG-DGNSSMODE',      0),        # RTK Float+Fixed 両方許可 (0=both, 3=Fixed onlyだとFLOAT→FIXED遷移不可)
 
     # --- Output rate configuration (5 Hz) ---
     ('CFG-RATE-MEAS',                  200),   # ★ 測位演算周期 200ms (5Hz) ★
