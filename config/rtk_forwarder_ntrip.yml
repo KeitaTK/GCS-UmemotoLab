@@ -1,0 +1,30 @@
+# イチミルNTRIP用設定ファイル
+# Usage: rtk_forwarder_service.py --config config/rtk_forwarder_ntrip.yml
+
+source:
+  source_type: ntrip
+  host: ntrip.ales-corp.co.jp
+  port: 2101
+  mountpoint: 32M7NHS
+  user_agent: NTRIP PythonClient
+  username: 6y8swddj
+  password: xxu2w5
+  timeout_sec: 10.0
+  gga:
+    enabled: true
+    interval_sec: 10
+    lat: 36.069351
+    lon: 136.241050
+    alt: 56.25
+
+forward:
+  type: serial
+  serial_port: /dev/tty.usbmodem114301
+  baudrate: 115200
+
+retry:
+  reconnect_sec: 5.0
+
+log:
+  level: INFO
+  stats_interval_sec: 10
