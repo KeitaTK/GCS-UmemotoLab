@@ -27,9 +27,12 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 | **UBX-NAV-PVT 監視** | F9P UART2から直接 Fix状態（carrSoln）をポーリング、RTK FIXEDを確実に検出 |
 | **Preflight Check** | GPS/EKF/バッテリー/モーター/RTK UART2 自動総合チェック |
 | **systemd サービス** | Raspi起動時にRTK注入を自動開始（`rtk-uart2-inject.service`） |
-| **F9P 設定ツール** | Rover/基地局F9Pの自動設定（Survey-In, RTCM3入出力, UBX出力） |
+| **F9P 設定ツール** | Rover/基地局F9Pの自動設定（FIXED, RTCM3入出力, UBX出力） |
+| **F9P全設定管理** | `f9p_config_all.py`: 基地局12キー+移動局18キー=全30キーの一括書き込み→CFG-VALGET確認（write-verify） |
+| **F9P設定継続監視** | `f9p_config_monitor.py`: ベースライン比較・定期差分チェック |
 | **マルチドローン** | System ID による複数機の識別・同時制御 |
 | **ロギング** | 全MAVLinkメッセージの記録 |
+| **MAVLink GPSデータ収集** | `gps_logger.py`: GPS_RAW_INT/GPS_RTK等をCSV/JSONLで保存 |
 
 ---
 
@@ -49,8 +52,10 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │                                                                          │
 │  ▼ パスB: RTK UART2直接注入（新アーキテクチャ）                              │
 │  ┌──────────┐   NTRIP/TCP     ┌──────────────┐  USB-Serial   ┌──────────┐ │
-│  │ 基地局F9P │────────────────→│ Raspberry Pi 5│─────────────→│F9P Rover │ │
-│  │(Survey-In)│  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │UART2直結 │ │
+│  │ 基地局F9P  │────────────────→│ Raspberry Pi 5│─────────────→│移動局F9P  │ │
+│  │(ZED-F9P,  │  RTCM3 stream  │rtk_forwarder  │  UART2 RX2   │(ZED-F9P, │ │
+│  │ Macに     │                │               │              │DroneCAN,  │ │
+│  │ USB接続)  │                │               │              │機体搭載)  │ │
 │  └──────────┘                 │               │              │          │ │
 │                               │  UART2=RTCM注入専用          │RTK測位演算│ │
 │                               │  (UBX出力=無効)              └─────┬─────┘ │
@@ -111,9 +116,9 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │  │         Mac              │              │         Raspberry Pi 5               │  │
 │  │                          │              │                                      │  │
 │  │  ┌──────────────────┐    │  TCP:2101    │  ┌──────────────────────────────┐    │  │
-│  │  │ u-blox F9P(基準局)│────┼────────────→│  │ rtk_forwarder               │    │  │
-│  │  │ Survey-In / TIME │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
-│  │  │ /dev/tty.usbmodem*│   │              │  │                              │    │  │
+│  │  │ 基地局F9P      │────┼────────────→│  │ rtk_forwarder               │    │  │
+│  │  │ (ZED-F9P,       │    │ RTCM3 Stream │  │ (rtk_forwarder_service.py)  │    │  │
+│  │  │  MacにUSB接続)  │    │              │  │                              │    │  │
 │  │  └──────────────────┘    │              │  │ NTRIP受信 → Serial転送        │    │  │
 │  │                          │              │  └──────────────┬───────────────┘    │  │
 │  │  ┌──────────────────┐    │ MAVLink UDP  │                 │                    │  │
@@ -135,9 +140,10 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │       │                    機体側                              │               │       │
 │       │                                                       │               │       │
 │       │  ┌──────────────────────────┐     ┌───────────────────▼──────────────┐│       │
-│       │  │ F9P Rover                │     │   Pixhawk 6C (ArduPilot)        ││       │
-│       │  │ (H-RTK F9P Helical)      │     │                                  ││       │
-│       │  │                          │     │ TELEM1 ← MAVLink通信             ││       │
+│       │  │ 移動局F9P                │     │   Pixhawk 6C (ArduPilot)        ││       │
+│       │  │ (ZED-F9P,                │     │                                  ││       │
+│       │  │  DroneCAN接続,           │     │ TELEM1 ← MAVLink通信             ││       │
+│       │  │  機体搭載)               │     │   (GPIO14/15 → Raspi)           ││       │
 │       │  │ UART2 RX2 ← RTCM3注入    │     │   (GPIO14/15 → Raspi)           ││       │
 │       │  │ UART2 TX2 → UBX-NAV-PVT  │     │                                  ││       │
 │       │  │                          │     │ CAN2 ──────────┐                 ││       │
@@ -149,9 +155,9 @@ RTK FIXED 到達の高速化と信頼性向上を実現しています。
 │       └───────────────────────────────────────────────────────────────────────┘       │
 │                                                                                      │
 │  【経路凡例】                                                                          │
-│  ──→  RTCM注入(パスB): Mac u-blox → TCP:2101 → rtk_forwarder → /dev/ttyAMA4 → F9P    │
+│  ──→  RTCM注入(パスB): 基地局F9P(ZED-F9P,USB接続)→TCP:2101→rtk_forwarder→ttyAMA4→移動局F9P│
 │  ←──  MAVLink(パスA): Pixhawk TELEM1 → /dev/ttyAMA0 → mavlink-router → Mac GCS       │
-│  ──→  位置情報: F9P Rover → CAN2 → Pixhawk CAN1 (DroneCAN, 既存維持)                   │
+│  ──→  位置情報: 移動局F9P(ZED-F9P,DroneCAN) → CAN2 → Pixhawk CAN1 (既存維持)              │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -172,12 +178,12 @@ Pixhawk TELEM1 → GPIO8(TX),10(RX),11(RTS) → /dev/ttyAMA0 → mavlink-router 
 ### 経路B: RTCM注入（RTK補正データ）
 
 ```
-Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P UART2 → CAN2 → Pixhawk CAN1
+基地局F9P(ZED-F9P,MacにUSB接続) → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → 移動局F9P UART2 → CAN2 → Pixhawk CAN1
 ```
 
 | 区間 | デバイス/プロトコル | 詳細 |
 |------|-------------------|------|
-| u-blox → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
+| 基地局F9P → Raspi | TCP:2101 (Tailscale IP) | RTCM3バイナリストリーム |
 | Raspi 受信 | `rtk_forwarder_service.py` | NTRIPクライアント / TCP Socket |
 | Raspi 転送 | `/dev/ttyAMA4` @ 115200bps | GPIO12(TX), GPIO13(RX) |
 | F9P 受信 | UART2 RX2 (Pin 2) | RTCM3 → RTK測位演算 |
@@ -187,9 +193,9 @@ Mac u-blox → TCP:2101(RTCM3) → Raspi rtk_forwarder → /dev/ttyAMA4 → F9P 
 
 | コンポーネント | 役割 |
 |--------------|------|
-| **u-blox F9P (Mac)** | RTK基準局。Survey-Inモードで基準位置を確定し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
+| **基地局 F9P (ZED-F9P, MacにUSB接続)** | RTK基準局。FIXEDモードであらかじめ設定した座標で動作し、RTCM3補正データをTCP:2101で配信。`/dev/tty.usbmodem*`経由でMacにUSB接続。 |
 | **Raspberry Pi 5** | 機体搭載の通信ブリッジ。`mavlink-router` でMAVLinkをUART↔UDP中継。`rtk_forwarder` でRTCM3をTCP→シリアル変換。2系統の通信を1台で処理。 |
-| **F9P Rover (H-RTK F9P Helical)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
+| **移動局 F9P (ZED-F9P, DroneCAN接続, 機体搭載)** | 機体搭載のRTK対応GNSSモジュール。UART2でRTCM3補正データを受信しRTK測位演算を実行。UBX-NAV-PVTでFix状態（carrSoln）を出力。CAN経由でPixhawkに位置情報を供給。 |
 | **Pixhawk 6C (ArduPilot)** | フライトコントローラ。TELEM1でMAVLink通信、CAN1でF9PからRTK位置情報を受信。ArduPilotがGPS_AUTO_SWITCHで最適GPSソースを自動選択。 |
 
 ### デバイス名とGPIOピン対応表
@@ -216,7 +222,7 @@ RTK UART2 直接注入の最小セットアップ手順です。詳細は [rtk_d
 ### 0. 前提
 
 - Rover側 F9P の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み
-- 基地局 F9P が Survey-In 完了済み（`scripts/ublox_survey_in.py` で確認）
+- 基地局 F9P が FIXED モードで設定済み（座標が適切に設定されていること）
 - 基地局が RTCM3 ストリームを配信中
 
 ### 1. Rover F9P 設定（初回のみ）
@@ -277,7 +283,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 │                                                                              │
 │  ┌──────────────┐     NTRIP/TCP        ┌──────────────────┐                  │
 │  │  基地局 F9P   │─────────────────────→│  Raspberry Pi 5   │                  │
-│  │  (Survey-In)  │   RTCM3 stream      │                  │                  │
+│  │  (FIXED)      │   RTCM3 stream      │                  │                  │
 │  │              │   port 2101          │ rtk_forwarder_   │                  │
 │  │  RTCM3 0xD3  │                     │ service.py       │                  │
 │  │  preamble    │                     │                  │                  │
@@ -296,7 +302,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 │                                               │ (3.3V TTL)                  │
 │                                               ▼                             │
 │                                       ┌──────────────────┐                  │
-│                                       │  Rover F9P       │                  │
+│                                       │  Rover F9P (移動局)│                  │
 │                                       │  (UART2 RX2)     │                  │
 │                                       │                  │                  │
 │                                       │ ④ RTCM3処理      │                  │
@@ -361,7 +367,7 @@ RTK UART2（UART4）直接注入の動作確認を、実機を用いて体系的
 
 - [ ] Raspi に USB-Serial アダプタが接続され、`/dev/ttyAMA4`（または `/dev/ttyUSB*`）として認識されている
 - [ ] F9P Rover の UART2 (JST-GH 6pin) が USB-Serial アダプタ経由で Raspi に接続済み（UART2=RTCM注入専用）
-- [ ] 基地局 F9P が Survey-In 完了済み（`python scripts/ublox_survey_in.py --status` で確認）
+- [ ] 基地局 F9P が FIXED モードで設定済み（座標が適切に設定されていること）
 - [ ] 基地局が NTRIP Caster として RTCM3 ストリームを配信中
 - [ ] Rover F9P の UART2 が設定済み（初回のみ `f9p_rover_config.py` を実行）
 
@@ -408,6 +414,36 @@ python rtk_tools/rtk_forwarder_service.py --config config/rtk_forwarder.yml --dr
 **確認ポイント:**
 - NTRIP Caster が `ICY 200 OK` を返すこと
 - 受信データの先頭バイトが `0xD3`（RTCM3 プリアンブル）であること
+
+#### RTCM3 メッセージタイプ解析（verify_rtcm_tcp.py）
+
+`verify_rtcm_tcp.py` は、TCP:2101 から RTCM3 ストリームをキャプチャし、含まれるメッセージタイプを集計・解析して RTK 品質評価を行うツールです。1005/1006/1074/1084/1094/1124/1230 の各メッセージタイプの出現回数を分析し、Station ARP や MSM4/MSM7 の有無から RTK FIXED 到達可能性を評価します。
+
+```bash
+# 30秒間受信してメッセージタイプ分布を解析
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --duration 30
+
+# 単発受信（1メッセージ）
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --once
+
+# 継続モニタリング
+python rtk_tools/verify_rtcm_tcp.py --host localhost --port 2101 --monitor
+```
+
+**解析対象メッセージタイプ:**
+| MT | 内容 | RTK品質への寄与 |
+|----|------|---------------|
+| 1005 | Stationary RTK Reference Station ARP | 基地局座標定義（必須） |
+| 1006 | Stationary RTK Reference Station ARP with height | 基地局座標 + アンテナ高 |
+| 1074 | GPS MSM4 | GPS完全擬似距離 + 搬送波位相 |
+| 1084 | GPS MSM7 | GPS拡張擬似距離 + 搬送波位相（高精度） |
+| 1094 | Galileo MSM7 | Galileo拡張擬似距離 + 搬送波位相 |
+| 1124 | BeiDou MSM7 | BeiDou拡張擬似距離 + 搬送波位相 |
+| 1230 | GLONASS Code-Phase Biases | GLONASSコード位相バイアス |
+
+**RTK品質評価:**
+- Station ARP（1005/1006）の有無 → 基地局座標が正しく定義されているか
+- MSM4/MSM7 の有無 → 搬送波位相補正データが利用可能か（FIXED 到達に必須）
 
 #### STEP 3: RTCM 注入サービス起動
 
@@ -515,7 +551,7 @@ FINAL: READY FOR FLIGHT
 | 確認項目 | コマンド | 合格基準 | 不合格時の対応 |
 |---------|---------|---------|---------------|
 | F9P UART2 設定 | `f9p_rover_config.py --verify-only` | `All verified: YES` | STEP 1 再実行 |
-| 基地局 RTCM3 到達 | `nc -zv <base-host> 2101` | TCP接続成功 | 基地局のSurvey-In状態・ネットワーク確認 |
+| 基地局 RTCM3 到達 | `nc -zv <base-host> 2101` | TCP接続成功 | 基地局のFIXEDモード設定・ネットワーク確認 |
 | RTCM注入稼働 | `systemctl status rtk-uart4-inject` | `active (running)` | `journalctl -u rtk-uart4-inject -f` でエラー確認 |
 | RTCM注入流量 | `logs/rtcm_injection.log` 最終行 | `frames_per_min > 0`（通常 数百〜数千フレーム/分） | 基地局-Raspi間のネットワーク確認 |
 | RTK FLOAT 到達 | `logs/rtcm_fix_transition.log` | `0→1` 遷移が記録されている | 周辺環境（上空視界）確認、アンテナ位置調整 |
@@ -557,8 +593,8 @@ Jul 15 10:00:11 raspi python[1234]: Forward stats: packets=90, bytes=36864
 ```
 診断フロー:
   ① 基地局は起動しているか？
-    └→ python scripts/ublox_survey_in.py --status
-    └→ Survey-In が完了しているか？（最長300秒）
+    └→ F9P が FIXED モードで動作しているか？（TMODE3 MODE=2）
+    └→ python rtk_tools/f9p_configurator.py で STEP3 設定確認
   
   ② NTRIP Caster にTCP接続できるか？
     └→ nc -zv 192.168.11.100 2101
@@ -628,6 +664,97 @@ cat logs/rtcm_proof_summary.txt
 # 注入レートの推移をグラフ表示（gnuplot 使用時）
 gnuplot -e "set datafile separator ','; plot 'logs/rtcm_injection.log' using 4 with lines title 'frames/min'"
 ```
+
+---
+
+## F9P全設定ツール (f9p_config_all.py)
+
+`f9p_config_all.py` は、基地局（12キー）+ 移動局（18キー）= **全30設定キー**を単一スクリプトで管理する統合ツールです。
+既存の `f9p_configurator.py`（基地局）、`f9p_rover_config.py`（移動局）、`f9p_verify_config.py`（確認）の機能を統合し、
+**write-verify**（書き込み→CFG-VALGET確認）を自動実行します。
+
+### スクリプトの特徴
+
+| 特徴 | 説明 |
+|------|------|
+| **全30キー対応** | 基地局12キー（TMODE3, RTCM3出力, ポート設定 等）+ 移動局18キー（UART2 RTCM3入力, UBX出力制御, 測位設定 等） |
+| **write-verify** | CFG-VALSET 書き込み後、CFG-VALGET で自動確認。設定漏れや不整合を即時検出 |
+| **role別モード** | `--role base` / `--role rover` / `--role both` で基地局・移動局を切り替え |
+| **JSON出力** | `--json` で機械可読なJSON形式の確認結果を出力 |
+| **統合設計** | `f9p_configurator.py` + `f9p_rover_config.py` + `f9p_verify_config.py` の3スクリプトを1つに集約 |
+
+### 使用例
+
+#### 設定確認のみ（verify モード）
+
+```bash
+# 基地局の設定確認
+python rtk_tools/f9p_config_all.py --role base --port /dev/tty.usbmodemXXX --mode verify
+
+# 移動局の設定確認
+python rtk_tools/f9p_config_all.py --role rover --port /dev/ttyAMA4 --mode verify
+```
+
+#### 書き込み→確認（デフォルト動作）
+
+```bash
+# 移動局の設定（書き込み後、自動で確認を実行）
+python rtk_tools/f9p_config_all.py --role rover --port /dev/ttyAMA4
+```
+
+`--mode` を省略した場合、デフォルトで **write-verify**（書き込み→確認）が実行されます。
+
+#### 基地局・移動局 両方同時設定
+
+```bash
+python rtk_tools/f9p_config_all.py --role both --base-port /dev/tty.usbmodemXXX --rover-port /dev/ttyAMA4
+```
+
+#### JSON出力
+
+```bash
+# 確認結果をJSON形式で出力（ログやCI/CD連携用）
+python rtk_tools/f9p_config_all.py --role base --port /dev/tty.usbmodemXXX --mode verify --json
+```
+
+### 従来スクリプトとの対応
+
+| 従来スクリプト | f9p_config_all.py での対応 |
+|---------------|--------------------------|
+| `f9p_configurator.py` | `--role base`（基地局12キー設定 + TMODE3 FIXED） |
+| `f9p_rover_config.py` | `--role rover`（移動局18キー設定 + UART2 RTCM3入力） |
+| `f9p_verify_config.py` | `--mode verify` または write-verify の後半（CFG-VALGET確認） |
+
+> **Note**: 既存の `f9p_configurator.py`、`f9p_rover_config.py`、`f9p_verify_config.py` は個別にも引き続き使用可能です。
+> `f9p_config_all.py` はこれらを統合し、より簡便な運用を提供します。
+
+### 継続監視モード (f9p_config_monitor.py)
+
+`f9p_config_monitor.py` は、F9P の全設定を継続的に監視するツールです。初回実行時に現在の設定状態を**ベースライン**として保存し、以降は指定間隔で設定を再取得してベースラインとの差分を検出します。これにより、意図しない設定変更や設定の劣化を早期に発見できます。
+
+```bash
+# 移動局 F9P を30秒間隔で継続監視
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --interval 30
+
+# 基地局 F9P の監視
+python rtk_tools/f9p_config_monitor.py --role base --port /dev/tty.usbmodemXXX --interval 60
+
+# 単発チェック（一度だけ） → 差分検出結果をJSON出力
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --once --json
+
+# ベースラインをリセットして再取得
+python rtk_tools/f9p_config_monitor.py --role rover --port /dev/ttyAMA4 --reset-baseline
+```
+
+**主な機能:**
+| 機能 | 説明 |
+|------|------|
+| **ベースライン保存** | 初回実行時に現在の全設定をベースラインとして JSON に保存 |
+| **定期 verify** | 指定間隔（`--interval` 秒）で設定を再取得し、CFG-VALGET で確認 |
+| **差分検出** | ベースラインとの比較により `changed`（値変更）/ `missing`（キー消失）/ `new`（新規キー）を検出 |
+| **JSON 出力** | 差分検出結果を JSON 形式で出力（ログや CI/CD 連携に利用可能） |
+
+> **運用シナリオ**: 長時間のフライト前や定期メンテナンス時に実行し、F9P の設定が意図した状態を維持していることを確認します。基地局の TMODE3 設定や移動局の UART2 入出力プロトコル設定の変化を即座に検知できます。
 
 ---
 
@@ -847,7 +974,8 @@ GCS-UmemotoLab/
 │   ├── mavlink/
 │   │   ├── connection.py       # UDP/Serial接続管理
 │   │   ├── router.py           # メッセージルーター
-│   │   └── message_router.py
+│   │   ├── message_router.py
+│   │   └── gps_logger.py       # MAVLink GPSデータ収集（CSV/JSONL）
 │   └── rtk_tools/              # GCS側RTKツール（MAVLink経由: 従来パス）
 │       ├── command_dispatcher.py  # コマンド送信（Arm/ForceArm等）
 │       ├── guided_control.py      # Guidedモード制御
@@ -856,10 +984,13 @@ GCS-UmemotoLab/
 │   ├── rtk_forwarder_service.py   # ★ RTCM転送サービス (NTRIP→UART2)
 │   ├── f9p_rover_config.py        # ★ Rover側F9P UART2設定
 │   ├── f9p_configurator.py        # F9P設定モジュール
+│   ├── f9p_config_all.py          # ★ F9P全設定の一括書き込み・確認（統合スクリプト）
 │   ├── gcs_fix_monitor.py         # MAVLink GPS_RAW_INT Fix監視 (新)
 │   ├── rtk_base_station_v2.py     # 基地局統合サービス
 │   ├── rtk_data_collector.py      # RTKデータコレクター
-│   └── config_loader.py           # 設定ローダー
+│   ├── config_loader.py           # 設定ローダー
+│   ├── f9p_config_monitor.py      # F9P設定継続監視
+│   └── verify_rtcm_tcp.py         # RTCM3メッセージタイプ解析
 ├── deploy/                     # デプロイメント
 │   ├── rtk-uart2-inject.service   # systemd サービス定義
 │   ├── install_rtk_uart2_service.sh
@@ -906,7 +1037,7 @@ GCS-UmemotoLab/
 - [ ] F9P UART2 (JST-GH 6pin) → USB-Serialアダプタ → Raspi の配線完了
 - [ ] USB-Serialアダプタが `/dev/ttyUSB0` として認識（`ls /dev/ttyUSB*`）
 - [ ] F9P Rover UART2 設定済み（`python rtk_tools/f9p_rover_config.py --port /dev/ttyUSB0` 初回実行済み）
-- [ ] 基地局 F9P Survey-In 完了（`python scripts/ublox_survey_in.py --status`）
+- [ ] 基地局 F9P FIXED モード設定済み（座標が適切に設定されていること）
 - [ ] `rtk-uart2-inject` サービス稼働中（`systemctl status rtk-uart2-inject`）
 - [ ] RTK FIXED 達成確認（`python rtk_tools/gcs_fix_monitor.py --gcs-url http://localhost:8000 --once` で fix_type=6）
 - [ ] プリフライトチェック PASS（`python tools/preflight_check.py --rtk-uart-port /dev/ttyUSB0`）
@@ -945,7 +1076,7 @@ GCS-UmemotoLab/
 - [mavlink-router](https://github.com/mavlink-router/mavlink-router)
 - [pyubx2 (u-blox UBX protocol)](https://pypi.org/project/pyubx2/)
 - [Holybro H-RTK F9P Docs](https://docs.holybro.com/gps-and-rtk-system/h-rtk-neo-f9p-series-rm3100-compass)
-- [u-blox NEO-F9P Datasheet](https://www.u-blox.com/en/product/neo-f9p)
+- [u-blox ZED-F9P Datasheet](https://www.u-blox.com/en/product/zed-f9p)
 - [PySide6](https://doc.qt.io/qtforpython/)
 
 ## ライセンス

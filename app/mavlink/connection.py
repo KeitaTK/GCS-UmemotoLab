@@ -1,4 +1,4 @@
-# MavlinkConnection: UDP/Serial入出力用
+# MavlinkConnection: UDP/Serial入出力用（SSHトンネル再接続対応）
 import socket
 import threading
 import logging
@@ -7,17 +7,28 @@ import serial
 import os
 import time
 import struct
+import random
 
 class MavlinkConnection:
     """
-    Manages MAVLink communication over UDP or Serial with enhanced error handling.
-    
+    MAVLink communication over UDP or Serial with connection stabilization.
+
     Features:
     - Packet loss detection and reporting
-    - Automatic serial connection recovery
-    - Connection state tracking
+    - Automatic serial connection recovery with exponential backoff + jitter
+    - UDP reconnection support (socket rebind on prolonged disconnect)
+    - SSH tunnel auto-reconnect (via external process management)
+    - Connection state tracking with structured event logging
+    - Connection health monitoring (heartbeat-based)
     - Error event callbacks
     """
+    # ── Reconnection defaults ─────────────────────────────────────────
+    INITIAL_BACKOFF    = 1.0    # seconds
+    MAX_BACKOFF        = 60.0   # seconds
+    BACKOFF_MULTIPLIER = 1.5
+    JITTER_FACTOR      = 0.1    # +/-10% random jitter
+    RECONNECT_RESET_AFTER = 120.0  # reset backoff after this many seconds of stable connection
+
     def __init__(self, config_path):
         from pymavlink import mavutil
         self.logger = logging.getLogger(__name__)
@@ -31,34 +42,34 @@ class MavlinkConnection:
         self.connection_error = None
         self.packet_loss_count = 0
         self.packet_received_count = 0
-        self.error_callbacks = []  # Callbacks for connection errors
-        
+        self.error_callbacks = []
+        self._conn_state_callbacks = []  # (callback) for state transitions
+
+        # Backoff state
+        self._backoff_delay = self.INITIAL_BACKOFF
+        self._last_connected_at = 0.0
+        self._consecutive_failures = 0
+        self._last_state_change = time.monotonic()
+        self._connection_history: list[dict] = []  # max 100 entries
+
+        # SSH tunnel management (for UDP-over-SSH setups)
+        self._ssh_tunnel_proc = None
+        self._ssh_tunnel_config = self.config.get('ssh_tunnel', {})
+
         if self.connection_type == 'serial':
-            # Serial connection for Pixhawk
-            self.serial_port = self.config.get('serial_port', '/dev/ttyACM0')
-            self.serial_baudrate = self.config.get('serial_baudrate', 115200)
-            self.serial_conn = None
-            self.serial_error_count = 0
-            self.serial_max_errors = 5  # Consecutive errors before critical
-            self.logger.info(f"Serial mode: {self.serial_port} @ {self.serial_baudrate} baud")
+            self._init_serial()
         else:
-            # UDP connection (default)
-            self.udp_port = self.config.get('udp_listen_port', 14550)
-            self.drones = self.config.get('drones', {})
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sock.bind(("0.0.0.0", self.udp_port))
-            self.sock.settimeout(5.0)  # Timeout to detect UDP connection loss
-            self.udp_timeout_count = 0
-            self.logger.info(f"UDP mode: listening on 0.0.0.0:{self.udp_port}")
+            self._init_udp()
         
-        # MAVLink encode/decode object using a bytearray buffer
+        # MAVLink encode/decode object
         self.mav = mavutil.mavlink.MAVLink(bytearray())
         
         self.running = False
         self.recv_thread = None
         self.recv_callback = None
         self._tx_seq = 0
+        self._health_check_interval = 10.0  # seconds between health log entries
+        self._last_health_log = 0.0
 
     def _load_config(self, path):
         with open(path, 'r') as f:
@@ -99,18 +110,140 @@ class MavlinkConnection:
         else:
             self.logger.info(f"UDP受信を開始: 0.0.0.0:{self.udp_port}")
 
+    # ── Connection state helpers ───────────────────────────────────────
+
+    def _init_serial(self):
+        self.serial_port = self.config.get('serial_port', '/dev/ttyACM0')
+        self.serial_baudrate = self.config.get('serial_baudrate', 115200)
+        self.serial_conn = None
+        self.serial_error_count = 0
+        self.serial_max_errors = self.config.get('serial_max_errors', 5)
+
+    def _init_udp(self):
+        self.udp_port = self.config.get('udp_listen_port', 14550)
+        self.drones = self.config.get('drones', {})
+        self._udp_timeout = self.config.get('udp_timeout', 5.0)
+        self._max_timeouts = self.config.get('max_consecutive_timeouts', 30)
+        self._bind_udp()
+
+    def _bind_udp(self):
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind(("0.0.0.0", self.udp_port))
+            self.sock.settimeout(self._udp_timeout)
+        except OSError as e:
+            self.logger.error(f"UDP bind failed: {e}")
+            raise
+
+    def _change_state(self, connected: bool, reason: str = ""):
+        prev = self.is_connected
+        if prev == connected:
+            return
+        self.is_connected = connected
+        self._last_state_change = time.monotonic()
+        event = {"ts": time.time(), "from": prev, "to": connected,
+                 "reason": reason, "bo": round(self._backoff_delay, 2)}
+        self._connection_history.append(event)
+        if len(self._connection_history) > 100:
+            self._connection_history = self._connection_history[-100:]
+        self.logger.log(
+            logging.INFO if connected else logging.WARNING,
+            "Conn: %s->%s (%s, bo=%.1fs, fail=%d)",
+            "up" if prev else "down", "up" if connected else "down",
+            reason, self._backoff_delay, self._consecutive_failures)
+        for cb in self._conn_state_callbacks:
+            try: cb(connected, reason)
+            except Exception: pass
+
+    def _next_backoff(self) -> float:
+        self._consecutive_failures += 1
+        delay = self.INITIAL_BACKOFF * (
+            self.BACKOFF_MULTIPLIER ** (self._consecutive_failures - 1))
+        delay = min(delay, self.MAX_BACKOFF)
+        jitter = delay * self.JITTER_FACTOR * random.uniform(-1, 1)
+        self._backoff_delay = max(0.1, delay + jitter)
+        return self._backoff_delay
+
+    def _reset_backoff(self):
+        if self._backoff_delay > self.INITIAL_BACKOFF:
+            self.logger.info("Backoff: %.1fs -> %.1fs",
+                             self._backoff_delay, self.INITIAL_BACKOFF)
+        self._backoff_delay = self.INITIAL_BACKOFF
+        self._consecutive_failures = 0
+
+    def _log_health(self):
+        now = time.monotonic()
+        if now - self._last_health_log < self._health_check_interval:
+            return
+        self._last_health_log = now
+        self.logger.debug("Health: %s %s rx=%d loss=%d bo=%.1fs",
+            "UP" if self.is_connected else "DOWN", self.connection_type,
+            self.packet_received_count, self.packet_loss_count,
+            self._backoff_delay)
+
+    # ── SSH tunnel ────────────────────────────────────────────────────
+
+    def _setup_ssh_tunnel(self) -> bool:
+        cfg = self._ssh_tunnel_config
+        if not cfg.get('enabled'):
+            return True
+        ssh_host = cfg.get('host', 'raspi')
+        lport = cfg.get('local_port', 14551)
+        rport = cfg.get('remote_port', 14550)
+        self._teardown_ssh_tunnel()
+        import subprocess
+        try:
+            self.logger.info("SSH tunnel: L%d:%d -> %s", lport, rport, ssh_host)
+            self._ssh_tunnel_proc = subprocess.Popen(
+                ["ssh", "-N", "-L", f"{lport}:localhost:{rport}",
+                 "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
+                 "-o", "ServerAliveCountMax=3",
+                 "-o", "ExitOnForwardFailure=yes", ssh_host],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(2.0)
+            if self._ssh_tunnel_proc.poll() is not None:
+                self.logger.error("SSH tunnel exit early rc=%d",
+                                  self._ssh_tunnel_proc.returncode)
+                return False
+            self.logger.info("SSH tunnel OK")
+            return True
+        except FileNotFoundError:
+            self.logger.error("ssh not found")
+            return False
+        except Exception as e:
+            self.logger.error(f"SSH tunnel error: {e}")
+            return False
+
+    def _teardown_ssh_tunnel(self):
+        if self._ssh_tunnel_proc:
+            try: self._ssh_tunnel_proc.terminate()
+            except Exception:
+                try: self._ssh_tunnel_proc.kill()
+                except Exception: pass
+            self._ssh_tunnel_proc = None
+
+    def _check_ssh_tunnel_alive(self) -> bool:
+        if self._ssh_tunnel_proc is None:
+            return not self._ssh_tunnel_config.get('enabled', False)
+        return self._ssh_tunnel_proc.poll() is None
+
+    # ── Receive loops ────────────────────────────────────────────────────
+
     def stop(self):
         self.running = False
         if self.recv_thread:
-            self.recv_thread.join()
-        
+            self.recv_thread.join(timeout=3.0)
+        self._teardown_ssh_tunnel()
         if self.connection_type == 'serial':
             if self.serial_conn:
-                self.serial_conn.close()
-            self.logger.info("Serial受信を停止")
+                try: self.serial_conn.close()
+                except Exception: pass
+            self.logger.info("Serial stopped")
         else:
-            self.sock.close()
-            self.logger.info("UDP受信を停止")
+            try: self.sock.close()
+            except Exception: pass
+            self.logger.info("UDP stopped")
 
     def _recv_loop(self):
         if self.connection_type == 'serial':
@@ -119,114 +252,129 @@ class MavlinkConnection:
             self._recv_loop_udp()
     
     def _recv_loop_serial(self):
-        """Receive MAVLink data from serial port (Pixhawk) with error recovery"""
-        consecutive_errors = 0
-        last_connection_attempt = 0
-        reconnect_delay = 1.0  # Initial delay before reconnect
-        
+        """Serial receive with exponential backoff + jitter, state tracking."""
+        last_attempt = 0.0
         while self.running:
             try:
-                # Check if connection is open, attempt to open if not
                 if not self.serial_conn or not self.serial_conn.is_open:
-                    # Implement exponential backoff for reconnection attempts
-                    current_time = time.time()
-                    if current_time - last_connection_attempt < reconnect_delay:
+                    now = time.monotonic()
+                    if now - last_attempt < self._backoff_delay:
                         threading.Event().wait(0.1)
                         continue
-                    
-                    last_connection_attempt = current_time
+                    last_attempt = now
                     try:
                         self.serial_conn = serial.Serial(
-                            self.serial_port,
-                            self.serial_baudrate,
-                            timeout=1
-                        )
-                        self.is_connected = True
+                            self.serial_port, self.serial_baudrate, timeout=1)
+                        self._change_state(True, "serial opened")
                         self.serial_error_count = 0
-                        consecutive_errors = 0
-                        reconnect_delay = 1.0  # Reset delay on successful connection
-                        self.logger.info(f"Serial port opened: {self.serial_port}")
+                        self._reset_backoff()
+                        self.logger.info(f"Serial opened: {self.serial_port}")
                     except serial.SerialException as e:
-                        self.is_connected = False
-                        self.logger.warning(f"Failed to open serial port: {e}")
+                        self._change_state(False, f"open fail: {e}")
                         self._trigger_error_callback('SERIAL_OPEN_FAILED', str(e))
+                        self._next_backoff()
                         continue
-                
-                # Read data if available
+
                 if self.serial_conn.in_waiting > 0:
                     try:
                         data = self.serial_conn.read(self.serial_conn.in_waiting)
                         if data and self.recv_callback:
                             self.recv_callback(data, (self.serial_port, 0))
                             self.packet_received_count += 1
-                            consecutive_errors = 0  # Reset error counter on success
+                            self._log_health()
                     except Exception as e:
-                        self.logger.debug(f"Error reading serial data: {e}")
-                        consecutive_errors += 1
+                        self.logger.debug(f"Serial read error: {e}")
                 else:
                     threading.Event().wait(0.01)
-                    
+                    self._log_health()
+
             except serial.SerialException as e:
-                consecutive_errors += 1
                 self.serial_error_count += 1
-                self.logger.warning(f"Serial接続エラー (count={self.serial_error_count}): {e}")
-                
+                self.logger.warning(f"Serial error #{self.serial_error_count}: {e}")
                 if self.serial_error_count >= self.serial_max_errors:
-                    self.is_connected = False
-                    self._trigger_error_callback('SERIAL_CRITICAL', f"Serial connection failed {self.serial_error_count} times")
-                
-                if self.serial_conn:
-                    try:
-                        self.serial_conn.close()
-                    except:
-                        pass
-                self.serial_conn = None
-                
-                # Exponential backoff: increase delay with each error
-                reconnect_delay = min(reconnect_delay * 1.5, 5.0)  # Cap at 5 seconds
-                threading.Event().wait(min(0.5, reconnect_delay))
-                
+                    self._change_state(False, "serial critical")
+                    self._trigger_error_callback(
+                        'SERIAL_CRITICAL',
+                        f"Serial failures: {self.serial_error_count}")
+                self._close_serial()
+                self._next_backoff()
             except Exception as e:
-                consecutive_errors += 1
-                self.logger.error(f"Unexpected serial error: {e}")
+                self.logger.error(f"Serial unexpected: {e}")
                 threading.Event().wait(0.05)
+
+    def _close_serial(self):
+        if self.serial_conn:
+            try: self.serial_conn.close()
+            except Exception: pass
+        self.serial_conn = None
 
     
     def _recv_loop_udp(self):
-        """Receive MAVLink data from UDP port with packet loss detection"""
+        """UDP receive with SSH tunnel recovery and backoff."""
         timeout_count = 0
-        max_consecutive_timeouts = 30  # Increased threshold for local dev (was 10)
-        
+        last_tunnel_check = 0.0
+        max_to = self._max_timeouts
+
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(4096)
                 if self.recv_callback:
                     self.recv_callback(data, addr)
-                    self.packet_received_count += 1
-                    timeout_count = 0  # Reset timeout counter on successful receive
-                    self.is_connected = True
-                    
+                self.packet_received_count += 1
+                timeout_count = 0
+                if not self.is_connected:
+                    self._change_state(True, "data received")
+                    self._reset_backoff()
+                self._log_health()
+
             except socket.timeout:
                 timeout_count += 1
-                if timeout_count >= max_consecutive_timeouts:
-                    self.is_connected = False
+                if timeout_count >= max_to:
+                    was_up = self.is_connected
+                    self._change_state(False, f"timeout x{timeout_count}")
                     self.packet_loss_count += 1
-                    msg = f"UDP receive timeout detected (count={self.packet_loss_count})"
-                    self.logger.warning(msg)
-                    self._trigger_error_callback('UDP_TIMEOUT', msg)
-                    timeout_count = 0  # Reset for next cycle
-                    
-            except ConnectionResetError as e:
-                self.is_connected = False
+                    if was_up:
+                        self.logger.warning("UDP timeout #%d", self.packet_loss_count)
+                        self._trigger_error_callback(
+                            'UDP_TIMEOUT',
+                            f"UDP timeout #{self.packet_loss_count}")
+                    # SSH tunnel check every 30s
+                    now = time.monotonic()
+                    if (now - last_tunnel_check > 30.0 and
+                            self._ssh_tunnel_config.get('enabled')):
+                        last_tunnel_check = now
+                        if not self._check_ssh_tunnel_alive():
+                            self.logger.warning("SSH tunnel dead; restarting")
+                            self._setup_ssh_tunnel()
+                    self._next_backoff()
+                    threading.Event().wait(min(self._backoff_delay, 5.0))
+                    timeout_count = 0
+
+            except (ConnectionResetError, ConnectionRefusedError) as e:
+                self._change_state(False, str(e))
                 self.packet_loss_count += 1
-                msg = f"UDP connection reset: {e}"
-                self.logger.warning(msg)
-                self._trigger_error_callback('UDP_CONNECTION_RESET', msg)
-                threading.Event().wait(0.5)
-                
+                self.logger.warning(f"UDP disconnected: {e}")
+                self._trigger_error_callback('UDP_DISCONNECTED', str(e))
+                self._next_backoff()
+                threading.Event().wait(min(self._backoff_delay, 3.0))
+
+            except OSError as e:
+                self.logger.error(f"UDP socket error: {e}")
+                self._change_state(False, f"socket: {e}")
+                self._trigger_error_callback('UDP_SOCKET_ERROR', str(e))
+                try: self.sock.close()
+                except Exception: pass
+                try:
+                    self._bind_udp()
+                    self.logger.info("UDP socket rebound")
+                except OSError:
+                    self.logger.error("UDP rebind failed; backoff")
+                    self._next_backoff()
+                    threading.Event().wait(min(self._backoff_delay, 10.0))
+
             except Exception as e:
-                self.logger.error(f"UDP受信エラー: {e}")
-                self.is_connected = False
+                self.logger.error(f"UDP error: {e}")
+                self._change_state(False, f"error: {e}")
                 self._trigger_error_callback('UDP_ERROR', str(e))
                 threading.Event().wait(0.1)
 
