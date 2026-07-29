@@ -851,10 +851,11 @@ def _print_write_summary(write_results: dict) -> None:
 
 def _run_full_mode(args, key_table, logger) -> int:
     """Execute the full 8-phase RTK automation pipeline."""
-    import getpass, os, subprocess
+    import os, subprocess
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
+    raspi_path = args.raspi_path
     total_phases = 8
     if args.skip_rover:
         total_phases -= 2
@@ -864,7 +865,7 @@ def _run_full_mode(args, key_table, logger) -> int:
     phase = 0
     failed = False
     tcp_port = args.base_station_tcp_port
-    raspi_user = args.raspi_user or getpass.getuser()
+    raspi_user = args.raspi_user or "taki"
     base_port = args.port or args.base_port
     base_baud = args.baud or args.base_baud
     rover_baud = args.baud or args.rover_baud
@@ -906,7 +907,7 @@ def _run_full_mode(args, key_table, logger) -> int:
         print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Write (SSH) ===\n{'='*70}")
         rover_port = args.rover_port
         script = str(repo_root / "rtk_tools" / "f9p_config_all.py")
-        cmd = (f"cd {repo_root} && python3 {script} "
+        cmd = (f"cd {raspi_path} && python3 {script} "
                f"--role rover --mode write --port {rover_port} --baud {rover_baud} "
                f"--no-reset --log-level WARNING")
         print(f"  SSH: {raspi_user}@{args.raspi_host}")
@@ -929,7 +930,7 @@ def _run_full_mode(args, key_table, logger) -> int:
         # ---- Phase 4: Rover Verify (SSH) ----
         phase += 1
         print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Verify (SSH) ===\n{'='*70}")
-        cmd = (f"cd {repo_root} && python3 {script} "
+        cmd = (f"cd {raspi_path} && python3 {script} "
                f"--role rover --mode verify --port {rover_port} --baud {rover_baud} "
                f"--json --log-level WARNING")
         print(f"  SSH: {raspi_user}@{args.raspi_host}")
@@ -1011,7 +1012,7 @@ def _run_full_mode(args, key_table, logger) -> int:
                     f"{raspi_user}@{args.raspi_host}",
                     "pkill -f rtk_forwarder_service.py 2>/dev/null; sleep 1"],
                    capture_output=True, timeout=15)
-    cmd = (f"cd {repo_root} && nohup python3 {fwd_script} --config {fwd_conf} "
+    cmd = (f"cd {raspi_path} && nohup python3 {fwd_script} --config {fwd_conf} "
            f"> /tmp/rtk_forwarder.log 2>&1 &")
     print(f"  SSH: {raspi_user}@{args.raspi_host}")
     r = subprocess.run(["ssh", "-o", "ConnectTimeout=10",
@@ -1100,8 +1101,10 @@ def main() -> int:
     # --mode full arguments
     parser.add_argument("--raspi-host", default="raspi",
                         help="SSH hostname for Rover (default: raspi)")
-    parser.add_argument("--raspi-user", default=None,
-                        help="SSH username (default: current user)")
+    parser.add_argument("--raspi-user", default="taki",
+                        help="SSH username (default: taki)")
+    parser.add_argument("--raspi-path", default="~/GCS-UmemotoLab",
+                        help="Repo path on Raspberry Pi (default: ~/GCS-UmemotoLab)")
     parser.add_argument("--skip-rover", action="store_true",
                         help="Skip Rover configuration (--mode full)")
     parser.add_argument("--skip-fix-wait", action="store_true",
