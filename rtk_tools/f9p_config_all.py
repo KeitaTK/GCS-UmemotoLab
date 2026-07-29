@@ -530,7 +530,7 @@ class F9pAllConfigurator:
                 ("CFG-TMODE-LAT", lat_e7),
                 ("CFG-TMODE-LON", lon_e7),
                 ("CFG-TMODE-HEIGHT", alt_cm),
-                ("CFG-TMODE-FIXED_POS_ACC", 10.0),
+                ("CFG-TMODE-FIXED_POS_ACC", 10),
             ]
             layers = LAYER_ALL if save_to_flash else LAYER_RAM
             msg = UBXMessage.config_set(layers, 0, cfg_data)
