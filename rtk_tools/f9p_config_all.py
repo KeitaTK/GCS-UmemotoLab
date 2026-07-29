@@ -190,14 +190,14 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "GPS L1C/A enabled", "key_id": None},
         {"id": 25, "key": "CFG-SIGNAL-GPS_L5_ENA",
-         "expected": 1, "type": "U1", "role": "rover",
-         "desc": "GPS L5 enabled", "key_id": None},
+         "expected": 0, "type": "U1", "role": "rover",
+         "desc": "GPS L5 disabled (ZED-F9P not supported)", "key_id": None},
         {"id": 26, "key": "CFG-SIGNAL-GAL_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "Galileo E1 enabled", "key_id": None},
         {"id": 27, "key": "CFG-SIGNAL-GAL_E5A_ENA",
-         "expected": 1, "type": "U1", "role": "rover",
-         "desc": "Galileo E5a enabled", "key_id": None},
+         "expected": 0, "type": "U1", "role": "rover",
+         "desc": "Galileo E5a disabled (ZED-F9P not supported)", "key_id": None},
         {"id": 28, "key": "CFG-SIGNAL-BDS_ENA",
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "BeiDou B1I enabled", "key_id": None},
@@ -209,8 +209,8 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "desc": "UART1 UBX -> AP_Periph",
          "key_id": _KEY_UART1OUTPROT_UBX},
         {"id": 31, "key": "CFG-UART1-BAUDRATE",
-         "expected": 115200, "type": "U4", "role": "rover",
-         "desc": "UART1 baudrate", "key_id": _KEY_UART1_BAUDRATE},
+         "expected": 230400, "type": "U4", "role": "rover",
+         "desc": "UART1 baudrate (ArduPilot default)", "key_id": _KEY_UART1_BAUDRATE},
     ]
 
 
@@ -277,9 +277,9 @@ _UART2_ROVER_CFG_KEYS = [
 
 _GNSS_SIGNAL_CFG_KEYS = [
     ("CFG-SIGNAL-GPS_ENA",     1),
-    ("CFG-SIGNAL-GPS_L5_ENA",  1),
+    ("CFG-SIGNAL-GPS_L5_ENA",  0),
     ("CFG-SIGNAL-GAL_ENA",     1),
-    ("CFG-SIGNAL-GAL_E5A_ENA", 1),
+    ("CFG-SIGNAL-GAL_E5A_ENA", 0),
     ("CFG-SIGNAL-BDS_ENA",     1),
     ("CFG-SIGNAL-GLO_ENA",     1),
 ]
@@ -576,11 +576,27 @@ class F9pAllConfigurator:
     # ------------------------------------------------------------------
 
     def write_rover_uart2(self, save_to_flash: bool = True) -> bool:
-        """STEP1: Rover UART2 + Rate + DGNSS 設定 (CFG-VALSET)"""
+        """STEP1: Rover UART2 + Rate + DGNSS 設定 (CFG-VALSET)
+
+        UART2-BAUDRATE is written first as a single-key VALSET to ensure
+        it takes effect before other UART2-related config keys.
+        """
         self._ser = self._open_serial()
         try:
             layers = LAYER_ALL if save_to_flash else LAYER_RAM
-            cfg_data = list(_UART2_ROVER_CFG_KEYS)
+
+            # Write UART2-BAUDRATE first separately
+            baud_msg = UBXMessage.config_set(
+                layers, 0, [("CFG-UART2-BAUDRATE", 115200)])
+            self._send_ubx(baud_msg.serialize())
+            self.logger.info(
+                f"[ROVER Write] UART2-BAUDRATE=115200 "
+                f"({'Flash' if save_to_flash else 'RAM'})"
+            )
+
+            # Write remaining UART2 config keys (skip BAUDRATE, already done)
+            cfg_data = [(k, v) for k, v in _UART2_ROVER_CFG_KEYS
+                        if k != "CFG-UART2-BAUDRATE"]
             msg = UBXMessage.config_set(layers, 0, cfg_data)
             self._send_ubx(msg.serialize())
             self.logger.info(
@@ -603,7 +619,7 @@ class F9pAllConfigurator:
             layers = LAYER_ALL if save_to_flash else LAYER_RAM
             cfg_data = list(_GNSS_SIGNAL_CFG_KEYS) + [
                 ("CFG-UART1OUTPROT-UBX", 1),
-                ("CFG-UART1-BAUDRATE", 115200),
+                ("CFG-UART1-BAUDRATE", 230400),
             ]
             msg = UBXMessage.config_set(layers, 0, cfg_data)
             self._send_ubx(msg.serialize())
