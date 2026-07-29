@@ -231,8 +231,8 @@ def parse_nav_pvt(raw: bytes) -> dict | None:
 
     try:
         fix_type = payload[20]
-        flags2 = payload[22]
-        carr_soln = (flags2 >> 6) & 0x03
+        flags = payload[21]
+        carr_soln = (flags >> 4) & 0x03
         num_sv = payload[23]
         lon_e7 = int.from_bytes(payload[24:28], "little", signed=True)
         lat_e7 = int.from_bytes(payload[28:32], "little", signed=True)
