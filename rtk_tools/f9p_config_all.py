@@ -38,9 +38,9 @@ _MAX_RETRIES = 3
 _TIMEOUT = 5.0
 
 # Display icons
-_ICON_OK   = "\u2705"
-_ICON_FAIL = "\u274c"
-_ICON_WARN = "\u26a0\ufe0f"
+_ICON_OK   = "OK"
+_ICON_FAIL = "FAIL"
+_ICON_WARN = "WARN"
 
 # ==========================================================================
 # CFG Key ID mapping for response parsing
@@ -897,9 +897,9 @@ def _run_full_mode(args, key_table, logger) -> int:
         if cfg.send_reset():
             time.sleep(args.reset_delay)
     if all(write_ok.values()):
-        print(f"  \u2705 Phase {phase}: Write OK")
+        print(f"  OK Phase {phase}: Write OK")
     else:
-        print(f"  \u274c Phase {phase}: Write FAIL")
+        print(f"  FAIL Phase {phase}: Write FAIL")
         return 1
 
     # ---- Phase 2: Base Station Verify ----
@@ -909,9 +909,9 @@ def _run_full_mode(args, key_table, logger) -> int:
     ok_count = base_verify.get("ok_count", 0)
     total_count = ok_count + base_verify.get("fail_count", 0) + base_verify.get("warn_count", 0)
     if base_verify.get("all_verified"):
-        print(f"  \u2705 Phase {phase}: {ok_count}/{total_count} OK")
+        print(f"  OK Phase {phase}: {ok_count}/{total_count} OK")
     else:
-        print(f"  \u274c Phase {phase}: {ok_count}/{total_count} OK")
+        print(f"  FAIL Phase {phase}: {ok_count}/{total_count} OK")
         for c in base_verify.get("checks", []):
             if c.get("status") != "ok":
                 print(f"    FAIL: {c.get('key')} exp={c.get('expected')} act={c.get('actual')}")
@@ -932,16 +932,16 @@ def _run_full_mode(args, key_table, logger) -> int:
                                 f"{raspi_user}@{args.raspi_host}", cmd],
                                capture_output=True, text=True, timeout=60)
             if r.returncode == 0:
-                print(f"  \u2705 Phase {phase}: Rover Write OK")
+                print(f"  OK Phase {phase}: Rover Write OK")
             else:
-                print(f"  \u274c Phase {phase}: Rover Write FAIL (exit={r.returncode})")
+                print(f"  FAIL Phase {phase}: Rover Write FAIL (exit={r.returncode})")
                 if r.stderr:
                     print(f"    stderr: {r.stderr[:200]}")
                 return 1
         except subprocess.TimeoutExpired:
-            print(f"  \u274c Phase {phase}: SSH timeout"); return 1
+            print(f"  FAIL Phase {phase}: SSH timeout"); return 1
         except FileNotFoundError:
-            print(f"  \u274c Phase {phase}: ssh not found"); return 1
+            print(f"  FAIL Phase {phase}: ssh not found"); return 1
 
         # ---- Phase 4: Rover Verify (SSH) ----
         phase += 1
@@ -961,19 +961,19 @@ def _run_full_mode(args, key_table, logger) -> int:
                     rok = rr.get("ok_count", 0)
                     rtot = rok + rr.get("fail_count", 0) + rr.get("warn_count", 0)
                     rv = rr.get("all_verified", False)
-                    print(f"  {'\u2705' if rv else '\u274c'} Phase {phase}: {rok}/{rtot} OK")
+                    print(f"  {'OK' if rv else 'FAIL'} Phase {phase}: {rok}/{rtot} OK")
                 except json.JSONDecodeError:
-                    print(f"  \u26a0\ufe0f Phase {phase}: Bad JSON from rover")
+                    print(f"  WARN Phase {phase}: Bad JSON from rover")
                     return 1
             else:
-                print(f"  \u274c Phase {phase}: Rover Verify FAIL (exit={r.returncode})")
+                print(f"  FAIL Phase {phase}: Rover Verify FAIL (exit={r.returncode})")
                 if r.stdout:
                     print(f"    stdout: {r.stdout[:200]}")
                 return 1
         except subprocess.TimeoutExpired:
-            print(f"  \u274c Phase {phase}: SSH timeout"); return 1
+            print(f"  FAIL Phase {phase}: SSH timeout"); return 1
     else:
-        print(f"\n  \u26a0\ufe0f Rover phases SKIPPED (--skip-rover)")
+        print(f"\n  WARN Rover phases SKIPPED (--skip-rover)")
         phase += 2
 
     # ---- Phase 5: Base Station Start ----
@@ -996,9 +996,9 @@ def _run_full_mode(args, key_table, logger) -> int:
         if "started successfully" in line:
             started = True; break
     if started:
-        print(f"  \u2705 Phase {phase}: Base station started (TCP:{tcp_port})")
+        print(f"  OK Phase {phase}: Base station started (TCP:{tcp_port})")
     else:
-        print(f"  \u274c Phase {phase}: Base station failed to start")
+        print(f"  FAIL Phase {phase}: Base station failed to start")
         proc.terminate()
         return 1
 
@@ -1012,12 +1012,12 @@ def _run_full_mode(args, key_table, logger) -> int:
     print(f"  Capturing localhost:{tcp_port} for 30s...")
     rv = verify_rtcm_stream("localhost", tcp_port, duration=30.0)
     if rv["ok"]:
-        print(f"  \u2705 Phase {phase}: All RTCM3 types detected")
+        print(f"  OK Phase {phase}: All RTCM3 types detected")
     else:
-        print(f"  \u26a0\ufe0f Phase {phase}: Missing types: {rv['missing_types']}")
+        print(f"  WARN Phase {phase}: Missing types: {rv['missing_types']}")
     print(f"    Frames: {rv['total_frames']}")
     for mt, c in rv["type_counter"].items():
-        print(f"      {'\u2705' if c>0 else '\u26a0\ufe0f'} {mt}: {c}")
+        print(f"      {'OK' if c>0 else 'WARN'} {mt}: {c}")
 
     # ---- Phase 7: RTCM Injection ----
     phase += 1
@@ -1036,9 +1036,9 @@ def _run_full_mode(args, key_table, logger) -> int:
                        capture_output=True, text=True, timeout=15)
     if r.returncode == 0:
         time.sleep(2)
-        print(f"  \u2705 Phase {phase}: RTCM forwarder launched")
+        print(f"  OK Phase {phase}: RTCM forwarder launched")
     else:
-        print(f"  \u274c Phase {phase}: SSH failed")
+        print(f"  FAIL Phase {phase}: SSH failed")
 
     # ---- Phase 8: Fix Monitor ----
     if not args.skip_fix_wait:
@@ -1051,12 +1051,12 @@ def _run_full_mode(args, key_table, logger) -> int:
         print(f"  GCS: {args.gcs_url}/api/drones  Timeout:300s")
         m = GcsFixMonitor(gcs_url=args.gcs_url, system_id=args.system_id, poll_interval=1.0)
         if m.wait_for_rtk_fixed(timeout=300.0):
-            print(f"  \u2705 Phase {phase}: RTK FIXED ACHIEVED!")
+            print(f"  OK Phase {phase}: RTK FIXED ACHIEVED!")
         else:
-            print(f"  \u274c Phase {phase}: RTK Fixed NOT achieved (timeout)")
+            print(f"  FAIL Phase {phase}: RTK Fixed NOT achieved (timeout)")
             failed = True
     else:
-        print(f"\n  \u26a0\ufe0f Fix Monitor SKIPPED (--skip-fix-wait)")
+        print(f"\n  WARN Fix Monitor SKIPPED (--skip-fix-wait)")
         phase += 1
 
     # ---- Final ----
@@ -1064,7 +1064,7 @@ def _run_full_mode(args, key_table, logger) -> int:
     if not failed:
         print(f"  \U0001F389 ALL PHASES COMPLETE -- RTK FIXED ACHIEVED")
     else:
-        print(f"  \u274c Some phases failed -- check output above")
+        print(f"  FAIL Some phases failed -- check output above")
     print(f"{'='*70}\n")
     return 0 if not failed else 1
 
