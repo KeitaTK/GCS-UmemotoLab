@@ -907,7 +907,7 @@ def _run_full_mode(args, key_table, logger) -> int:
         print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Write (SSH) ===\n{'='*70}")
         rover_port = args.rover_port
         script = "rtk_tools/f9p_config_all.py"
-        cmd = (f"cd {raspi_path} && python3 {script} "
+        cmd = (f"cd {raspi_path} && .venv/bin/python {script} "
                f"--role rover --mode write --port {rover_port} --baud {rover_baud} "
                f"--no-reset --log-level WARNING")
         print(f"  SSH: {raspi_user}@{args.raspi_host}")
@@ -930,7 +930,7 @@ def _run_full_mode(args, key_table, logger) -> int:
         # ---- Phase 4: Rover Verify (SSH) ----
         phase += 1
         print(f"\n{'='*70}\n  === Phase {phase}/{total_phases}: Rover Verify (SSH) ===\n{'='*70}")
-        cmd = (f"cd {raspi_path} && python3 {script} "
+        cmd = (f"cd {raspi_path} && .venv/bin/python {script} "
                f"--role rover --mode verify --port {rover_port} --baud {rover_baud} "
                f"--json --log-level WARNING")
         print(f"  SSH: {raspi_user}@{args.raspi_host}")
