@@ -63,6 +63,7 @@ _KEY_NAVHPG_DGNSSMODE     = 0x20140011
 _KEY_RATE_MEAS            = 0x30210001
 _KEY_RATE_NAV             = 0x30210002
 _KEY_MSGOUT_UBX_NAV_PVT_UART2 = 0x20910006
+_KEY_MSGOUT_UBX_NAV_RELPOSNED_UART2 = 0x2091008F
 
 # RTCM3 USB 出力キーID（実機確認済み）
 _KEY_MSGOUT_RTCM3_TYPE1005_USB = 0x209102C0
@@ -79,11 +80,11 @@ _U2_KEY_IDS = {_KEY_RATE_MEAS, _KEY_RATE_NAV}
 _R8_KEY_IDS = {_KEY_TMODE_FIXED_POS_ACC}
 
 # ==========================================================================
-# Full 38-key Configuration Table (13 base UART1 + 7 base USB + 18 rover)
+# Full 39-key Configuration Table (13 base UART1 + 7 base USB + 19 rover)
 # ==========================================================================
 
 def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
-    """Build the full 38-key configuration table with resolved dynamic values."""
+    """Build the full 39-key configuration table with resolved dynamic values."""
     lat_e7 = int(lat * 1e7)
     lon_e7 = int(lon * 1e7)
     alt_cm = int(alt * 100)
@@ -154,7 +155,7 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "expected": 1, "type": "U1", "role": "base",
          "desc": "GLONASS bias USB (1230)", "key_id": _KEY_MSGOUT_RTCM3_TYPE1230_USB},
 
-        # === Rover (18 keys: #14-31) ===
+        # === Rover (19 keys: #14-31, #39) ===
         {"id": 14, "key": "CFG-UART2-BAUDRATE",
          "expected": 115200, "type": "U4", "role": "rover",
          "desc": "UART2 baudrate", "key_id": _KEY_UART2_BAUDRATE},
@@ -168,8 +169,9 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
          "expected": 1, "type": "U1", "role": "rover",
          "desc": "RTCM3 input enabled", "key_id": _KEY_UART2INPROT_RTCM3X},
         {"id": 18, "key": "CFG-UART2OUTPROT-UBX",
-         "expected": 0, "type": "U1", "role": "rover",
-         "desc": "UBX output disabled", "key_id": _KEY_UART2OUTPROT_UBX},
+         "expected": 1, "type": "U1", "role": "rover",
+         "desc": "UBX output enabled (RELPOSNED monitoring)",
+         "key_id": _KEY_UART2OUTPROT_UBX},
         {"id": 19, "key": "CFG-UART2OUTPROT-NMEA",
          "expected": 0, "type": "U1", "role": "rover",
          "desc": "NMEA output disabled", "key_id": _KEY_UART2OUTPROT_NMEA},
@@ -211,6 +213,12 @@ def _build_key_table(lat: float, lon: float, alt: float) -> List[dict]:
         {"id": 31, "key": "CFG-UART1-BAUDRATE",
          "expected": 230400, "type": "U4", "role": "rover",
          "desc": "UART1 baudrate (ArduPilot default)", "key_id": _KEY_UART1_BAUDRATE},
+
+        # === Rover RELPOSNED monitoring (1 key: #39) ===
+        {"id": 39, "key": "CFG-MSGOUT-UBX-NAV-RELPOSNED-UART2",
+         "expected": 1, "type": "U1", "role": "rover",
+         "desc": "NAV-RELPOSNED UART2 out enabled (RTK monitoring)",
+         "key_id": _KEY_MSGOUT_UBX_NAV_RELPOSNED_UART2},
     ]
 
 
@@ -267,12 +275,13 @@ _UART2_ROVER_CFG_KEYS = [
     ("CFG-UART2INPROT-UBX",             1),
     ("CFG-UART2INPROT-NMEA",            0),
     ("CFG-UART2INPROT-RTCM3X",          1),
-    ("CFG-UART2OUTPROT-UBX",            0),
-    ("CFG-UART2OUTPROT-NMEA",           0),
+    ("CFG-UART2OUTPROT-UBX",            1),   # UBX output enabled (for RELPOSNED monitoring)
+    ("CFG-UART2OUTPROT-NMEA",           0),   # NMEA output disabled (bandwidth saving)
     ("CFG-NAVHPG-DGNSSMODE",            0),
     ("CFG-RATE-MEAS",                   200),
     ("CFG-RATE-NAV",                    1),
-    ("CFG-MSGOUT-UBX-NAV-PVT-UART2",    0),
+    ("CFG-MSGOUT-UBX-NAV-PVT-UART2",    0),   # NAV-PVT disabled (use MAVLink instead)
+    ("CFG-MSGOUT-UBX-NAV-RELPOSNED-UART2", 1),   # ★ RELPOSNED enabled for RTK monitoring
 ]
 
 _GNSS_SIGNAL_CFG_KEYS = [

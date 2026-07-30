@@ -268,18 +268,35 @@ class RtcmForwarderService:
                 )
 
                 buffer = bytearray()
+                send_buf = bytearray()      # batch buffer for serial writes
+                last_flush = time.monotonic()
+                BATCH_BYTES = 1024           # flush when >= 1KB accumulated
+                BATCH_INTERVAL = 0.5         # flush at least every 0.5s
+
                 while True:
                     try:
                         chunk = tcp_sock.recv(4096)
                     except socket.timeout:
+                        # Flush batch if timeout expired
+                        if send_buf and time.monotonic() - last_flush >= BATCH_INTERVAL:
+                            fwd_obj.write(bytes(send_buf))
+                            fwd_obj.flush()
+                            self._count(bytes(send_buf))
+                            send_buf.clear()
+                            last_flush = time.monotonic()
                         continue
                     if not chunk:
+                        # Flush remaining batch before raising
+                        if send_buf:
+                            fwd_obj.write(bytes(send_buf))
+                            fwd_obj.flush()
+                            self._count(bytes(send_buf))
                         raise ConnectionError(
                             "TCP stream closed by server"
                         )
                     buffer.extend(chunk)
 
-                    # Extract and forward complete RTCM v3 frames (preamble 0xD3)
+                    # Extract complete RTCM v3 frames (preamble 0xD3)
                     while len(buffer) >= 6:
                         if buffer[0] != 0xD3:
                             buffer.pop(0)
@@ -293,7 +310,15 @@ class RtcmForwarderService:
 
                         frame = bytes(buffer[:total_len])
                         buffer = buffer[total_len:]
-                        self._forward_chunk(fwd_obj, frame)
+                        send_buf.extend(frame)
+
+                        # Batch flush: write when buffer is full enough
+                        if len(send_buf) >= BATCH_BYTES:
+                            fwd_obj.write(bytes(send_buf))
+                            fwd_obj.flush()
+                            self._count(bytes(send_buf))
+                            send_buf.clear()
+                            last_flush = time.monotonic()
         finally:
             self._close_forward(fwd_obj)
 

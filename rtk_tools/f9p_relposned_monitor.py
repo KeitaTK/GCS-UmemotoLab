@@ -32,8 +32,8 @@ logger = logging.getLogger("f9p_relposned_monitor")
 
 CARRSOLN_NAMES: dict[int, str] = {0: "NONE", 1: "FLOAT", 2: "FIXED"}
 
-NAV_RELPOSNED_CLS = 0x01
-NAV_RELPOSNED_MID = 0x10
+NAV_RELPOSNED_CLS = b'\x01'
+NAV_RELPOSNED_MID = b'\x3c'  # F9P HPG 1.32 firmware: RELPOSNED moved from 0x10 to 0x3C
 
 _CARRSOLN_SHIFT = 16
 _CARRSOLN_MASK = 0x07
