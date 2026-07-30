@@ -41,7 +41,7 @@ RTCM3_PREAMBLE = 0xD3
 RTCM3_LENGTH_MASK = 0x03
 
 # UBX CFG-VALGET keys (from f9p_config_all.py)
-_KEY_NAVHPG_DGNSSMODE = 0x20110011
+_KEY_NAVHPG_DGNSSMODE = 0x20140011
 _KEY_UART2_BAUDRATE = 0x40590001
 _KEY_UART2INPROT_RTCM3X = 0x40590004
 _KEY_UART2INPROT_UBX = 0x40590002
@@ -135,7 +135,7 @@ def _build_cfg_valget(keys: list[str]) -> bytes:
 def _key_name_to_id(name: str) -> Optional[int]:
     """Map CFG key name to key ID."""
     mapping = {
-        "CFG-NAVHPG-DGNSSMODE": 0x20110011,
+        "CFG-NAVHPG-DGNSSMODE": 0x20140011,
         "CFG-UART2-BAUDRATE": 0x40590001,
         "CFG-UART2INPROT-RTCM3X": 0x40590004,
         "CFG-UART2INPROT-UBX": 0x40590002,

@@ -66,7 +66,7 @@ _UART2_RTCM_CFG_KEYS = [
     ('CFG-UART2INPROT-RTCM3X',    1),        # ★ RTCM3入力を有効化
     ('CFG-UART2OUTPROT-UBX',      1),        # ★ UBX出力を有効化 (NAV-PVT用)
     ('CFG-UART2OUTPROT-NMEA',     0),
-    ('CFG-NAVHPG-DGNSSMODE',      3),        # RTK Fixedモード
+    ('CFG-NAVHPG-DGNSSMODE',      0),        # RTK Float+Fixed 両方許可 (3=Fixed only だと FLOAT→FIXED 遷移不可)
 ]
 ```
 
