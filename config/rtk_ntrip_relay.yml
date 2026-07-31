@@ -1,0 +1,26 @@
+# NTRIP Relay Server 設定
+# Usage: ntrip_relay.py --config config/rtk_ntrip_relay.yml
+#
+# Architecture:
+#   NTRIP Caster ──(RTCM)──→ Mac mini (this relay) ←──(TCP:2102)── Raspi (Tailscale)
+#
+# Mac mini connects to NTRIP caster and listens on Tailscale IP:2102 for Raspi.
+
+ntrip:
+  host: ntrip.ales-corp.co.jp
+  port: 2101
+  mountpoint: 32M7NHS
+  username: 6y8swddj
+  password: xxu2w5
+  # GGA（NTRIPキャスターが基準点を選択するために必要）
+  gga:
+    enabled: true
+    interval_sec: 10
+    lat: 36.075716
+    lon: 136.213434
+    alt: 51.0
+
+# Raspiからの接続を受け付けるリレーサーバー設定
+relay:
+  host: 0.0.0.0          # 全インターフェースで待受（Tailscale含む）
+  port: 2102             # Raspiが接続するポート
