@@ -71,15 +71,36 @@ class MavlinkRtcmInjector:
         return bytes(frame)
 
     def send_gps_rtcm_data(self, rtcm_chunk):
-        """Send one GPS_RTCM_DATA (msgid=233). Payload: flags(1)+len(1)+data."""
-        chunk = rtcm_chunk[:MAX_RTCM_DATA_LEN]
-        payload = struct.pack('<BB', 0, len(chunk)) + chunk
-        while len(payload) < 4:
-            payload += b'\x00'
-        frame = self._build_frame(GPS_RTCM_DATA_MSGID, payload)
-        if self._mav_sock:
-            self._mav_sock.sendto(frame, self.mav_target)
-            self.mavlink_frames_out += 1
+        """Send RTCM via GPS_RTCM_DATA (msgid=233) with fragmentation.
+
+        MAVLink GPS_RTCM_DATA: max 180 B/chunk, flags-based fragment management.
+        Flags: 0x01 = MORE_FRAGMENTS, 0x02 = SEQ_NUMBERED.
+        - Fragment 1:          flags=0x01 (more follow, no seq)
+        - Intermediate frags:  flags=0x03 (MORE | SEQ)
+        - Final fragment:      flags=0x02 (SEQ only, last)
+        - Single/fits-in-one:  flags=0x00
+        """
+        data = rtcm_chunk
+        total = len(data)
+        offset = 0
+        while offset < total:
+            chunk = data[offset:offset + MAX_RTCM_DATA_LEN]
+            remaining = total - (offset + len(chunk))
+
+            if offset == 0:
+                flags = 0x01 if remaining > 0 else 0x00
+            elif remaining > 0:
+                flags = 0x03
+            else:
+                flags = 0x02
+
+            payload = struct.pack('<BB', flags, len(chunk)) + chunk
+            frame = self._build_frame(GPS_RTCM_DATA_MSGID, payload)
+            if self._mav_sock:
+                self._mav_sock.sendto(frame, self.mav_target)
+                self.mavlink_frames_out += 1
+
+            offset += MAX_RTCM_DATA_LEN
 
     def run(self, duration=0, max_frames=0):
         self._mav_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
